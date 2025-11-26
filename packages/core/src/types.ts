@@ -146,3 +146,44 @@ export interface ConversationOrchestratorConfig extends SessionConfig {
   providers: ConversationProviders;
   logger?: Logger;
 }
+
+// =============================================================================
+// Audio Signaling Types (for MediaStreamTrack transport)
+// =============================================================================
+
+/**
+ * Signal types for coordinating audio capture between client and server
+ * when using MediaStreamTrack-based audio transport
+ */
+export type AudioSignalType = 'audio-start' | 'audio-stop' | 'audio-process';
+
+/**
+ * Sent when VAD detects speech start - server begins buffering audio
+ */
+export interface AudioStartSignal {
+  type: 'audio-start';
+  timestamp: number;
+}
+
+/**
+ * Sent when VAD detects speech end - server stops buffering (without processing)
+ */
+export interface AudioStopSignal {
+  type: 'audio-stop';
+  timestamp: number;
+}
+
+/**
+ * Sent when VAD detects speech end and audio should be processed
+ * Includes any vision attachments captured during speech
+ */
+export interface AudioProcessSignal {
+  type: 'audio-process';
+  timestamp: number;
+  attachments: VisionAttachment[];
+}
+
+/**
+ * Union type for all audio signals
+ */
+export type AudioSignal = AudioStartSignal | AudioStopSignal | AudioProcessSignal;

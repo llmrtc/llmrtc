@@ -15,6 +15,7 @@ import {
   VisionAttachment,
   ConversationProviders
 } from '@metered/llmrtc-core';
+import { AudioProcessor } from './audio-processor.js';
 import {
   OpenAILLMProvider,
   OpenAIWhisperProvider
@@ -34,11 +35,16 @@ const HOST = process.env.HOST ?? '127.0.0.1';
 console.log('[backend] Env loaded - OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'set' : 'NOT SET', 'ELEVENLABS_API_KEY:', process.env.ELEVENLABS_API_KEY ? 'set' : 'NOT SET');
 
 let wrtcLib: any = null;
+let RTCAudioSink: any = null;
 try {
   const mod = await import('@roamhq/wrtc');
   wrtcLib = (mod as any).default ?? mod;
+  // Get nonstandard APIs for audio sink
+  RTCAudioSink = wrtcLib.nonstandard?.RTCAudioSink;
   // eslint-disable-next-line no-console
   console.log('[backend] wrtc loaded (@roamhq/wrtc), WebRTC enabled');
+  // eslint-disable-next-line no-console
+  console.log('[backend] RTCAudioSink available:', !!RTCAudioSink);
 } catch (err) {
   // eslint-disable-next-line no-console
   console.warn('[backend] wrtc not available, falling back to WebSocket-only');
@@ -130,6 +136,11 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
     return null;
   }
 
+  // Create audio processor for PCM buffering
+  const audioProcessor = new AudioProcessor();
+  let pendingAttachments: VisionAttachment[] = [];
+  let audioSink: any = null;
+
   const peer = new SimplePeer({
     initiator: false,
     trickle: false, // Disable trickle ICE for better compatibility
@@ -153,6 +164,11 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   peer.on('close', () => {
     // eslint-disable-next-line no-console
     console.log('[backend] WebRTC peer closed');
+    if (audioSink) {
+      audioSink.stop();
+      audioSink = null;
+    }
+    audioProcessor.destroy();
   });
 
   peer.on('iceStateChange', (state: string) => {
@@ -160,12 +176,75 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
     console.log('[backend] ICE state:', state);
   });
 
+  // Handle incoming audio track from client using RTCAudioSink
+  peer.on('track', (track: MediaStreamTrack, stream: MediaStream) => {
+    // eslint-disable-next-line no-console
+    console.log('[backend] Received track:', track.kind, 'id:', track.id, 'readyState:', track.readyState);
+
+    if (track.kind === 'audio' && RTCAudioSink) {
+      // eslint-disable-next-line no-console
+      console.log('[backend] Setting up RTCAudioSink for audio track');
+
+      // Create RTCAudioSink to receive decoded PCM samples
+      audioSink = new RTCAudioSink(track);
+
+      audioSink.ondata = (data: {
+        samples: Int16Array;
+        sampleRate: number;
+        bitsPerSample: number;
+        channelCount: number;
+        numberOfFrames: number;
+      }) => {
+        // Only process if we're capturing (between audio-start and audio-process)
+        if (audioProcessor.capturing) {
+          audioProcessor.processPCMData(data);
+        }
+      };
+
+      // eslint-disable-next-line no-console
+      console.log('[backend] RTCAudioSink set up successfully');
+    } else if (track.kind === 'audio' && !RTCAudioSink) {
+      // eslint-disable-next-line no-console
+      console.warn('[backend] RTCAudioSink not available - audio track cannot be processed');
+    }
+  });
+
   peer.on('data', async (data: Buffer) => {
     try {
       const msg = JSON.parse(data.toString());
-      if (msg.type === 'audio-chunk') {
-        const attachments: VisionAttachment[] = msg.attachments ?? [];
-        await handleAudio(orchestrator, Buffer.from(msg.data, 'base64'), ws, peer, attachments);
+
+      switch (msg.type) {
+        // MediaStreamTrack-based audio signals
+        case 'audio-start':
+          // eslint-disable-next-line no-console
+          console.log('[backend] Speech started - beginning audio capture');
+          audioProcessor.startCapture();
+          break;
+
+        case 'audio-process':
+          // eslint-disable-next-line no-console
+          console.log('[backend] Speech ended - processing audio with', msg.attachments?.length || 0, 'attachments');
+          pendingAttachments = msg.attachments ?? [];
+
+          const pcmBuffer = audioProcessor.stopCapture();
+
+          if (pcmBuffer.length > 0) {
+            // Convert PCM to WAV for STT providers
+            const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
+            // eslint-disable-next-line no-console
+            console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
+            await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments);
+          } else {
+            // eslint-disable-next-line no-console
+            console.log('[backend] No audio data captured');
+            sendBoth({ type: 'error', message: 'No audio data captured' }, ws, peer);
+          }
+          pendingAttachments = [];
+          break;
+
+        default:
+          // eslint-disable-next-line no-console
+          console.log('[backend] Unknown message type:', msg.type);
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -176,6 +255,11 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   peer.on('error', (err) => {
     // eslint-disable-next-line no-console
     console.error('peer error', err);
+    if (audioSink) {
+      audioSink.stop();
+      audioSink = null;
+    }
+    audioProcessor.destroy();
   });
 
   return peer;

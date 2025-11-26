@@ -28,13 +28,15 @@ export interface ShareAudioOptions {
   vadThreshold?: number;
   /** ms of silence to treat as stop */
   vadSilenceMs?: number;
-  /** media recorder chunk timeslice ms */
-  chunkMs?: number;
 }
 
 export interface FrameCaptureController {
   stop(): void;
   getLastFrame(): string | null;
+}
+
+export interface AudioController {
+  stop(): Promise<void>;
 }
 
 const MessageSchema = z.object({ type: z.string() }).passthrough();
@@ -47,6 +49,8 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
   private peerResolve?: () => void;
   private videoCapture?: FrameCaptureController;
   private screenCapture?: FrameCaptureController;
+  private audioTrack?: MediaStreamTrack;
+  private audioStream?: MediaStream;
 
   constructor(private readonly config: WebClientConfig) {
     super();
@@ -95,12 +99,44 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     await this.peerReady;
   }
 
-  async shareAudio(stream: MediaStream, opts: ShareAudioOptions = {}) {
+  /**
+   * Share audio with automatic VAD-based speech detection
+   * Audio is streamed via WebRTC MediaStreamTrack
+   */
+  async shareAudio(stream: MediaStream, opts: ShareAudioOptions = {}): Promise<AudioController> {
     if (!this.peer?.connected) throw new Error('Peer not connected');
+
     const vadThreshold = opts.vadThreshold ?? 0.015;
     const vadSilenceMs = opts.vadSilenceMs ?? 600;
-    const chunkMs = opts.chunkMs ?? 400;
 
+    // Store stream reference
+    this.audioStream = stream;
+    this.audioTrack = stream.getAudioTracks()[0];
+
+    if (!this.audioTrack) {
+      throw new Error('No audio track in stream');
+    }
+
+    // Add audio track to peer connection - this triggers renegotiation
+    console.log('[web-client] Adding audio track to peer connection');
+    this.peer!.addTrack(this.audioTrack, stream);
+
+    // Wait for renegotiation to complete
+    await new Promise<void>((resolve) => {
+      const checkState = () => {
+        const pc = (this.peer as any)?._pc as RTCPeerConnection;
+        if (pc?.signalingState === 'stable') {
+          resolve();
+        } else {
+          setTimeout(checkState, 100);
+        }
+      };
+      setTimeout(checkState, 100);
+    });
+
+    console.log('[web-client] Audio track added, setting up VAD');
+
+    // Set up VAD using AnalyserNode
     const audioCtx = new AudioContext();
     const source = audioCtx.createMediaStreamSource(stream);
     const analyser = audioCtx.createAnalyser();
@@ -110,38 +146,6 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
 
     let speaking = false;
     let silenceStart = performance.now();
-    let recorder: MediaRecorder | null = null;
-    const chunks: BlobPart[] = [];
-
-    const startRecording = () => {
-      if (recorder) return;
-      recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      recorder.start(chunkMs);
-    };
-
-    const stopRecording = async () => {
-      if (!recorder) return;
-      const done = new Promise<void>((resolve) => {
-        recorder!.onstop = () => resolve();
-      });
-      recorder.stop();
-      await done;
-      recorder = null;
-      if (chunks.length) {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        chunks.length = 0;
-        const buf = await blob.arrayBuffer();
-        const attachments: AttachmentPayload[] = [];
-        const cam = this.videoCapture?.getLastFrame();
-        const screen = this.screenCapture?.getLastFrame();
-        if (cam) attachments.push({ data: cam, mimeType: 'image/jpeg', alt: 'camera frame' });
-        if (screen) attachments.push({ data: screen, mimeType: 'image/jpeg', alt: 'screen frame' });
-        this.sendAudio(Buffer.from(buf), attachments);
-      }
-    };
 
     const loop = () => {
       analyser.getByteTimeDomainData(data);
@@ -154,12 +158,23 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
       const now = performance.now();
 
       if (rms > vadThreshold) {
-        if (!speaking) startRecording();
-        speaking = true;
+        if (!speaking) {
+          speaking = true;
+          console.log('[web-client] VAD: Speech started');
+          // Signal server to start buffering audio
+          this.sendSignal({ type: 'audio-start', timestamp: Date.now() });
+        }
         silenceStart = now;
       } else if (speaking && now - silenceStart > vadSilenceMs) {
         speaking = false;
-        stopRecording();
+        console.log('[web-client] VAD: Speech ended, sending process signal');
+        // Gather attachments and signal server to process
+        const attachments = this.gatherAttachments();
+        this.sendSignal({
+          type: 'audio-process',
+          timestamp: Date.now(),
+          attachments
+        });
       }
 
       rafId = requestAnimationFrame(loop);
@@ -170,11 +185,45 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     return {
       stop: async () => {
         cancelAnimationFrame(rafId);
-        await stopRecording();
+        // Send stop signal if currently speaking
+        if (speaking) {
+          const attachments = this.gatherAttachments();
+          this.sendSignal({
+            type: 'audio-process',
+            timestamp: Date.now(),
+            attachments
+          });
+        }
+        this.audioTrack?.stop();
         stream.getTracks().forEach((t) => t.stop());
         await audioCtx.close();
       }
     };
+  }
+
+  /**
+   * Gather camera and screen frame attachments
+   */
+  private gatherAttachments(): AttachmentPayload[] {
+    const attachments: AttachmentPayload[] = [];
+    const cam = this.videoCapture?.getLastFrame();
+    const screen = this.screenCapture?.getLastFrame();
+    if (cam) attachments.push({ data: cam, mimeType: 'image/jpeg', alt: 'camera frame' });
+    if (screen) attachments.push({ data: screen, mimeType: 'image/jpeg', alt: 'screen frame' });
+    return attachments;
+  }
+
+  /**
+   * Send a signal over the data channel
+   */
+  private sendSignal(signal: { type: string; timestamp: number; attachments?: AttachmentPayload[] }) {
+    const data = JSON.stringify(signal);
+    console.log('[web-client] Sending signal:', signal.type);
+    if (this.peer?.connected) {
+      this.peer.send(data);
+    } else {
+      console.warn('[web-client] Cannot send signal - peer not connected');
+    }
   }
 
   shareVideo(stream: MediaStream, intervalMs = 1000): FrameCaptureController {
@@ -232,21 +281,6 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
       }
     } catch (err) {
       this.emit('error', (err as Error).message);
-    }
-  }
-
-  private sendAudio(buffer: ArrayBuffer | Buffer, attachments: AttachmentPayload[] = []) {
-    const b = buffer instanceof Buffer ? buffer : Buffer.from(new Uint8Array(buffer));
-    const payload = { type: 'audio', data: b.toString('base64'), attachments };
-    const data = JSON.stringify(payload);
-    console.log('[web-client] sendAudio - size:', data.length, 'bytes');
-
-    // Send over WebSocket (more reliable for large payloads)
-    // Data channel has size limits that make it unsuitable for audio chunks
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data);
-    } else {
-      throw new Error('WebSocket not connected');
     }
   }
 }
@@ -324,15 +358,6 @@ function startFrameCapture(stream: MediaStream, intervalMs: number): FrameCaptur
     },
     getLastFrame: () => lastFrame
   };
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {

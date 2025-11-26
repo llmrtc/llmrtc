@@ -28,8 +28,5 @@
   },
   "devDependencies": {
     "ts-node": "^10.9.2"
-  },
-  "optionalDependencies": {
-    "wrtc": "^0.4.7"
   }
 }
