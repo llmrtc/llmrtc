@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/backend" },
+    { "path": "./packages/web-client" },
+    { "path": "./packages/providers/openai" },
+    { "path": "./packages/providers/elevenlabs" },
+    { "path": "./packages/providers/local" },
+    { "path": "./examples/vite-demo" }
+  ]
+}

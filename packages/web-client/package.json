@@ -1,0 +1,28 @@
+{
+  "name": "@metered/llmrtc-web-client",
+  "version": "0.0.1",
+  "description": "Browser client SDK for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./widgets": {
+      "import": "./dist/widgets.js",
+      "types": "./dist/widgets.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@metered/llmrtc-core": "file:../core",
+    "simple-peer": "^9.11.1",
+    "eventemitter3": "^5.0.1",
+    "zod": "^3.23.8"
+  }
+}

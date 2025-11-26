@@ -1,0 +1,35 @@
+{
+  "name": "@metered/llmrtc-backend",
+  "version": "0.0.1",
+  "description": "Node backend + signalling server for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "llmrtc-backend": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@metered/llmrtc-core": "file:../core",
+    "@metered/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
+    "@metered/llmrtc-provider-local": "file:../providers/local",
+    "@metered/llmrtc-provider-openai": "file:../providers/openai",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "simple-peer": "^9.11.1",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2"
+  },
+  "optionalDependencies": {
+    "wrtc": "^0.4.7"
+  }
+}

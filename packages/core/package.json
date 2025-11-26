@@ -1,0 +1,20 @@
+{
+  "name": "@metered/llmrtc-core",
+  "version": "0.0.1",
+  "description": "Core contracts and orchestrators for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
