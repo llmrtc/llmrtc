@@ -20,6 +20,9 @@ export type ClientEvents = {
   llm: (text: string) => void;
   llmChunk: (text: string) => void;
   tts: (audio: ArrayBuffer, format: string) => void;
+  ttsTrack: (stream: MediaStream) => void;
+  ttsStart: () => void;
+  ttsComplete: () => void;
   error: (message: string) => void;
 };
 
@@ -94,6 +97,12 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     this.peer.on('error', (err) => {
       console.log('[web-client] Peer error:', err.message);
       this.emit('error', err.message);
+    });
+    this.peer.on('track', (track: MediaStreamTrack, stream: MediaStream) => {
+      if (track.kind === 'audio') {
+        console.log('[web-client] Received TTS audio track from server');
+        this.emit('ttsTrack', stream);
+      }
     });
 
     await this.peerReady;
@@ -272,6 +281,12 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           break;
         case 'tts':
           if (msg.data) this.emit('tts', base64ToArrayBuffer(msg.data), msg.format ?? 'mp3');
+          break;
+        case 'tts-start':
+          this.emit('ttsStart');
+          break;
+        case 'tts-complete':
+          this.emit('ttsComplete');
           break;
         case 'error':
           this.emit('error', msg.message ?? 'unknown error');

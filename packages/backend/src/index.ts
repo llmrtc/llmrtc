@@ -16,6 +16,7 @@ import {
   ConversationProviders
 } from '@metered/llmrtc-core';
 import { AudioProcessor } from './audio-processor.js';
+import { decodeToPCM, feedAudioToSource } from './mp3-decoder.js';
 import {
   OpenAILLMProvider,
   OpenAIWhisperProvider
@@ -36,15 +37,17 @@ console.log('[backend] Env loaded - OPENAI_API_KEY:', process.env.OPENAI_API_KEY
 
 let wrtcLib: any = null;
 let RTCAudioSink: any = null;
+let RTCAudioSource: any = null;
 try {
   const mod = await import('@roamhq/wrtc');
   wrtcLib = (mod as any).default ?? mod;
-  // Get nonstandard APIs for audio sink
+  // Get nonstandard APIs for audio sink/source
   RTCAudioSink = wrtcLib.nonstandard?.RTCAudioSink;
+  RTCAudioSource = wrtcLib.nonstandard?.RTCAudioSource;
   // eslint-disable-next-line no-console
   console.log('[backend] wrtc loaded (@roamhq/wrtc), WebRTC enabled');
   // eslint-disable-next-line no-console
-  console.log('[backend] RTCAudioSink available:', !!RTCAudioSink);
+  console.log('[backend] RTCAudioSink available:', !!RTCAudioSink, 'RTCAudioSource available:', !!RTCAudioSource);
 } catch (err) {
   // eslint-disable-next-line no-console
   console.warn('[backend] wrtc not available, falling back to WebSocket-only');
@@ -141,6 +144,16 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   let pendingAttachments: VisionAttachment[] = [];
   let audioSink: any = null;
 
+  // Create TTS audio source for sending audio back to client
+  let ttsAudioSource: any = null;
+  let ttsAudioTrack: MediaStreamTrack | null = null;
+  if (RTCAudioSource) {
+    ttsAudioSource = new RTCAudioSource();
+    ttsAudioTrack = ttsAudioSource.createTrack();
+    // eslint-disable-next-line no-console
+    console.log('[backend] Created TTS audio track via RTCAudioSource');
+  }
+
   const peer = new SimplePeer({
     initiator: false,
     trickle: false, // Disable trickle ICE for better compatibility
@@ -149,6 +162,14 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
       iceServers: [] // Empty for localhost - host candidates only
     }
   });
+
+  // Add TTS audio track to peer connection for sending audio to client
+  if (ttsAudioTrack) {
+    const ttsStream = new wrtcLib.MediaStream([ttsAudioTrack]);
+    peer.addTrack(ttsAudioTrack, ttsStream);
+    // eslint-disable-next-line no-console
+    console.log('[backend] Added TTS audio track to peer connection');
+  }
 
   peer.on('signal', (signal) => {
     // eslint-disable-next-line no-console
@@ -233,7 +254,7 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
             const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
             // eslint-disable-next-line no-console
             console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
-            await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments);
+            await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments, ttsAudioSource);
           } else {
             // eslint-disable-next-line no-console
             console.log('[backend] No audio data captured');
@@ -270,7 +291,8 @@ async function handleAudio(
   audio: Buffer,
   ws: WebSocket,
   peer: SimplePeer.Instance | null,
-  attachments: VisionAttachment[]
+  attachments: VisionAttachment[],
+  ttsAudioSource?: any
 ) {
   // eslint-disable-next-line no-console
   console.log('[backend] handleAudio - processing', audio.length, 'bytes');
@@ -285,11 +307,36 @@ async function handleAudio(
       } else if ('fullText' in item) {
         sendBoth({ type: 'llm', text: item.fullText }, ws, peer);
       } else if ('audio' in item) {
-        sendBoth({
-          type: 'tts',
-          format: item.format,
-          data: item.audio.toString('base64')
-        }, ws, peer);
+        if (ttsAudioSource && RTCAudioSource) {
+          // Send TTS audio via WebRTC MediaStreamTrack
+          // eslint-disable-next-line no-console
+          console.log('[backend] Decoding TTS audio for WebRTC playback, format:', item.format);
+          try {
+            const pcmBuffer = await decodeToPCM(item.audio, item.format);
+            // eslint-disable-next-line no-console
+            console.log('[backend] Decoded to PCM:', pcmBuffer.length, 'bytes, feeding to RTCAudioSource');
+            sendBoth({ type: 'tts-start' }, ws, peer);
+            await feedAudioToSource(pcmBuffer, ttsAudioSource, () => {
+              sendBoth({ type: 'tts-complete' }, ws, peer);
+            });
+          } catch (decodeErr) {
+            // eslint-disable-next-line no-console
+            console.error('[backend] Failed to decode TTS audio:', decodeErr);
+            // Fallback to base64 if decode fails
+            sendBoth({
+              type: 'tts',
+              format: item.format,
+              data: item.audio.toString('base64')
+            }, ws, peer);
+          }
+        } else {
+          // Fallback to base64 if RTCAudioSource not available
+          sendBoth({
+            type: 'tts',
+            format: item.format,
+            data: item.audio.toString('base64')
+          }, ws, peer);
+        }
       }
     }
   } catch (err) {

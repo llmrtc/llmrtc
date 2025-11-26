@@ -14,6 +14,8 @@ function App() {
   const [llmText, setLlmText] = useState('');
   const [streaming, setStreaming] = useState('');
   const audioRef = useRef<HTMLAudioElement>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement>(null);
+  const [ttsStatus, setTtsStatus] = useState<'idle' | 'playing'>('idle');
 
   // Media sharing states
   const [audioState, setAudioState] = useState<MediaState>('off');
@@ -39,12 +41,32 @@ function App() {
       setStreaming('');
     });
     c.on('tts', (buffer, format) => {
+      // Fallback: base64-encoded TTS audio (used when RTCAudioSource not available)
       const blob = new Blob([buffer], { type: format === 'wav' ? 'audio/wav' : 'audio/mpeg' });
       const url = URL.createObjectURL(blob);
       if (audioRef.current) {
         audioRef.current.src = url;
         audioRef.current.play().catch(() => undefined);
       }
+    });
+    c.on('ttsTrack', (stream: MediaStream) => {
+      // WebRTC MediaStreamTrack-based TTS audio (preferred)
+      console.log('[demo] Received TTS audio track from server');
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.srcObject = stream;
+        // Auto-play will be triggered by ttsStart event
+      }
+    });
+    c.on('ttsStart', () => {
+      console.log('[demo] TTS playback starting');
+      setTtsStatus('playing');
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.play().catch((err) => console.error('[demo] TTS play error:', err));
+      }
+    });
+    c.on('ttsComplete', () => {
+      console.log('[demo] TTS playback complete');
+      setTtsStatus('idle');
     });
     c.on('error', (msg) => console.error('[client error]', msg));
     return c;
@@ -95,8 +117,7 @@ function App() {
         audioStreamRef.current = stream;
         const ctrl = await client.shareAudio(stream, {
           vadThreshold: 0.02,
-          vadSilenceMs: 700,
-          chunkMs: 400
+          vadSilenceMs: 700
         });
         audioCtrlRef.current = ctrl;
         setAudioState('on');
@@ -332,7 +353,15 @@ function App() {
         </div>
 
         <div>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#374151' }}>Audio Response:</h3>
+          <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#374151' }}>
+            Audio Response:
+            {ttsStatus === 'playing' && (
+              <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 12 }}>● Playing via WebRTC</span>
+            )}
+          </h3>
+          {/* WebRTC MediaStreamTrack audio (preferred) */}
+          <audio ref={ttsAudioRef} autoPlay style={{ display: 'none' }} />
+          {/* Fallback audio for base64-encoded TTS */}
           <audio ref={audioRef} controls style={{ width: '100%' }} />
         </div>
       </div>
