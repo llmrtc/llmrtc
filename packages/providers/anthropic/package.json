@@ -1,0 +1,16 @@
+{
+  "name": "@metered/llmrtc-provider-anthropic",
+  "version": "0.0.1",
+  "description": "Anthropic Claude LLM adapter for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@metered/llmrtc-core": "file:../../core",
+    "@anthropic-ai/sdk": "^0.71.0"
+  }
+}

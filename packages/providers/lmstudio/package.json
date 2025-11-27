@@ -1,0 +1,16 @@
+{
+  "name": "@metered/llmrtc-provider-lmstudio",
+  "version": "0.0.1",
+  "description": "LMStudio local LLM adapter for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@metered/llmrtc-core": "file:../../core",
+    "openai": "^4.72.0"
+  }
+}

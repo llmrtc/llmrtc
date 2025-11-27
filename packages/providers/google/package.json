@@ -1,0 +1,16 @@
+{
+  "name": "@metered/llmrtc-provider-google",
+  "version": "0.0.1",
+  "description": "Google Gemini LLM adapter for @metered/LLMRTC",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@metered/llmrtc-core": "file:../../core",
+    "@google/genai": "^1.30.0"
+  }
+}

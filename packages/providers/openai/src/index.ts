@@ -7,7 +7,10 @@ import {
   LLMResult,
   Message,
   STTProvider,
-  STTResult
+  STTResult,
+  TTSProvider,
+  TTSConfig,
+  TTSResult
 } from '@metered/llmrtc-core';
 
 export interface OpenAILLMConfig {
@@ -93,4 +96,123 @@ function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
     const imageParts = m.attachments.map((att) => ({ type: 'image_url', image_url: { url: att.data } }));
     return { role: m.role, content: [{ type: 'text', text: m.content }, ...imageParts] } as ChatCompletionMessageParam;
   });
+}
+
+// =============================================================================
+// OpenAI TTS Provider
+// =============================================================================
+
+export type OpenAITTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+export type OpenAITTSFormat = 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+
+export interface OpenAITTSConfig {
+  /** OpenAI API key */
+  apiKey: string;
+  /** Base URL for API (optional, for Azure OpenAI or proxies) */
+  baseURL?: string;
+  /** TTS model (default: 'tts-1') */
+  model?: 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts';
+  /** Default voice (default: 'alloy') */
+  voice?: OpenAITTSVoice;
+  /** Speech speed multiplier 0.25-4.0 (default: 1.0) */
+  speed?: number;
+}
+
+/**
+ * OpenAI Text-to-Speech Provider.
+ *
+ * Available voices: alloy, echo, fable, onyx, nova, shimmer
+ * Available models: tts-1 (fast), tts-1-hd (quality), gpt-4o-mini-tts (instructable)
+ *
+ * @example
+ * ```typescript
+ * const provider = new OpenAITTSProvider({
+ *   apiKey: 'sk-...',
+ *   model: 'tts-1',
+ *   voice: 'nova'
+ * });
+ * ```
+ */
+export class OpenAITTSProvider implements TTSProvider {
+  readonly name = 'openai-tts';
+  private client: OpenAI;
+  private model: 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts';
+  private voice: OpenAITTSVoice;
+  private speed: number;
+
+  constructor(private readonly config: OpenAITTSConfig) {
+    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    this.model = config.model ?? 'tts-1';
+    this.voice = config.voice ?? 'alloy';
+    this.speed = config.speed ?? 1.0;
+  }
+
+  async speak(text: string, overrideConfig?: TTSConfig): Promise<TTSResult> {
+    const voice = (overrideConfig?.voice as OpenAITTSVoice) ?? this.voice;
+    const format = mapFormat(overrideConfig?.format);
+
+    const response = await this.client.audio.speech.create({
+      model: this.model,
+      voice,
+      input: text,
+      response_format: format,
+      speed: this.speed
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return {
+      audio: buffer,
+      format: overrideConfig?.format ?? 'mp3',
+      raw: response
+    };
+  }
+
+  /**
+   * Streaming TTS - returns audio chunks as they are generated.
+   * Uses HTTP chunked transfer encoding.
+   */
+  async *speakStream(text: string, overrideConfig?: TTSConfig): AsyncIterable<Buffer> {
+    const voice = (overrideConfig?.voice as OpenAITTSVoice) ?? this.voice;
+    const format = mapFormat(overrideConfig?.format);
+
+    const response = await this.client.audio.speech.create({
+      model: this.model,
+      voice,
+      input: text,
+      response_format: format,
+      speed: this.speed
+    });
+
+    // Response is a Response-like object with body stream
+    const reader = response.body?.getReader();
+    if (!reader) {
+      // Fallback: return the whole buffer if streaming not available
+      const buffer = Buffer.from(await response.arrayBuffer());
+      yield buffer;
+      return;
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      yield Buffer.from(value);
+    }
+  }
+}
+
+/**
+ * Map core format to OpenAI format
+ */
+function mapFormat(format?: TTSConfig['format']): OpenAITTSFormat {
+  switch (format) {
+    case 'ogg':
+      return 'opus'; // OpenAI uses 'opus' for Ogg container
+    case 'wav':
+      return 'wav';
+    case 'pcm':
+      return 'pcm';
+    case 'mp3':
+    default:
+      return 'mp3';
+  }
 }
