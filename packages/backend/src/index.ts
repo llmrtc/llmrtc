@@ -8,7 +8,6 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import SimplePeer from 'simple-peer';
 
 import {
   ConversationOrchestrator,
@@ -17,6 +16,8 @@ import {
 } from '@metered/llmrtc-core';
 import { AudioProcessor } from './audio-processor.js';
 import { decodeToPCM, feedAudioToSource } from './mp3-decoder.js';
+import { NativePeerServer, AudioData } from './native-peer-server.js';
+import { SessionManager } from './session-manager.js';
 import {
   OpenAILLMProvider,
   OpenAIWhisperProvider
@@ -32,22 +33,27 @@ import {
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8787;
 const HOST = process.env.HOST ?? '127.0.0.1';
 
+const HEARTBEAT_TIMEOUT_MS = 45000; // 45 seconds (3 missed heartbeats)
+
 // eslint-disable-next-line no-console
-console.log('[backend] Env loaded - OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'set' : 'NOT SET', 'ELEVENLABS_API_KEY:', process.env.ELEVENLABS_API_KEY ? 'set' : 'NOT SET');
+console.log(
+  '[backend] Env loaded - OPENAI_API_KEY:',
+  process.env.OPENAI_API_KEY ? 'set' : 'NOT SET',
+  'ELEVENLABS_API_KEY:',
+  process.env.ELEVENLABS_API_KEY ? 'set' : 'NOT SET'
+);
 
 let wrtcLib: any = null;
-let RTCAudioSink: any = null;
 let RTCAudioSource: any = null;
 try {
   const mod = await import('@roamhq/wrtc');
   wrtcLib = (mod as any).default ?? mod;
   // Get nonstandard APIs for audio sink/source
-  RTCAudioSink = wrtcLib.nonstandard?.RTCAudioSink;
   RTCAudioSource = wrtcLib.nonstandard?.RTCAudioSource;
   // eslint-disable-next-line no-console
   console.log('[backend] wrtc loaded (@roamhq/wrtc), WebRTC enabled');
   // eslint-disable-next-line no-console
-  console.log('[backend] RTCAudioSink available:', !!RTCAudioSink, 'RTCAudioSource available:', !!RTCAudioSource);
+  console.log('[backend] RTCAudioSource available:', !!RTCAudioSource);
 } catch (err) {
   // eslint-disable-next-line no-console
   console.warn('[backend] wrtc not available, falling back to WebSocket-only');
@@ -55,25 +61,36 @@ try {
 
 const app = express();
 app.use(cors());
-app.get('/health', (_req: express.Request, res: express.Response) => res.json({ ok: true }));
+app.get('/health', (_req: express.Request, res: express.Response) =>
+  res.json({ ok: true })
+);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const sharedProviders: ConversationProviders = {
-  llm: process.env.LOCAL_ONLY === 'true'
-    ? new OllamaLLMProvider({})
-    : new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY ?? '', baseURL: process.env.OPENAI_BASE_URL }),
-  stt: process.env.LOCAL_ONLY === 'true'
-    ? new FasterWhisperProvider({ baseUrl: process.env.FASTER_WHISPER_URL })
-    : new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY ?? '', baseURL: process.env.OPENAI_BASE_URL }),
-  tts: process.env.LOCAL_ONLY === 'true'
-    ? new PiperTTSProvider({ baseUrl: process.env.PIPER_URL })
-    : new ElevenLabsTTSProvider({ apiKey: process.env.ELEVENLABS_API_KEY ?? '' }),
+  llm:
+    process.env.LOCAL_ONLY === 'true'
+      ? new OllamaLLMProvider({})
+      : new OpenAILLMProvider({
+          apiKey: process.env.OPENAI_API_KEY ?? '',
+          baseURL: process.env.OPENAI_BASE_URL
+        }),
+  stt:
+    process.env.LOCAL_ONLY === 'true'
+      ? new FasterWhisperProvider({ baseUrl: process.env.FASTER_WHISPER_URL })
+      : new OpenAIWhisperProvider({
+          apiKey: process.env.OPENAI_API_KEY ?? '',
+          baseURL: process.env.OPENAI_BASE_URL
+        }),
+  tts:
+    process.env.LOCAL_ONLY === 'true'
+      ? new PiperTTSProvider({ baseUrl: process.env.PIPER_URL })
+      : new ElevenLabsTTSProvider({ apiKey: process.env.ELEVENLABS_API_KEY ?? '' }),
   vision: process.env.LOCAL_ONLY === 'true' ? new LlavaVisionProvider({}) : undefined
 };
 
-// Initialise shared provider clients once
+// Initialize shared provider clients once
 Promise.all([
   sharedProviders.llm.init?.(),
   sharedProviders.stt.init?.(),
@@ -84,65 +101,27 @@ Promise.all([
   console.error('[startup] failed to init providers', err);
 });
 
+// Session manager for reconnection support
+const sessionManager = new SessionManager();
+
 wss.on('connection', (ws) => {
   const connId = uuidv4();
-  const orchestrator = new ConversationOrchestrator({
-    systemPrompt: 'You are a helpful realtime voice assistant.',
-    historyLimit: 8,
-    providers: sharedProviders
-  });
-  let peer: SimplePeer.Instance | null = null;
+  console.log(`[backend] New connection: ${connId}`);
 
-  ws.send(JSON.stringify({ type: 'ready', id: connId }));
+  // Create initial session
+  let session = sessionManager.createSession(
+    connId,
+    new ConversationOrchestrator({
+      systemPrompt: 'You are a helpful realtime voice assistant.',
+      historyLimit: 8,
+      providers: sharedProviders
+    })
+  );
 
-  ws.on('message', async (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString());
-      if (msg.type === 'offer' || msg.type === 'signal') {
-        // eslint-disable-next-line no-console
-        console.log('[backend] Received', msg.type, '- peer exists:', !!peer, 'destroyed:', peer?.destroyed);
-        // Create peer on first signal, reuse for subsequent ones
-        if (!peer || peer.destroyed) {
-          // eslint-disable-next-line no-console
-          console.log('[backend] Creating new peer');
-          peer = createPeer(ws, orchestrator);
-        }
-        if (peer && !peer.destroyed) {
-          // eslint-disable-next-line no-console
-          console.log('[backend] Signaling peer with', msg.signal?.type || 'candidate');
-          peer.signal(msg.signal);
-        }
-        return;
-      }
-      if (msg.type === 'audio') {
-        // eslint-disable-next-line no-console
-        console.log('[backend] Received audio message, size:', msg.data?.length, 'bytes');
-        const audioBuf = Buffer.from(msg.data, 'base64');
-        const attachments: VisionAttachment[] = msg.attachments ?? [];
-        await handleAudio(orchestrator, audioBuf, ws, peer, attachments);
-        return;
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('ws message error', err);
-    }
-  });
-
-  ws.on('close', () => {
-    peer?.destroy();
-  });
-});
-
-function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): SimplePeer.Instance | null {
-  if (!wrtcLib) {
-    ws.send(JSON.stringify({ type: 'error', message: 'WebRTC not available on server' }));
-    return null;
-  }
-
-  // Create audio processor for PCM buffering
-  const audioProcessor = new AudioProcessor();
+  let peer: NativePeerServer | null = null;
+  let audioProcessor: AudioProcessor | null = null;
+  let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
   let pendingAttachments: VisionAttachment[] = [];
-  let audioSink: any = null;
 
   // TTS playback state for barge-in support
   let currentAbortController: AbortController | null = null;
@@ -158,172 +137,237 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
     isTTSPlaying = false;
   }
 
-  // Create TTS audio source for sending audio back to client
-  let ttsAudioSource: any = null;
-  let ttsAudioTrack: MediaStreamTrack | null = null;
-  if (RTCAudioSource) {
-    ttsAudioSource = new RTCAudioSource();
-    ttsAudioTrack = ttsAudioSource.createTrack();
-    // eslint-disable-next-line no-console
-    console.log('[backend] Created TTS audio track via RTCAudioSource');
-  }
+  // Send ready message with session ID
+  ws.send(JSON.stringify({ type: 'ready', id: connId }));
 
-  const peer = new SimplePeer({
-    initiator: false,
-    trickle: false, // Disable trickle ICE for better compatibility
-    wrtc: wrtcLib,
-    config: {
-      iceServers: [] // Empty for localhost - host candidates only
-    }
-  });
+  const resetHeartbeatTimeout = () => {
+    if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+    heartbeatTimeout = setTimeout(() => {
+      console.log(`[backend] Client ${connId} heartbeat timeout`);
+      ws.close();
+    }, HEARTBEAT_TIMEOUT_MS);
+  };
 
-  // Add TTS audio track to peer connection for sending audio to client
-  if (ttsAudioTrack) {
-    const ttsStream = new wrtcLib.MediaStream([ttsAudioTrack]);
-    peer.addTrack(ttsAudioTrack, ttsStream);
-    // eslint-disable-next-line no-console
-    console.log('[backend] Added TTS audio track to peer connection');
-  }
+  resetHeartbeatTimeout();
 
-  peer.on('signal', (signal) => {
-    // eslint-disable-next-line no-console
-    console.log('[backend] Sending signal:', signal.type || 'ice candidate');
-    ws.send(JSON.stringify({ type: 'signal', signal }));
-  });
-
-  peer.on('connect', () => {
-    // eslint-disable-next-line no-console
-    console.log('[backend] WebRTC peer connected, channel open');
-  });
-
-  peer.on('close', () => {
-    // eslint-disable-next-line no-console
-    console.log('[backend] WebRTC peer closed');
-    if (audioSink) {
-      audioSink.stop();
-      audioSink = null;
-    }
-    audioProcessor.destroy();
-  });
-
-  peer.on('iceStateChange', (state: string) => {
-    // eslint-disable-next-line no-console
-    console.log('[backend] ICE state:', state);
-  });
-
-  // Handle incoming audio track from client using RTCAudioSink
-  peer.on('track', async (track: MediaStreamTrack, stream: MediaStream) => {
-    // eslint-disable-next-line no-console
-    console.log('[backend] Received track:', track.kind, 'id:', track.id, 'readyState:', track.readyState);
-
-    if (track.kind === 'audio' && RTCAudioSink) {
-      // eslint-disable-next-line no-console
-      console.log('[backend] Setting up RTCAudioSink for audio track');
-
-      // Initialize VAD for this audio processor
-      try {
-        await audioProcessor.initVAD();
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[backend] Failed to initialize VAD:', err);
-      }
-
-      // Listen for speech events from VAD
-      audioProcessor.on('speechStart', () => {
-        // eslint-disable-next-line no-console
-        console.log('[backend] VAD detected speech start');
-
-        // Barge-in: If TTS is playing, cancel it immediately
-        if (isTTSPlaying) {
-          console.log('[backend] User interrupted TTS - cancelling playback');
-          cancelCurrentTTS();
-          sendBoth({ type: 'tts-cancelled' }, ws, peer);
-        }
-
-        sendBoth({ type: 'speech-start' }, ws, peer);
-      });
-
-      audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
-        // eslint-disable-next-line no-console
-        console.log('[backend] VAD detected speech end, processing', pcmBuffer.length, 'bytes');
-        sendBoth({ type: 'speech-end' }, ws, peer);
-
-        if (pcmBuffer.length > 0) {
-          // Cancel any previous response generation
-          cancelCurrentTTS();
-
-          // Create new abort controller for this turn
-          currentAbortController = new AbortController();
-          const signal = currentAbortController.signal;
-
-          // Convert PCM to WAV for STT providers
-          const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
-          // eslint-disable-next-line no-console
-          console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
-
-          await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments, ttsAudioSource, {
-            signal,
-            onTTSStart: () => { isTTSPlaying = true; },
-            onTTSEnd: () => { isTTSPlaying = false; currentAbortController = null; }
-          });
-          pendingAttachments = [];
-        }
-      });
-
-      // Create RTCAudioSink to receive decoded PCM samples
-      audioSink = new RTCAudioSink(track);
-
-      audioSink.ondata = (data: {
-        samples: Int16Array;
-        sampleRate: number;
-        bitsPerSample: number;
-        channelCount: number;
-        numberOfFrames: number;
-      }) => {
-        // Process all audio through VAD - it handles speech detection automatically
-        audioProcessor.processPCMData(data);
-      };
-
-      // eslint-disable-next-line no-console
-      console.log('[backend] RTCAudioSink set up successfully with server-side VAD');
-    } else if (track.kind === 'audio' && !RTCAudioSink) {
-      // eslint-disable-next-line no-console
-      console.warn('[backend] RTCAudioSink not available - audio track cannot be processed');
-    }
-  });
-
-  peer.on('data', async (data: Buffer) => {
+  ws.on('message', async (raw) => {
     try {
-      const msg = JSON.parse(data.toString());
+      const msg = JSON.parse(raw.toString());
 
       switch (msg.type) {
-        // Vision attachments from frontend
-        case 'attachments':
-          // Store attachments to include with next speech segment
-          pendingAttachments = msg.attachments ?? [];
-          // eslint-disable-next-line no-console
-          console.log('[backend] Received attachments:', pendingAttachments.length);
+        case 'ping':
+          ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
+          resetHeartbeatTimeout();
+          sessionManager.touchSession(session.id);
           break;
 
-        default:
-          // eslint-disable-next-line no-console
-          console.log('[backend] Unknown message type:', msg.type);
+        case 'reconnect': {
+          // Try to recover existing session
+          const existingSession = sessionManager.getSession(msg.sessionId);
+          if (existingSession) {
+            session = existingSession;
+            console.log(`[backend] Session recovered: ${msg.sessionId}`);
+            ws.send(
+              JSON.stringify({
+                type: 'reconnect-ack',
+                success: true,
+                sessionId: msg.sessionId,
+                historyRecovered: true
+              })
+            );
+          } else {
+            // Create new session with the provided ID
+            session = sessionManager.createSession(
+              msg.sessionId || connId,
+              new ConversationOrchestrator({
+                systemPrompt: 'You are a helpful realtime voice assistant.',
+                historyLimit: 8,
+                providers: sharedProviders
+              })
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'reconnect-ack',
+                success: true,
+                sessionId: session.id,
+                historyRecovered: false
+              })
+            );
+          }
+          break;
+        }
+
+        case 'offer':
+        case 'signal':
+          console.log('[backend] Received', msg.type);
+
+          if (!peer || peer.destroyed) {
+            // Create new peer and audio processor
+            peer = createPeer(ws);
+            if (peer) {
+              audioProcessor = new AudioProcessor();
+              setupPeerHandlers(peer, audioProcessor, ws, session.orchestrator);
+            }
+          }
+
+          if (peer && msg.signal) {
+            const answer = await peer.handleOffer(msg.signal);
+            ws.send(JSON.stringify({ type: 'signal', signal: answer }));
+          }
+          break;
+
+        case 'audio':
+          // Legacy base64 audio handling (fallback)
+          console.log('[backend] Received audio message, size:', msg.data?.length, 'bytes');
+          const audioBuf = Buffer.from(msg.data, 'base64');
+          const attachments: VisionAttachment[] = msg.attachments ?? [];
+          await handleAudio(
+            session.orchestrator,
+            audioBuf,
+            ws,
+            peer,
+            attachments,
+            peer?.ttsAudioSource
+          );
+          break;
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('peer data error', err);
+      console.error('ws message error', err);
     }
   });
 
-  peer.on('error', (err) => {
-    // eslint-disable-next-line no-console
-    console.error('peer error', err);
-    if (audioSink) {
-      audioSink.stop();
-      audioSink = null;
-    }
-    audioProcessor.destroy();
+  ws.on('close', () => {
+    console.log(`[backend] Connection closed: ${connId}`);
+    if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+    cancelCurrentTTS();
+    peer?.destroy();
+    audioProcessor?.destroy();
+    // Don't remove session immediately - allow reconnection via SessionManager TTL
   });
+
+  ws.on('error', (err) => {
+    console.error(`[backend] WebSocket error for ${connId}:`, err);
+  });
+
+  // Setup handlers for the peer - needs access to connection-scoped variables
+  function setupPeerHandlers(
+    peer: NativePeerServer,
+    audioProcessor: AudioProcessor,
+    ws: WebSocket,
+    orchestrator: ConversationOrchestrator
+  ) {
+    peer.on('connect', () => {
+      console.log('[backend] WebRTC peer connected');
+    });
+
+    peer.on('close', () => {
+      console.log('[backend] WebRTC peer closed');
+      audioProcessor.destroy();
+    });
+
+    peer.on('error', (err) => {
+      console.error('[backend] Peer error:', err);
+      audioProcessor.destroy();
+    });
+
+    peer.on('track', async (track: MediaStreamTrack, stream: MediaStream) => {
+      console.log('[backend] Received track:', track.kind);
+
+      if (track.kind === 'audio') {
+        try {
+          await audioProcessor.initVAD();
+        } catch (err) {
+          console.error('[backend] Failed to initialize VAD:', err);
+        }
+
+        // Set up VAD event handlers
+        audioProcessor.on('speechStart', () => {
+          console.log('[backend] VAD detected speech start');
+          if (isTTSPlaying) {
+            console.log('[backend] User interrupted TTS - cancelling playback');
+            cancelCurrentTTS();
+            sendBoth({ type: 'tts-cancelled' }, ws, peer);
+          }
+          sendBoth({ type: 'speech-start' }, ws, peer);
+        });
+
+        audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
+          console.log(
+            '[backend] VAD detected speech end, processing',
+            pcmBuffer.length,
+            'bytes'
+          );
+          sendBoth({ type: 'speech-end' }, ws, peer);
+
+          if (pcmBuffer.length > 0) {
+            // Cancel any previous response generation
+            cancelCurrentTTS();
+
+            // Create new abort controller for this turn
+            currentAbortController = new AbortController();
+            const signal = currentAbortController.signal;
+
+            // Convert PCM to WAV for STT providers
+            const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
+            console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
+
+            await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments, peer.ttsAudioSource, {
+              signal,
+              onTTSStart: () => {
+                isTTSPlaying = true;
+              },
+              onTTSEnd: () => {
+                isTTSPlaying = false;
+                currentAbortController = null;
+              }
+            });
+            pendingAttachments = [];
+          }
+        });
+      }
+    });
+
+    // Handle audio data from RTCAudioSink
+    peer.on('audioData', async (data: AudioData) => {
+      await audioProcessor.processPCMData(data);
+    });
+
+    peer.on('data', async (data: string) => {
+      try {
+        const msg = JSON.parse(data);
+
+        switch (msg.type) {
+          case 'attachments':
+            pendingAttachments = msg.attachments ?? [];
+            console.log('[backend] Received attachments:', pendingAttachments.length);
+            break;
+
+          default:
+            console.log('[backend] Unknown data channel message:', msg.type);
+        }
+      } catch (err) {
+        console.error('[backend] peer data error', err);
+      }
+    });
+  }
+});
+
+function createPeer(ws: WebSocket): NativePeerServer | null {
+  if (!wrtcLib) {
+    ws.send(JSON.stringify({ type: 'error', message: 'WebRTC not available on server' }));
+    return null;
+  }
+
+  console.log('[backend] Creating NativePeerServer with wrtcLib.nonstandard:', wrtcLib.nonstandard ? 'exists' : 'undefined');
+  console.log('[backend] wrtcLib.nonstandard.RTCAudioSource:', wrtcLib.nonstandard?.RTCAudioSource ? 'exists' : 'undefined');
+
+  const peer = new NativePeerServer({
+    wrtcLib,
+    iceServers: []
+  });
+
+  console.log('[backend] Created NativePeerServer');
 
   return peer;
 }
@@ -338,14 +382,13 @@ async function handleAudio(
   orchestrator: ConversationOrchestrator,
   audio: Buffer,
   ws: WebSocket,
-  peer: SimplePeer.Instance | null,
+  peer: NativePeerServer | null,
   attachments: VisionAttachment[],
   ttsAudioSource?: any,
   options?: HandleAudioOptions
 ) {
   const { signal, onTTSStart, onTTSEnd } = options ?? {};
 
-  // eslint-disable-next-line no-console
   console.log('[backend] handleAudio - processing', audio.length, 'bytes');
   try {
     for await (const item of orchestrator.runTurnStream(audio, attachments)) {
@@ -355,7 +398,6 @@ async function handleAudio(
         break;
       }
 
-      // eslint-disable-next-line no-console
       console.log('[backend] orchestrator yielded:', Object.keys(item));
       if ('isFinal' in item) {
         sendBoth({ type: 'transcript', text: item.text, isFinal: item.isFinal }, ws, peer);
@@ -366,12 +408,14 @@ async function handleAudio(
       } else if ('audio' in item) {
         if (ttsAudioSource && RTCAudioSource) {
           // Send TTS audio via WebRTC MediaStreamTrack
-          // eslint-disable-next-line no-console
           console.log('[backend] Decoding TTS audio for WebRTC playback, format:', item.format);
           try {
             const pcmBuffer = await decodeToPCM(item.audio, item.format);
-            // eslint-disable-next-line no-console
-            console.log('[backend] Decoded to PCM:', pcmBuffer.length, 'bytes, feeding to RTCAudioSource');
+            console.log(
+              '[backend] Decoded to PCM:',
+              pcmBuffer.length,
+              'bytes, feeding to RTCAudioSource'
+            );
 
             onTTSStart?.();
             sendBoth({ type: 'tts-start' }, ws, peer);
@@ -383,7 +427,7 @@ async function handleAudio(
               }
             });
 
-            // If playback was aborted, notify and exit
+            // If playback was aborted, notify
             if (!completed) {
               console.log('[backend] TTS playback was interrupted');
               sendBoth({ type: 'tts-cancelled' }, ws, peer);
@@ -391,39 +435,44 @@ async function handleAudio(
 
             onTTSEnd?.();
           } catch (decodeErr) {
-            // eslint-disable-next-line no-console
             console.error('[backend] Failed to decode TTS audio:', decodeErr);
             // Fallback to base64 if decode fails
-            sendBoth({
-              type: 'tts',
-              format: item.format,
-              data: item.audio.toString('base64')
-            }, ws, peer);
+            sendBoth(
+              {
+                type: 'tts',
+                format: item.format,
+                data: item.audio.toString('base64')
+              },
+              ws,
+              peer
+            );
           }
         } else {
           // Fallback to base64 if RTCAudioSource not available
-          sendBoth({
-            type: 'tts',
-            format: item.format,
-            data: item.audio.toString('base64')
-          }, ws, peer);
+          sendBoth(
+            {
+              type: 'tts',
+              format: item.format,
+              data: item.audio.toString('base64')
+            },
+            ws,
+            peer
+          );
         }
       }
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('handleAudio error', err);
+    console.error('[backend] handleAudio error', err);
     sendBoth({ type: 'error', message: (err as Error).message }, ws, peer);
   }
 }
 
-function sendBoth(payload: unknown, ws: WebSocket, peer: SimplePeer.Instance | null) {
+function sendBoth(payload: unknown, ws: WebSocket, peer: NativePeerServer | null) {
   const data = JSON.stringify(payload);
   if (ws.readyState === ws.OPEN) ws.send(data);
   if (peer?.connected) peer.send(data);
 }
 
 server.listen(PORT, HOST, () => {
-  // eslint-disable-next-line no-console
   console.log(`@metered/LLMRTC backend listening on ${HOST}:${PORT}`);
 });

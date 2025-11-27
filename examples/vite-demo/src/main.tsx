@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { LLMRTCWebClient, FrameCaptureController } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient, FrameCaptureController, ConnectionState } from '@metered/llmrtc-web-client';
 
 const signallingDefault = import.meta.env.VITE_SIGNAL_URL || 'ws://localhost:8787';
 
@@ -8,7 +8,8 @@ type MediaState = 'off' | 'starting' | 'on';
 
 function App() {
   const clientRef = useRef<LLMRTCWebClient | null>(null);
-  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
+  const [reconnectInfo, setReconnectInfo] = useState<{ attempt: number; max: number } | null>(null);
   const [signalUrl, setSignalUrl] = useState(signallingDefault);
   const [transcript, setTranscript] = useState('');
   const [llmText, setLlmText] = useState('');
@@ -68,7 +69,23 @@ function App() {
       console.log('[demo] TTS playback complete');
       setTtsStatus('idle');
     });
-    c.on('error', (msg) => console.error('[client error]', msg));
+    c.on('ttsCancelled', () => {
+      console.log('[demo] TTS playback cancelled (barge-in)');
+      setTtsStatus('idle');
+    });
+    c.on('stateChange', (state) => {
+      console.log('[demo] Connection state changed:', state);
+      setConnectionState(state);
+      // Clear reconnect info when connected or failed
+      if (state === ConnectionState.CONNECTED || state === ConnectionState.FAILED) {
+        setReconnectInfo(null);
+      }
+    });
+    c.on('reconnecting', (attempt, max) => {
+      console.log(`[demo] Reconnecting: attempt ${attempt}/${max}`);
+      setReconnectInfo({ attempt, max });
+    });
+    c.on('error', (err) => console.error('[client error]', err.code, err.message));
     return c;
   }, [signalUrl]);
 
@@ -78,15 +95,19 @@ function App() {
   }, [client]);
 
   const connect = async () => {
-    setStatus('connecting');
     try {
       await client.start();
-      setStatus('connected');
     } catch (err) {
       console.error('Connection failed:', err);
-      setStatus('disconnected');
     }
   };
+
+  // Derived state helpers
+  const isConnected = connectionState === ConnectionState.CONNECTED;
+  const isConnecting = connectionState === ConnectionState.CONNECTING;
+  const isReconnecting = connectionState === ConnectionState.RECONNECTING;
+  const isFailed = connectionState === ConnectionState.FAILED;
+  const canConnect = connectionState === ConnectionState.DISCONNECTED || connectionState === ConnectionState.FAILED;
 
   // Toggle Audio Sharing
   const toggleAudio = useCallback(async () => {
@@ -125,7 +146,7 @@ function App() {
         setAudioState('off');
       }
     }
-  }, [audioState, videoState, screenState, client]);
+  }, [audioState, videoState, screenState, client, isConnected]);
 
   // Toggle Video Sharing (requires audio)
   const toggleVideo = useCallback(async () => {
@@ -217,38 +238,89 @@ function App() {
       {/* Connection Section */}
       <div
         style={{
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
           padding: 16,
           background: '#f9fafb',
           borderRadius: 12,
           marginBottom: 24
         }}
       >
-        <input
-          value={signalUrl}
-          onChange={(e) => setSignalUrl(e.target.value)}
-          style={{ flex: 1, padding: '10px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14 }}
-          placeholder="wss://your-signal-host"
-          disabled={status === 'connected'}
-        />
-        <button
-          onClick={connect}
-          disabled={status !== 'disconnected'}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <input
+            value={signalUrl}
+            onChange={(e) => setSignalUrl(e.target.value)}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14 }}
+            placeholder="wss://your-signal-host"
+            disabled={isConnected || isConnecting || isReconnecting}
+          />
+          <button
+            onClick={connect}
+            disabled={!canConnect}
+            style={{
+              padding: '10px 20px',
+              fontSize: 14,
+              fontWeight: 500,
+              border: 'none',
+              borderRadius: 6,
+              cursor: canConnect ? 'pointer' : 'default',
+              backgroundColor: isConnected
+                ? '#22c55e'
+                : isConnecting || isReconnecting
+                  ? '#fbbf24'
+                  : isFailed
+                    ? '#ef4444'
+                    : '#3b82f6',
+              color: '#fff'
+            }}
+          >
+            {isConnected
+              ? 'Connected'
+              : isConnecting
+                ? 'Connecting...'
+                : isReconnecting
+                  ? 'Reconnecting...'
+                  : isFailed
+                    ? 'Retry'
+                    : 'Connect'}
+          </button>
+        </div>
+
+        {/* Connection Status Indicator */}
+        <div
           style={{
-            padding: '10px 20px',
-            fontSize: 14,
-            fontWeight: 500,
-            border: 'none',
-            borderRadius: 6,
-            cursor: status === 'disconnected' ? 'pointer' : 'default',
-            backgroundColor: status === 'connected' ? '#22c55e' : status === 'connecting' ? '#fbbf24' : '#3b82f6',
-            color: '#fff'
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginTop: 12,
+            fontSize: 13
           }}
         >
-          {status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting...' : 'Connect'}
-        </button>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: isConnected
+                ? '#22c55e'
+                : isConnecting || isReconnecting
+                  ? '#fbbf24'
+                  : isFailed
+                    ? '#ef4444'
+                    : '#9ca3af'
+            }}
+          />
+          <span style={{ color: '#374151' }}>
+            {isConnected
+              ? 'Connected'
+              : isConnecting
+                ? 'Connecting to server...'
+                : isReconnecting
+                  ? `Reconnecting${reconnectInfo ? ` (attempt ${reconnectInfo.attempt}/${reconnectInfo.max})` : '...'}`
+                  : isFailed
+                    ? 'Connection failed - click Retry to reconnect'
+                    : 'Disconnected'}
+          </span>
+        </div>
       </div>
 
       {/* Media Controls */}
@@ -266,10 +338,10 @@ function App() {
           {/* Audio Button */}
           <button
             onClick={toggleAudio}
-            disabled={status !== 'connected' || audioState === 'starting'}
+            disabled={!isConnected || audioState === 'starting'}
             style={{
               ...getButtonStyle(audioState),
-              opacity: status !== 'connected' ? 0.5 : 1
+              opacity: !isConnected ? 0.5 : 1
             }}
           >
             {getStatusDot(audioState)}
@@ -279,10 +351,10 @@ function App() {
           {/* Video Button */}
           <button
             onClick={toggleVideo}
-            disabled={status !== 'connected' || videoState === 'starting' || audioState !== 'on'}
+            disabled={!isConnected || videoState === 'starting' || audioState !== 'on'}
             style={{
               ...getButtonStyle(videoState, audioState !== 'on'),
-              opacity: status !== 'connected' || audioState !== 'on' ? 0.5 : 1
+              opacity: !isConnected || audioState !== 'on' ? 0.5 : 1
             }}
           >
             {getStatusDot(videoState)}
@@ -292,10 +364,10 @@ function App() {
           {/* Screen Button */}
           <button
             onClick={toggleScreen}
-            disabled={status !== 'connected' || screenState === 'starting' || audioState !== 'on'}
+            disabled={!isConnected || screenState === 'starting' || audioState !== 'on'}
             style={{
               ...getButtonStyle(screenState, audioState !== 'on'),
-              opacity: status !== 'connected' || audioState !== 'on' ? 0.5 : 1
+              opacity: !isConnected || audioState !== 'on' ? 0.5 : 1
             }}
           >
             {getStatusDot(screenState)}
