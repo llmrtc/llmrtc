@@ -115,10 +115,9 @@ function App() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioStreamRef.current = stream;
-        const ctrl = await client.shareAudio(stream, {
-          vadThreshold: 0.02,
-          vadSilenceMs: 700
-        });
+        // Silero VAD handles speech detection automatically
+        // No need to tune thresholds - it uses ML-based detection
+        const ctrl = await client.shareAudio(stream);
         audioCtrlRef.current = ctrl;
         setAudioState('on');
       } catch (err) {

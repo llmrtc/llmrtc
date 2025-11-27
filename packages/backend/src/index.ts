@@ -144,6 +144,20 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   let pendingAttachments: VisionAttachment[] = [];
   let audioSink: any = null;
 
+  // TTS playback state for barge-in support
+  let currentAbortController: AbortController | null = null;
+  let isTTSPlaying = false;
+
+  // Cancel current TTS playback (called on user interruption)
+  function cancelCurrentTTS() {
+    if (currentAbortController) {
+      console.log('[backend] Cancelling current TTS playback');
+      currentAbortController.abort();
+      currentAbortController = null;
+    }
+    isTTSPlaying = false;
+  }
+
   // Create TTS audio source for sending audio back to client
   let ttsAudioSource: any = null;
   let ttsAudioTrack: MediaStreamTrack | null = null;
@@ -198,13 +212,63 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   });
 
   // Handle incoming audio track from client using RTCAudioSink
-  peer.on('track', (track: MediaStreamTrack, stream: MediaStream) => {
+  peer.on('track', async (track: MediaStreamTrack, stream: MediaStream) => {
     // eslint-disable-next-line no-console
     console.log('[backend] Received track:', track.kind, 'id:', track.id, 'readyState:', track.readyState);
 
     if (track.kind === 'audio' && RTCAudioSink) {
       // eslint-disable-next-line no-console
       console.log('[backend] Setting up RTCAudioSink for audio track');
+
+      // Initialize VAD for this audio processor
+      try {
+        await audioProcessor.initVAD();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[backend] Failed to initialize VAD:', err);
+      }
+
+      // Listen for speech events from VAD
+      audioProcessor.on('speechStart', () => {
+        // eslint-disable-next-line no-console
+        console.log('[backend] VAD detected speech start');
+
+        // Barge-in: If TTS is playing, cancel it immediately
+        if (isTTSPlaying) {
+          console.log('[backend] User interrupted TTS - cancelling playback');
+          cancelCurrentTTS();
+          sendBoth({ type: 'tts-cancelled' }, ws, peer);
+        }
+
+        sendBoth({ type: 'speech-start' }, ws, peer);
+      });
+
+      audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
+        // eslint-disable-next-line no-console
+        console.log('[backend] VAD detected speech end, processing', pcmBuffer.length, 'bytes');
+        sendBoth({ type: 'speech-end' }, ws, peer);
+
+        if (pcmBuffer.length > 0) {
+          // Cancel any previous response generation
+          cancelCurrentTTS();
+
+          // Create new abort controller for this turn
+          currentAbortController = new AbortController();
+          const signal = currentAbortController.signal;
+
+          // Convert PCM to WAV for STT providers
+          const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
+          // eslint-disable-next-line no-console
+          console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
+
+          await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments, ttsAudioSource, {
+            signal,
+            onTTSStart: () => { isTTSPlaying = true; },
+            onTTSEnd: () => { isTTSPlaying = false; currentAbortController = null; }
+          });
+          pendingAttachments = [];
+        }
+      });
 
       // Create RTCAudioSink to receive decoded PCM samples
       audioSink = new RTCAudioSink(track);
@@ -216,14 +280,12 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
         channelCount: number;
         numberOfFrames: number;
       }) => {
-        // Only process if we're capturing (between audio-start and audio-process)
-        if (audioProcessor.capturing) {
-          audioProcessor.processPCMData(data);
-        }
+        // Process all audio through VAD - it handles speech detection automatically
+        audioProcessor.processPCMData(data);
       };
 
       // eslint-disable-next-line no-console
-      console.log('[backend] RTCAudioSink set up successfully');
+      console.log('[backend] RTCAudioSink set up successfully with server-side VAD');
     } else if (track.kind === 'audio' && !RTCAudioSink) {
       // eslint-disable-next-line no-console
       console.warn('[backend] RTCAudioSink not available - audio track cannot be processed');
@@ -235,32 +297,12 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
       const msg = JSON.parse(data.toString());
 
       switch (msg.type) {
-        // MediaStreamTrack-based audio signals
-        case 'audio-start':
-          // eslint-disable-next-line no-console
-          console.log('[backend] Speech started - beginning audio capture');
-          audioProcessor.startCapture();
-          break;
-
-        case 'audio-process':
-          // eslint-disable-next-line no-console
-          console.log('[backend] Speech ended - processing audio with', msg.attachments?.length || 0, 'attachments');
+        // Vision attachments from frontend
+        case 'attachments':
+          // Store attachments to include with next speech segment
           pendingAttachments = msg.attachments ?? [];
-
-          const pcmBuffer = audioProcessor.stopCapture();
-
-          if (pcmBuffer.length > 0) {
-            // Convert PCM to WAV for STT providers
-            const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
-            // eslint-disable-next-line no-console
-            console.log('[backend] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
-            await handleAudio(orchestrator, wavBuffer, ws, peer, pendingAttachments, ttsAudioSource);
-          } else {
-            // eslint-disable-next-line no-console
-            console.log('[backend] No audio data captured');
-            sendBoth({ type: 'error', message: 'No audio data captured' }, ws, peer);
-          }
-          pendingAttachments = [];
+          // eslint-disable-next-line no-console
+          console.log('[backend] Received attachments:', pendingAttachments.length);
           break;
 
         default:
@@ -286,18 +328,33 @@ function createPeer(ws: WebSocket, orchestrator: ConversationOrchestrator): Simp
   return peer;
 }
 
+interface HandleAudioOptions {
+  signal?: AbortSignal;
+  onTTSStart?: () => void;
+  onTTSEnd?: () => void;
+}
+
 async function handleAudio(
   orchestrator: ConversationOrchestrator,
   audio: Buffer,
   ws: WebSocket,
   peer: SimplePeer.Instance | null,
   attachments: VisionAttachment[],
-  ttsAudioSource?: any
+  ttsAudioSource?: any,
+  options?: HandleAudioOptions
 ) {
+  const { signal, onTTSStart, onTTSEnd } = options ?? {};
+
   // eslint-disable-next-line no-console
   console.log('[backend] handleAudio - processing', audio.length, 'bytes');
   try {
     for await (const item of orchestrator.runTurnStream(audio, attachments)) {
+      // Check if cancelled before processing each item
+      if (signal?.aborted) {
+        console.log('[backend] Response generation cancelled by user interruption');
+        break;
+      }
+
       // eslint-disable-next-line no-console
       console.log('[backend] orchestrator yielded:', Object.keys(item));
       if ('isFinal' in item) {
@@ -315,10 +372,24 @@ async function handleAudio(
             const pcmBuffer = await decodeToPCM(item.audio, item.format);
             // eslint-disable-next-line no-console
             console.log('[backend] Decoded to PCM:', pcmBuffer.length, 'bytes, feeding to RTCAudioSource');
+
+            onTTSStart?.();
             sendBoth({ type: 'tts-start' }, ws, peer);
-            await feedAudioToSource(pcmBuffer, ttsAudioSource, () => {
-              sendBoth({ type: 'tts-complete' }, ws, peer);
+
+            const completed = await feedAudioToSource(pcmBuffer, ttsAudioSource, {
+              signal,
+              onComplete: () => {
+                sendBoth({ type: 'tts-complete' }, ws, peer);
+              }
             });
+
+            // If playback was aborted, notify and exit
+            if (!completed) {
+              console.log('[backend] TTS playback was interrupted');
+              sendBoth({ type: 'tts-cancelled' }, ws, peer);
+            }
+
+            onTTSEnd?.();
           } catch (decodeErr) {
             // eslint-disable-next-line no-console
             console.error('[backend] Failed to decode TTS audio:', decodeErr);

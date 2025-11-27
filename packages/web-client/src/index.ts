@@ -23,15 +23,11 @@ export type ClientEvents = {
   ttsTrack: (stream: MediaStream) => void;
   ttsStart: () => void;
   ttsComplete: () => void;
+  ttsCancelled: () => void;
+  speechStart: () => void;
+  speechEnd: () => void;
   error: (message: string) => void;
 };
-
-export interface ShareAudioOptions {
-  /** energy threshold 0-1 for VAD */
-  vadThreshold?: number;
-  /** ms of silence to treat as stop */
-  vadSilenceMs?: number;
-}
 
 export interface FrameCaptureController {
   stop(): void;
@@ -109,14 +105,12 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
   }
 
   /**
-   * Share audio with automatic VAD-based speech detection
+   * Share audio with the server
+   * Speech detection is handled server-side using Silero VAD
    * Audio is streamed via WebRTC MediaStreamTrack
    */
-  async shareAudio(stream: MediaStream, opts: ShareAudioOptions = {}): Promise<AudioController> {
+  async shareAudio(stream: MediaStream): Promise<AudioController> {
     if (!this.peer?.connected) throw new Error('Peer not connected');
-
-    const vadThreshold = opts.vadThreshold ?? 0.015;
-    const vadSilenceMs = opts.vadSilenceMs ?? 600;
 
     // Store stream reference
     this.audioStream = stream;
@@ -143,71 +137,25 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
       setTimeout(checkState, 100);
     });
 
-    console.log('[web-client] Audio track added, setting up VAD');
-
-    // Set up VAD using AnalyserNode
-    const audioCtx = new AudioContext();
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    const data = new Uint8Array(analyser.fftSize);
-    source.connect(analyser);
-
-    let speaking = false;
-    let silenceStart = performance.now();
-
-    const loop = () => {
-      analyser.getByteTimeDomainData(data);
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
-        sum += v * v;
-      }
-      const rms = Math.sqrt(sum / data.length);
-      const now = performance.now();
-
-      if (rms > vadThreshold) {
-        if (!speaking) {
-          speaking = true;
-          console.log('[web-client] VAD: Speech started');
-          // Signal server to start buffering audio
-          this.sendSignal({ type: 'audio-start', timestamp: Date.now() });
-        }
-        silenceStart = now;
-      } else if (speaking && now - silenceStart > vadSilenceMs) {
-        speaking = false;
-        console.log('[web-client] VAD: Speech ended, sending process signal');
-        // Gather attachments and signal server to process
-        const attachments = this.gatherAttachments();
-        this.sendSignal({
-          type: 'audio-process',
-          timestamp: Date.now(),
-          attachments
-        });
-      }
-
-      rafId = requestAnimationFrame(loop);
-    };
-
-    let rafId = requestAnimationFrame(loop);
+    console.log('[web-client] Audio track added - VAD handled server-side');
 
     return {
       stop: async () => {
-        cancelAnimationFrame(rafId);
-        // Send stop signal if currently speaking
-        if (speaking) {
-          const attachments = this.gatherAttachments();
-          this.sendSignal({
-            type: 'audio-process',
-            timestamp: Date.now(),
-            attachments
-          });
-        }
+        console.log('[web-client] Stopping audio sharing');
         this.audioTrack?.stop();
         stream.getTracks().forEach((t) => t.stop());
-        await audioCtx.close();
       }
     };
+  }
+
+  /**
+   * Send vision attachments to include with next speech segment
+   */
+  sendAttachments() {
+    const attachments = this.gatherAttachments();
+    if (attachments.length > 0 && this.peer?.connected) {
+      this.peer.send(JSON.stringify({ type: 'attachments', attachments }));
+    }
   }
 
   /**
@@ -220,19 +168,6 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     if (cam) attachments.push({ data: cam, mimeType: 'image/jpeg', alt: 'camera frame' });
     if (screen) attachments.push({ data: screen, mimeType: 'image/jpeg', alt: 'screen frame' });
     return attachments;
-  }
-
-  /**
-   * Send a signal over the data channel
-   */
-  private sendSignal(signal: { type: string; timestamp: number; attachments?: AttachmentPayload[] }) {
-    const data = JSON.stringify(signal);
-    console.log('[web-client] Sending signal:', signal.type);
-    if (this.peer?.connected) {
-      this.peer.send(data);
-    } else {
-      console.warn('[web-client] Cannot send signal - peer not connected');
-    }
   }
 
   shareVideo(stream: MediaStream, intervalMs = 1000): FrameCaptureController {
@@ -287,6 +222,17 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           break;
         case 'tts-complete':
           this.emit('ttsComplete');
+          break;
+        case 'tts-cancelled':
+          this.emit('ttsCancelled');
+          break;
+        case 'speech-start':
+          this.emit('speechStart');
+          break;
+        case 'speech-end':
+          // Send any pending attachments when speech ends
+          this.sendAttachments();
+          this.emit('speechEnd');
           break;
         case 'error':
           this.emit('error', msg.message ?? 'unknown error');

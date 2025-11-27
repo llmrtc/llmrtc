@@ -41,6 +41,13 @@ export async function decodeToPCM(
   });
 }
 
+export interface FeedAudioOptions {
+  /** AbortSignal to cancel playback mid-stream */
+  signal?: AbortSignal;
+  /** Callback when playback completes (not called if aborted) */
+  onComplete?: () => void;
+}
+
 /**
  * Feed PCM audio to RTCAudioSource in 10ms chunks
  *
@@ -49,17 +56,18 @@ export async function decodeToPCM(
  *
  * @param pcmBuffer - Raw PCM audio (s16le, 48kHz, mono)
  * @param audioSource - RTCAudioSource instance
- * @param onComplete - Optional callback when playback is complete
+ * @param options - Optional settings including AbortSignal for cancellation
+ * @returns true if completed normally, false if aborted
  */
 export async function feedAudioToSource(
   pcmBuffer: Buffer,
   audioSource: any,
-  onComplete?: () => void
-): Promise<void> {
+  options?: FeedAudioOptions
+): Promise<boolean> {
+  const { signal, onComplete } = options ?? {};
   const SAMPLE_RATE = 48000;
   const SAMPLES_PER_10MS = SAMPLE_RATE / 100; // 480 samples
   const BYTES_PER_SAMPLE = 2; // 16-bit
-  const BYTES_PER_FRAME = SAMPLES_PER_10MS * BYTES_PER_SAMPLE; // 960 bytes
 
   // Convert buffer to Int16Array
   const int16Array = new Int16Array(
@@ -70,6 +78,12 @@ export async function feedAudioToSource(
 
   // Feed in 10ms chunks
   for (let i = 0; i < int16Array.length; i += SAMPLES_PER_10MS) {
+    // Check if cancelled before each chunk
+    if (signal?.aborted) {
+      console.log('[mp3-decoder] TTS playback aborted');
+      return false;
+    }
+
     const remaining = int16Array.length - i;
     const frameSize = Math.min(SAMPLES_PER_10MS, remaining);
     const chunk = int16Array.slice(i, i + frameSize);
@@ -96,6 +110,7 @@ export async function feedAudioToSource(
   }
 
   onComplete?.();
+  return true;
 }
 
 function sleep(ms: number): Promise<void> {

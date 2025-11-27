@@ -18,6 +18,7 @@
     "@metered/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
     "@metered/llmrtc-provider-local": "file:../providers/local",
     "@metered/llmrtc-provider-openai": "file:../providers/openai",
+    "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
