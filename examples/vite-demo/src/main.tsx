@@ -91,7 +91,12 @@ function App() {
 
   useEffect(() => {
     clientRef.current = client;
-    return () => client.close();
+    // Expose client on window for E2E tests
+    (window as any).llmrtcClient = client;
+    return () => {
+      client.close();
+      delete (window as any).llmrtcClient;
+    };
   }, [client]);
 
   const connect = async () => {
@@ -246,6 +251,7 @@ function App() {
       >
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <input
+            data-testid="signal-url-input"
             value={signalUrl}
             onChange={(e) => setSignalUrl(e.target.value)}
             style={{ flex: 1, padding: '10px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14 }}
@@ -253,6 +259,7 @@ function App() {
             disabled={isConnected || isConnecting || isReconnecting}
           />
           <button
+            data-testid="connect-btn"
             onClick={connect}
             disabled={!canConnect}
             style={{
@@ -286,6 +293,8 @@ function App() {
 
         {/* Connection Status Indicator */}
         <div
+          data-testid="connection-status"
+          data-state={connectionState}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -337,6 +346,8 @@ function App() {
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {/* Audio Button */}
           <button
+            data-testid="share-audio-btn"
+            data-state={audioState}
             onClick={toggleAudio}
             disabled={!isConnected || audioState === 'starting'}
             style={{
@@ -350,6 +361,8 @@ function App() {
 
           {/* Video Button */}
           <button
+            data-testid="share-video-btn"
+            data-state={videoState}
             onClick={toggleVideo}
             disabled={!isConnected || videoState === 'starting' || audioState !== 'on'}
             style={{
@@ -363,6 +376,8 @@ function App() {
 
           {/* Screen Button */}
           <button
+            data-testid="share-screen-btn"
+            data-state={screenState}
             onClick={toggleScreen}
             disabled={!isConnected || screenState === 'starting' || audioState !== 'on'}
             style={{
@@ -394,6 +409,7 @@ function App() {
         <div>
           <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#374151' }}>You said:</h3>
           <div
+            data-testid="transcript"
             style={{
               background: '#f3f4f6',
               padding: 16,
@@ -410,6 +426,7 @@ function App() {
         <div>
           <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#374151' }}>Assistant:</h3>
           <div
+            data-testid="llm-response"
             style={{
               background: '#eff6ff',
               padding: 16,
@@ -427,7 +444,7 @@ function App() {
           <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#374151' }}>
             Audio Response:
             {ttsStatus === 'playing' && (
-              <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 12 }}>● Playing via WebRTC</span>
+              <span data-testid="tts-status" style={{ marginLeft: 8, color: '#22c55e', fontSize: 12 }}>● Playing via WebRTC</span>
             )}
           </h3>
           {/* WebRTC MediaStreamTrack audio (preferred) */}

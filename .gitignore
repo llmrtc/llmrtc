@@ -4,6 +4,13 @@ dist
 coverage
 .env
 .env.*
+!.env.test.example
 npm-debug.log*
 .vscode
 .idea
+.claude
+
+# Playwright
+playwright-report/
+playwright/.cache/
+test-results/
