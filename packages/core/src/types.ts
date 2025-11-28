@@ -145,6 +145,8 @@ export interface ConversationProviders {
 export interface ConversationOrchestratorConfig extends SessionConfig {
   providers: ConversationProviders;
   logger?: Logger;
+  /** Enable streaming TTS with sentence-boundary detection (default: true) */
+  streamingTTS?: boolean;
 }
 
 // =============================================================================
@@ -187,3 +189,49 @@ export interface AudioProcessSignal {
  * Union type for all audio signals
  */
 export type AudioSignal = AudioStartSignal | AudioStopSignal | AudioProcessSignal;
+
+// =============================================================================
+// Streaming TTS Types (for sentence-boundary streaming)
+// =============================================================================
+
+/**
+ * A chunk of TTS audio data during streaming
+ * Yielded by orchestrator as audio becomes available
+ */
+export interface TTSChunk {
+  type: 'tts-chunk';
+  /** Raw audio data (PCM or compressed) */
+  audio: Buffer;
+  /** Audio format: 'pcm' for raw 16-bit samples, or 'mp3'/'ogg' for compressed */
+  format: 'pcm' | 'mp3' | 'ogg' | 'wav';
+  /** Sample rate in Hz (e.g., 24000 for OpenAI PCM, 48000 for WebRTC) */
+  sampleRate?: number;
+  /** The sentence/text this chunk corresponds to */
+  sentence?: string;
+}
+
+/**
+ * Signal that all TTS audio has been sent
+ */
+export interface TTSComplete {
+  type: 'tts-complete';
+}
+
+/**
+ * Signal that TTS streaming is starting
+ */
+export interface TTSStart {
+  type: 'tts-start';
+}
+
+/**
+ * Union type for all orchestrator yield values during a conversation turn
+ */
+export type OrchestratorYield =
+  | STTResult
+  | LLMChunk
+  | LLMResult
+  | TTSResult
+  | TTSChunk
+  | TTSStart
+  | TTSComplete;

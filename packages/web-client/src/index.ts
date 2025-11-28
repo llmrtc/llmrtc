@@ -323,8 +323,13 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           break;
 
         default:
-          // Other messages go through data channel handler
-          this.handlePayload(raw);
+          // Only process payload messages from WebSocket if DataChannel is NOT connected
+          // This prevents duplicate message handling since backend sends to both channels
+          if (!this.peer?.connected) {
+            this.handlePayload(raw);
+          }
+          // When DataChannel is connected, ignore payload messages from WebSocket
+          // They will be handled by the DataChannel's 'data' event
       }
     } catch (err) {
       console.error('[web-client] Error handling signal:', err);

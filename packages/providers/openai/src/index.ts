@@ -170,6 +170,9 @@ export class OpenAITTSProvider implements TTSProvider {
   /**
    * Streaming TTS - returns audio chunks as they are generated.
    * Uses HTTP chunked transfer encoding.
+   *
+   * When using format: 'pcm', output is 24kHz, 16-bit signed LE, mono.
+   * This is the recommended format for lowest latency (no decode step needed).
    */
   async *speakStream(text: string, overrideConfig?: TTSConfig): AsyncIterable<Buffer> {
     const voice = (overrideConfig?.voice as OpenAITTSVoice) ?? this.voice;

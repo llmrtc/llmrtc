@@ -46,8 +46,12 @@ export class ElevenLabsTTSProvider implements TTSProvider {
   async speak(text: string, config?: TTSConfig): Promise<TTSResult> {
     const voiceId = config?.voice ?? this.voiceId;
     const format = config?.format ?? this.format ?? 'mp3';
+    const outputFormat = mapFormat(format);
 
-    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    // ElevenLabs requires output_format as query parameter
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${outputFormat}`;
+
+    const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'xi-api-key': this.apiKey,
@@ -56,8 +60,7 @@ export class ElevenLabsTTSProvider implements TTSProvider {
       body: JSON.stringify({
         text,
         model_id: this.modelId,
-        voice_settings: { stability: 0.5, similarity_boost: 0.8 },
-        output_format: mapFormat(format)
+        voice_settings: { stability: 0.5, similarity_boost: 0.8 }
       })
     });
 
@@ -74,27 +77,30 @@ export class ElevenLabsTTSProvider implements TTSProvider {
    * Streaming TTS - returns audio chunks as they are generated.
    * Uses ElevenLabs /stream endpoint with HTTP chunked transfer encoding.
    * Ideal for real-time applications requiring low latency.
+   *
+   * When using format: 'pcm', output is 24kHz, 16-bit signed LE, mono.
+   * This matches OpenAI TTS PCM format for consistent handling.
    */
   async *speakStream(text: string, config?: TTSConfig): AsyncIterable<Buffer> {
     const voiceId = config?.voice ?? this.voiceId;
     const format = config?.format ?? this.format ?? 'mp3';
+    const outputFormat = mapFormat(format);
 
-    const resp = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': this.apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text,
-          model_id: this.modelId,
-          voice_settings: { stability: 0.5, similarity_boost: 0.8 },
-          output_format: mapFormat(format)
-        })
-      }
-    );
+    // ElevenLabs requires output_format as query parameter, not in body
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=${outputFormat}`;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': this.apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: this.modelId,
+        voice_settings: { stability: 0.5, similarity_boost: 0.8 }
+      })
+    });
 
     if (!resp.ok) {
       const errorText = await resp.text();
@@ -114,7 +120,9 @@ export class ElevenLabsTTSProvider implements TTSProvider {
 
 /**
  * Map core format to ElevenLabs format string.
- * ElevenLabs uses format strings like 'mp3_44100_128' or just 'mp3_44100_192'.
+ * ElevenLabs uses format strings like 'mp3_44100_128' or 'pcm_24000'.
+ *
+ * PCM uses 24kHz to match OpenAI TTS output for consistent resampling.
  */
 function mapFormat(format: TTSConfig['format']): string {
   switch (format) {
@@ -123,9 +131,9 @@ function mapFormat(format: TTSConfig['format']): string {
     case 'ogg':
       return 'ogg_44100';
     case 'wav':
-      return 'pcm_44100'; // ElevenLabs returns raw PCM for WAV
+      return 'pcm_24000'; // Raw PCM, 24kHz to match OpenAI
     case 'pcm':
-      return 'pcm_44100';
+      return 'pcm_24000'; // 24kHz to match OpenAI TTS
     default:
       return 'mp3_44100_128';
   }

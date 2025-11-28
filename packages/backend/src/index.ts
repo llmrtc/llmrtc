@@ -1,7 +1,24 @@
 import { config } from 'dotenv';
-import { resolve } from 'path';
-// Load .env from root directory (npm scripts run from workspace root)
-config({ path: resolve(process.cwd(), '.env') });
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env from monorepo root (packages/backend/src -> ../../..)
+const envPath = resolve(__dirname, '..', '..', '..', '.env');
+const result = config({ path: envPath });
+
+if (result.error) {
+  console.warn(`[backend] Could not load .env from ${envPath}:`, result.error.message);
+  // Try cwd as fallback
+  const cwdEnvPath = resolve(process.cwd(), '.env');
+  console.log(`[backend] Trying fallback .env at ${cwdEnvPath}`);
+  config({ path: cwdEnvPath });
+} else {
+  console.log(`[backend] Loaded .env from ${envPath}`);
+}
 
 import http from 'http';
 import express from 'express';
@@ -15,7 +32,14 @@ import {
   ConversationProviders
 } from '@metered/llmrtc-core';
 import { AudioProcessor } from './audio-processor.js';
-import { decodeToPCM, feedAudioToSource } from './mp3-decoder.js';
+import {
+  decodeToPCM,
+  feedAudioToSource,
+  feedPCMChunkToSource,
+  flushPCMFeeder,
+  createPCMFeederState,
+  PCMFeederState
+} from './mp3-decoder.js';
 import { NativePeerServer, AudioData } from './native-peer-server.js';
 import { SessionManager } from './session-manager.js';
 import {
@@ -39,6 +63,10 @@ import type { LLMProvider, STTProvider, TTSProvider } from '@metered/llmrtc-core
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8787;
 const HOST = process.env.HOST ?? '127.0.0.1';
+
+// Streaming TTS: enables sentence-boundary TTS for lower latency
+// Set to 'false' to use traditional full-text TTS
+const STREAMING_TTS_ENABLED = process.env.STREAMING_TTS !== 'false';
 
 const HEARTBEAT_TIMEOUT_MS = 45000; // 45 seconds (3 missed heartbeats)
 
@@ -241,6 +269,7 @@ console.log(`  LLM: ${llmProvider.name}`);
 console.log(`  STT: ${sttProvider.name}`);
 console.log(`  TTS: ${ttsProvider.name}`);
 console.log(`  Vision: ${visionProvider?.name ?? 'disabled'}`);
+console.log(`  Streaming TTS: ${STREAMING_TTS_ENABLED ? 'enabled' : 'disabled'}`);
 console.log('='.repeat(60));
 
 let wrtcLib: any = null;
@@ -296,7 +325,8 @@ wss.on('connection', (ws) => {
     new ConversationOrchestrator({
       systemPrompt: 'You are a helpful realtime voice assistant.',
       historyLimit: 8,
-      providers: sharedProviders
+      providers: sharedProviders,
+      streamingTTS: STREAMING_TTS_ENABLED
     })
   );
 
@@ -364,7 +394,8 @@ wss.on('connection', (ws) => {
               new ConversationOrchestrator({
                 systemPrompt: 'You are a helpful realtime voice assistant.',
                 historyLimit: 8,
-                providers: sharedProviders
+                providers: sharedProviders,
+                streamingTTS: STREAMING_TTS_ENABLED
               })
             );
             ws.send(
@@ -572,22 +603,86 @@ async function handleAudio(
   const { signal, onTTSStart, onTTSEnd } = options ?? {};
 
   console.log('[backend] handleAudio - processing', audio.length, 'bytes');
+
+  // State for streaming PCM chunks
+  let pcmFeederState: PCMFeederState | null = null;
+  let ttsStarted = false;
+
   try {
     for await (const item of orchestrator.runTurnStream(audio, attachments)) {
       // Check if cancelled before processing each item
       if (signal?.aborted) {
         console.log('[backend] Response generation cancelled by user interruption');
+        if (pcmFeederState) {
+          pcmFeederState.aborted = true;
+        }
         break;
       }
 
       console.log('[backend] orchestrator yielded:', Object.keys(item));
+
+      // Handle different yield types
       if ('isFinal' in item) {
+        // STT Result
         sendBoth({ type: 'transcript', text: item.text, isFinal: item.isFinal }, ws, peer);
-      } else if ('done' in item) {
+      } else if ('done' in item && 'content' in item) {
+        // LLM Chunk
         sendBoth({ type: 'llm-chunk', content: item.content, done: item.done }, ws, peer);
       } else if ('fullText' in item) {
+        // LLM Result
         sendBoth({ type: 'llm', text: item.fullText }, ws, peer);
+      } else if ('type' in item) {
+        // Handle typed events (TTS streaming)
+        switch (item.type) {
+          case 'tts-start':
+            if (!ttsStarted) {
+              ttsStarted = true;
+              onTTSStart?.();
+              sendBoth({ type: 'tts-start' }, ws, peer);
+              // Initialize PCM feeder state for streaming
+              if (ttsAudioSource && RTCAudioSource) {
+                pcmFeederState = createPCMFeederState();
+              }
+            }
+            break;
+
+          case 'tts-chunk':
+            // Streaming TTS chunk (PCM format)
+            console.log(`[backend] TTS chunk: ${item.audio.length} bytes, format=${item.format}, sampleRate=${item.sampleRate}`);
+            if (ttsAudioSource && RTCAudioSource && pcmFeederState) {
+              // Feed PCM directly to RTCAudioSource (resamples 24kHz → 48kHz)
+              await feedPCMChunkToSource(item.audio, ttsAudioSource, pcmFeederState, {
+                inputSampleRate: item.sampleRate ?? 24000,
+                signal
+              });
+            } else {
+              // Fallback: send chunk to client for playback
+              sendBoth(
+                {
+                  type: 'tts-chunk',
+                  format: item.format,
+                  sampleRate: item.sampleRate,
+                  data: item.audio.toString('base64')
+                },
+                ws,
+                peer
+              );
+            }
+            break;
+
+          case 'tts-complete':
+            // Flush any remaining samples in the feeder
+            if (ttsAudioSource && pcmFeederState) {
+              await flushPCMFeeder(ttsAudioSource, pcmFeederState);
+            }
+            sendBoth({ type: 'tts-complete' }, ws, peer);
+            onTTSEnd?.();
+            ttsStarted = false;
+            pcmFeederState = null;
+            break;
+        }
       } else if ('audio' in item) {
+        // Non-streaming TTS Result (fallback path)
         if (ttsAudioSource && RTCAudioSource) {
           // Send TTS audio via WebRTC MediaStreamTrack
           console.log('[backend] Decoding TTS audio for WebRTC playback, format:', item.format);
@@ -599,8 +694,11 @@ async function handleAudio(
               'bytes, feeding to RTCAudioSource'
             );
 
-            onTTSStart?.();
-            sendBoth({ type: 'tts-start' }, ws, peer);
+            if (!ttsStarted) {
+              onTTSStart?.();
+              sendBoth({ type: 'tts-start' }, ws, peer);
+              ttsStarted = true;
+            }
 
             const completed = await feedAudioToSource(pcmBuffer, ttsAudioSource, {
               signal,
@@ -616,6 +714,7 @@ async function handleAudio(
             }
 
             onTTSEnd?.();
+            ttsStarted = false;
           } catch (decodeErr) {
             console.error('[backend] Failed to decode TTS audio:', decodeErr);
             // Fallback to base64 if decode fails
