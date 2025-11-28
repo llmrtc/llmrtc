@@ -1,20 +1,22 @@
 import { FullConfig } from '@playwright/test';
-import { config } from 'dotenv';
-import * as path from 'path';
 
-const __dirname = path.dirname(__filename);
+// Default ports (should match playwright.config.ts)
+// Note: .env.test is loaded by playwright.config.ts before this runs
+const BACKEND_PORT = process.env.TEST_BACKEND_PORT ?? '8787';
+const FRONTEND_PORT = process.env.TEST_FRONTEND_PORT ?? '5173';
 
 /**
  * Playwright global setup.
- * Loads environment variables from .env.test and performs initial checks.
+ * Env vars are already loaded by playwright.config.ts from .env.test.
+ * This setup performs additional checks and logging.
  */
 async function globalSetup(_config: FullConfig) {
-  // Load .env.test from project root
-  const envPath = path.resolve(__dirname, '..', '.env.test');
-  config({ path: envPath });
-
-  // Log which providers are configured
+  // Log server configuration
   console.log('\n=== E2E Test Environment ===');
+  console.log('Server Configuration:');
+  console.log(`  - Backend: http://localhost:${BACKEND_PORT}`);
+  console.log(`  - Frontend: http://localhost:${FRONTEND_PORT}`);
+  console.log(`  - Signal URL: ws://localhost:${BACKEND_PORT}`);
   console.log('Provider Configuration:');
   console.log('  - OpenAI:', process.env.OPENAI_API_KEY ? 'configured' : 'NOT SET');
   console.log('  - ElevenLabs:', process.env.ELEVENLABS_API_KEY ? 'configured' : 'NOT SET');

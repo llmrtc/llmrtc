@@ -1,12 +1,36 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
+import { config } from 'dotenv';
 
 // Get the directory of this config file
 const __dirname = path.dirname(__filename);
 
+// Load .env.test BEFORE defining config so env vars are available
+const envTestPath = path.resolve(__dirname, '..', '.env.test');
+config({ path: envTestPath });
+
+// Default ports (can be overridden in .env.test)
+const BACKEND_PORT = process.env.TEST_BACKEND_PORT ?? '8787';
+const FRONTEND_PORT = process.env.TEST_FRONTEND_PORT ?? '5173';
+const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+const FRONTEND_URL = `http://localhost:${FRONTEND_PORT}`;
+const SIGNAL_URL = `ws://localhost:${BACKEND_PORT}`;
+
+// Build env object for webServer processes (pass through relevant env vars)
+const serverEnv = {
+  // Pass through all current env vars
+  ...process.env,
+  // Explicitly set the port
+  PORT: BACKEND_PORT,
+  HOST: '127.0.0.1',
+  // Signal URL for frontend
+  VITE_SIGNAL_URL: SIGNAL_URL,
+};
+
 /**
  * Playwright E2E Test Configuration for @metered/llmrtc
  *
+ * Fully self-contained: starts both backend and frontend servers.
  * Uses Chrome fake media flags to inject pre-recorded audio/video
  * as camera and microphone input for WebRTC testing.
  */
@@ -21,7 +45,7 @@ export default defineConfig({
   globalSetup: require.resolve('./global-setup.ts'),
 
   use: {
-    baseURL: process.env.TEST_FRONTEND_URL ?? 'http://localhost:5173',
+    baseURL: process.env.TEST_FRONTEND_URL ?? FRONTEND_URL,
     trace: 'on-first-retry',
     video: 'on-first-retry',
     screenshot: 'only-on-failure',
@@ -56,13 +80,26 @@ export default defineConfig({
     },
   ],
 
-  // Web server configuration - start frontend dev server if not running
+  // Web server configuration - start both backend and frontend
+  // Backend must start first since frontend connects to it
   webServer: [
     {
+      command: 'npm run dev:backend',
+      url: `${BACKEND_URL}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60000, // Backend needs time to load wrtc and VAD model
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: serverEnv,
+    },
+    {
       command: 'npm run dev',
-      url: 'http://localhost:5173',
+      url: FRONTEND_URL,
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: serverEnv,
     },
   ],
 });
