@@ -60,9 +60,9 @@ export class AnthropicLLMProvider implements LLMProvider {
       top_p: request.config?.topP
     });
 
-    const fullText = response.content
+    const fullText = (response.content ?? [])
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
+      .map((block) => block.text ?? '')
       .join('');
 
     return { fullText, raw: response };
