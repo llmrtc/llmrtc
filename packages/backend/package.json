@@ -5,19 +5,30 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "bin": {
     "llmrtc-backend": "dist/cli.js"
   },
   "scripts": {
-    "dev": "node --loader ts-node/esm src/index.ts",
+    "dev": "node --loader ts-node/esm src/cli.ts",
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@metered/llmrtc-core": "file:../core",
+    "@metered/llmrtc-provider-anthropic": "file:../providers/anthropic",
+    "@metered/llmrtc-provider-bedrock": "file:../providers/bedrock",
     "@metered/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
+    "@metered/llmrtc-provider-google": "file:../providers/google",
+    "@metered/llmrtc-provider-lmstudio": "file:../providers/lmstudio",
     "@metered/llmrtc-provider-local": "file:../providers/local",
     "@metered/llmrtc-provider-openai": "file:../providers/openai",
+    "@metered/llmrtc-provider-openrouter": "file:../providers/openrouter",
     "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

@@ -1,0 +1,662 @@
+/**
+ * LLMRTCServer - Main server class for the LLMRTC backend
+ * Supports both CLI and library usage
+ */
+
+import http from 'http';
+import express from 'express';
+import cors from 'cors';
+import { WebSocketServer, WebSocket } from 'ws';
+import { v4 as uuidv4 } from 'uuid';
+
+import {
+  ConversationOrchestrator,
+  VisionAttachment,
+  ConversationProviders
+} from '@metered/llmrtc-core';
+import { AudioProcessor } from './audio-processor.js';
+import {
+  decodeToPCM,
+  feedAudioToSource,
+  feedPCMChunkToSource,
+  flushPCMFeeder,
+  createPCMFeederState,
+  PCMFeederState
+} from './mp3-decoder.js';
+import { NativePeerServer, AudioData } from './native-peer-server.js';
+import { SessionManager } from './session-manager.js';
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface LLMRTCServerConfig {
+  /** Providers - users must provide pre-built provider instances */
+  providers: ConversationProviders;
+
+  /** Server port (default: 8787) */
+  port?: number;
+
+  /** Server host (default: '127.0.0.1') */
+  host?: string;
+
+  /** System prompt for the AI assistant */
+  systemPrompt?: string;
+
+  /** Number of messages to keep in history (default: 8) */
+  historyLimit?: number;
+
+  /** Enable streaming TTS for lower latency (default: true) */
+  streamingTTS?: boolean;
+
+  /** Heartbeat timeout in ms (default: 45000) */
+  heartbeatTimeout?: number;
+
+  /** CORS options */
+  cors?: cors.CorsOptions;
+}
+
+export interface LLMRTCServerEvents {
+  listening: (info: { host: string; port: number }) => void;
+  connection: (info: { id: string }) => void;
+  disconnect: (info: { id: string }) => void;
+  error: (error: Error) => void;
+}
+
+// =============================================================================
+// LLMRTCServer Class
+// =============================================================================
+
+export class LLMRTCServer {
+  private readonly config: Required<
+    Omit<LLMRTCServerConfig, 'cors'>
+  > &
+    Pick<LLMRTCServerConfig, 'cors'>;
+  private readonly providers: ConversationProviders;
+  private readonly sessionManager: SessionManager;
+
+  private app: express.Express | null = null;
+  private server: http.Server | null = null;
+  private wss: WebSocketServer | null = null;
+  private wrtcLib: any = null;
+  private RTCAudioSource: any = null;
+
+  private eventHandlers: Partial<LLMRTCServerEvents> = {};
+
+  constructor(config: LLMRTCServerConfig) {
+    this.config = {
+      port: 8787,
+      host: '127.0.0.1',
+      systemPrompt: 'You are a helpful realtime voice assistant.',
+      historyLimit: 8,
+      streamingTTS: true,
+      heartbeatTimeout: 45000,
+      ...config
+    };
+
+    this.providers = config.providers;
+    this.sessionManager = new SessionManager();
+  }
+
+  /**
+   * Register event handlers
+   */
+  on<K extends keyof LLMRTCServerEvents>(event: K, handler: LLMRTCServerEvents[K]): this {
+    this.eventHandlers[event] = handler;
+    return this;
+  }
+
+  private emit<K extends keyof LLMRTCServerEvents>(
+    event: K,
+    ...args: Parameters<LLMRTCServerEvents[K]>
+  ): void {
+    const handler = this.eventHandlers[event];
+    if (handler) {
+      (handler as (...args: unknown[]) => void)(...args);
+    }
+  }
+
+  /**
+   * Initialize providers and start the server
+   */
+  async start(): Promise<void> {
+    // Initialize providers
+    await Promise.all([
+      this.providers.llm.init?.(),
+      this.providers.stt.init?.(),
+      this.providers.tts.init?.(),
+      this.providers.vision?.init?.()
+    ]);
+
+    // Load WebRTC library
+    await this.loadWebRTC();
+
+    // Create Express app
+    this.app = express();
+    this.app.use(cors(this.config.cors));
+    this.app.get('/health', (_req, res) => res.json({ ok: true }));
+
+    // Create HTTP server
+    this.server = http.createServer(this.app);
+
+    // Create WebSocket server
+    this.wss = new WebSocketServer({ server: this.server });
+    this.setupWebSocketServer();
+
+    // Start listening
+    return new Promise((resolve) => {
+      this.server!.listen(this.config.port, this.config.host, () => {
+        console.log(
+          `@metered/LLMRTC server listening on ${this.config.host}:${this.config.port}`
+        );
+        this.logProviderConfig();
+        this.emit('listening', { host: this.config.host, port: this.config.port });
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Stop the server
+   */
+  async stop(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.wss) {
+        this.wss.clients.forEach((client) => client.close());
+        this.wss.close();
+      }
+      if (this.server) {
+        this.server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  /**
+   * Get the Express app for adding custom routes/middleware
+   */
+  getApp(): express.Express | null {
+    return this.app;
+  }
+
+  /**
+   * Get the HTTP server
+   */
+  getServer(): http.Server | null {
+    return this.server;
+  }
+
+  /**
+   * Get the providers
+   */
+  getProviders(): ConversationProviders {
+    return this.providers;
+  }
+
+  private async loadWebRTC(): Promise<void> {
+    try {
+      const mod = await import('@roamhq/wrtc');
+      this.wrtcLib = (mod as any).default ?? mod;
+      this.RTCAudioSource = this.wrtcLib.nonstandard?.RTCAudioSource;
+      console.log('[server] WebRTC loaded (@roamhq/wrtc)');
+      console.log('[server] RTCAudioSource available:', !!this.RTCAudioSource);
+    } catch {
+      console.warn('[server] WebRTC not available, WebRTC connections will fail');
+    }
+  }
+
+  private logProviderConfig(): void {
+    console.log('='.repeat(60));
+    console.log('[server] Provider Configuration:');
+    console.log(`  LLM: ${this.providers.llm.name}`);
+    console.log(`  STT: ${this.providers.stt.name}`);
+    console.log(`  TTS: ${this.providers.tts.name}`);
+    console.log(`  Vision: ${this.providers.vision?.name ?? 'disabled'}`);
+    console.log(`  Streaming TTS: ${this.config.streamingTTS ? 'enabled' : 'disabled'}`);
+    console.log('='.repeat(60));
+  }
+
+  private setupWebSocketServer(): void {
+    if (!this.wss) return;
+
+    this.wss.on('connection', (ws) => {
+      const connId = uuidv4();
+      console.log(`[server] New connection: ${connId}`);
+      this.emit('connection', { id: connId });
+
+      // Create session
+      let session = this.sessionManager.createSession(
+        connId,
+        new ConversationOrchestrator({
+          systemPrompt: this.config.systemPrompt,
+          historyLimit: this.config.historyLimit,
+          providers: this.providers,
+          streamingTTS: this.config.streamingTTS
+        })
+      );
+
+      let peer: NativePeerServer | null = null;
+      let audioProcessor: AudioProcessor | null = null;
+      let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
+      let pendingAttachments: VisionAttachment[] = [];
+
+      // TTS playback state
+      let currentAbortController: AbortController | null = null;
+      let isTTSPlaying = false;
+
+      const cancelCurrentTTS = () => {
+        if (currentAbortController) {
+          console.log('[server] Cancelling current TTS playback');
+          currentAbortController.abort();
+          currentAbortController = null;
+        }
+        isTTSPlaying = false;
+      };
+
+      ws.send(JSON.stringify({ type: 'ready', id: connId }));
+
+      const resetHeartbeatTimeout = () => {
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+        heartbeatTimeout = setTimeout(() => {
+          console.log(`[server] Client ${connId} heartbeat timeout`);
+          ws.close();
+        }, this.config.heartbeatTimeout);
+      };
+
+      resetHeartbeatTimeout();
+
+      ws.on('message', async (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+
+          switch (msg.type) {
+            case 'ping':
+              ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
+              resetHeartbeatTimeout();
+              this.sessionManager.touchSession(session.id);
+              break;
+
+            case 'reconnect': {
+              const existingSession = this.sessionManager.getSession(msg.sessionId);
+              if (existingSession) {
+                session = existingSession;
+                console.log(`[server] Session recovered: ${msg.sessionId}`);
+                ws.send(
+                  JSON.stringify({
+                    type: 'reconnect-ack',
+                    success: true,
+                    sessionId: msg.sessionId,
+                    historyRecovered: true
+                  })
+                );
+              } else {
+                session = this.sessionManager.createSession(
+                  msg.sessionId || connId,
+                  new ConversationOrchestrator({
+                    systemPrompt: this.config.systemPrompt,
+                    historyLimit: this.config.historyLimit,
+                    providers: this.providers,
+                    streamingTTS: this.config.streamingTTS
+                  })
+                );
+                ws.send(
+                  JSON.stringify({
+                    type: 'reconnect-ack',
+                    success: true,
+                    sessionId: session.id,
+                    historyRecovered: false
+                  })
+                );
+              }
+              break;
+            }
+
+            case 'offer':
+            case 'signal':
+              console.log('[server] Received', msg.type);
+
+              if (!peer || peer.destroyed) {
+                peer = this.createPeer(ws);
+                if (peer) {
+                  audioProcessor = new AudioProcessor();
+                  this.setupPeerHandlers(
+                    peer,
+                    audioProcessor,
+                    ws,
+                    session.orchestrator,
+                    () => pendingAttachments,
+                    (atts) => {
+                      pendingAttachments = atts;
+                    },
+                    () => isTTSPlaying,
+                    (playing) => {
+                      isTTSPlaying = playing;
+                    },
+                    cancelCurrentTTS,
+                    () => currentAbortController,
+                    (ctrl) => {
+                      currentAbortController = ctrl;
+                    }
+                  );
+                }
+              }
+
+              if (peer && msg.signal) {
+                const answer = await peer.handleOffer(msg.signal);
+                ws.send(JSON.stringify({ type: 'signal', signal: answer }));
+              }
+              break;
+
+            case 'audio':
+              console.log('[server] Received audio message, size:', msg.data?.length, 'bytes');
+              const audioBuf = Buffer.from(msg.data, 'base64');
+              const attachments: VisionAttachment[] = msg.attachments ?? [];
+              await this.handleAudio(
+                session.orchestrator,
+                audioBuf,
+                ws,
+                peer,
+                attachments,
+                peer?.ttsAudioSource
+              );
+              break;
+          }
+        } catch (err) {
+          console.error('[server] Message error:', err);
+        }
+      });
+
+      ws.on('close', () => {
+        console.log(`[server] Connection closed: ${connId}`);
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+        cancelCurrentTTS();
+        peer?.destroy();
+        audioProcessor?.destroy();
+        this.emit('disconnect', { id: connId });
+      });
+
+      ws.on('error', (err) => {
+        console.error(`[server] WebSocket error for ${connId}:`, err);
+        this.emit('error', err);
+      });
+    });
+  }
+
+  private createPeer(ws: WebSocket): NativePeerServer | null {
+    if (!this.wrtcLib) {
+      ws.send(JSON.stringify({ type: 'error', message: 'WebRTC not available on server' }));
+      return null;
+    }
+
+    console.log(
+      '[server] Creating NativePeerServer with wrtcLib.nonstandard:',
+      this.wrtcLib.nonstandard ? 'exists' : 'undefined'
+    );
+
+    const peer = new NativePeerServer({
+      wrtcLib: this.wrtcLib,
+      iceServers: []
+    });
+
+    console.log('[server] Created NativePeerServer');
+    return peer;
+  }
+
+  private setupPeerHandlers(
+    peer: NativePeerServer,
+    audioProcessor: AudioProcessor,
+    ws: WebSocket,
+    orchestrator: ConversationOrchestrator,
+    getPendingAttachments: () => VisionAttachment[],
+    setPendingAttachments: (atts: VisionAttachment[]) => void,
+    getIsTTSPlaying: () => boolean,
+    setIsTTSPlaying: (playing: boolean) => void,
+    cancelCurrentTTS: () => void,
+    getAbortController: () => AbortController | null,
+    setAbortController: (ctrl: AbortController | null) => void
+  ): void {
+    peer.on('connect', () => {
+      console.log('[server] WebRTC peer connected');
+    });
+
+    peer.on('close', () => {
+      console.log('[server] WebRTC peer closed');
+      audioProcessor.destroy();
+    });
+
+    peer.on('error', (err) => {
+      console.error('[server] Peer error:', err);
+      audioProcessor.destroy();
+    });
+
+    peer.on('track', async (track: MediaStreamTrack) => {
+      console.log('[server] Received track:', track.kind);
+
+      if (track.kind === 'audio') {
+        try {
+          await audioProcessor.initVAD();
+        } catch (err) {
+          console.error('[server] Failed to initialize VAD:', err);
+        }
+
+        audioProcessor.on('speechStart', () => {
+          console.log('[server] VAD detected speech start');
+          if (getIsTTSPlaying()) {
+            console.log('[server] User interrupted TTS - cancelling playback');
+            cancelCurrentTTS();
+            this.sendBoth({ type: 'tts-cancelled' }, ws, peer);
+          }
+          this.sendBoth({ type: 'speech-start' }, ws, peer);
+        });
+
+        audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
+          console.log('[server] VAD detected speech end, processing', pcmBuffer.length, 'bytes');
+          this.sendBoth({ type: 'speech-end' }, ws, peer);
+
+          if (pcmBuffer.length > 0) {
+            cancelCurrentTTS();
+
+            const abortController = new AbortController();
+            setAbortController(abortController);
+            const signal = abortController.signal;
+
+            const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
+            console.log('[server] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
+
+            await this.handleAudio(
+              orchestrator,
+              wavBuffer,
+              ws,
+              peer,
+              getPendingAttachments(),
+              peer.ttsAudioSource,
+              {
+                signal,
+                onTTSStart: () => setIsTTSPlaying(true),
+                onTTSEnd: () => {
+                  setIsTTSPlaying(false);
+                  setAbortController(null);
+                }
+              }
+            );
+            setPendingAttachments([]);
+          }
+        });
+      }
+    });
+
+    peer.on('audioData', async (data: AudioData) => {
+      await audioProcessor.processPCMData(data);
+    });
+
+    peer.on('data', async (data: string) => {
+      try {
+        const msg = JSON.parse(data);
+
+        switch (msg.type) {
+          case 'attachments':
+            setPendingAttachments(msg.attachments ?? []);
+            console.log('[server] Received attachments:', getPendingAttachments().length);
+            break;
+
+          default:
+            console.log('[server] Unknown data channel message:', msg.type);
+        }
+      } catch (err) {
+        console.error('[server] Peer data error:', err);
+      }
+    });
+  }
+
+  private async handleAudio(
+    orchestrator: ConversationOrchestrator,
+    audio: Buffer,
+    ws: WebSocket,
+    peer: NativePeerServer | null,
+    attachments: VisionAttachment[],
+    ttsAudioSource?: any,
+    options?: {
+      signal?: AbortSignal;
+      onTTSStart?: () => void;
+      onTTSEnd?: () => void;
+    }
+  ): Promise<void> {
+    const { signal, onTTSStart, onTTSEnd } = options ?? {};
+
+    console.log('[server] handleAudio - processing', audio.length, 'bytes');
+
+    let pcmFeederState: PCMFeederState | null = null;
+    let ttsStarted = false;
+
+    try {
+      for await (const item of orchestrator.runTurnStream(audio, attachments)) {
+        if (signal?.aborted) {
+          console.log('[server] Response generation cancelled by user interruption');
+          if (pcmFeederState) {
+            pcmFeederState.aborted = true;
+          }
+          break;
+        }
+
+        console.log('[server] orchestrator yielded:', Object.keys(item));
+
+        if ('isFinal' in item) {
+          this.sendBoth({ type: 'transcript', text: item.text, isFinal: item.isFinal }, ws, peer);
+        } else if ('done' in item && 'content' in item) {
+          this.sendBoth({ type: 'llm-chunk', content: item.content, done: item.done }, ws, peer);
+        } else if ('fullText' in item) {
+          this.sendBoth({ type: 'llm', text: item.fullText }, ws, peer);
+        } else if ('type' in item) {
+          switch (item.type) {
+            case 'tts-start':
+              if (!ttsStarted) {
+                ttsStarted = true;
+                onTTSStart?.();
+                this.sendBoth({ type: 'tts-start' }, ws, peer);
+                if (ttsAudioSource && this.RTCAudioSource) {
+                  pcmFeederState = createPCMFeederState();
+                }
+              }
+              break;
+
+            case 'tts-chunk':
+              console.log(
+                `[server] TTS chunk: ${item.audio.length} bytes, format=${item.format}, sampleRate=${item.sampleRate}`
+              );
+              if (ttsAudioSource && this.RTCAudioSource && pcmFeederState) {
+                await feedPCMChunkToSource(item.audio, ttsAudioSource, pcmFeederState, {
+                  inputSampleRate: item.sampleRate ?? 24000,
+                  signal
+                });
+              } else {
+                this.sendBoth(
+                  {
+                    type: 'tts-chunk',
+                    format: item.format,
+                    sampleRate: item.sampleRate,
+                    data: item.audio.toString('base64')
+                  },
+                  ws,
+                  peer
+                );
+              }
+              break;
+
+            case 'tts-complete':
+              if (ttsAudioSource && pcmFeederState) {
+                await flushPCMFeeder(ttsAudioSource, pcmFeederState);
+              }
+              this.sendBoth({ type: 'tts-complete' }, ws, peer);
+              onTTSEnd?.();
+              ttsStarted = false;
+              pcmFeederState = null;
+              break;
+          }
+        } else if ('audio' in item) {
+          if (ttsAudioSource && this.RTCAudioSource) {
+            console.log('[server] Decoding TTS audio for WebRTC playback, format:', item.format);
+            try {
+              const pcmBuffer = await decodeToPCM(item.audio, item.format);
+              console.log('[server] Decoded to PCM:', pcmBuffer.length, 'bytes');
+
+              if (!ttsStarted) {
+                onTTSStart?.();
+                this.sendBoth({ type: 'tts-start' }, ws, peer);
+                ttsStarted = true;
+              }
+
+              const completed = await feedAudioToSource(pcmBuffer, ttsAudioSource, {
+                signal,
+                onComplete: () => {
+                  this.sendBoth({ type: 'tts-complete' }, ws, peer);
+                }
+              });
+
+              if (!completed) {
+                console.log('[server] TTS playback was interrupted');
+                this.sendBoth({ type: 'tts-cancelled' }, ws, peer);
+              }
+
+              onTTSEnd?.();
+              ttsStarted = false;
+            } catch (decodeErr) {
+              console.error('[server] Failed to decode TTS audio:', decodeErr);
+              this.sendBoth(
+                {
+                  type: 'tts',
+                  format: item.format,
+                  data: item.audio.toString('base64')
+                },
+                ws,
+                peer
+              );
+            }
+          } else {
+            this.sendBoth(
+              {
+                type: 'tts',
+                format: item.format,
+                data: item.audio.toString('base64')
+              },
+              ws,
+              peer
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[server] handleAudio error:', err);
+      this.sendBoth({ type: 'error', message: (err as Error).message }, ws, peer);
+    }
+  }
+
+  private sendBoth(payload: unknown, ws: WebSocket, peer: NativePeerServer | null): void {
+    const data = JSON.stringify(payload);
+    if (ws.readyState === ws.OPEN) ws.send(data);
+    if (peer?.connected) peer.send(data);
+  }
+}

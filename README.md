@@ -68,40 +68,69 @@ A TypeScript SDK for building real-time voice and vision AI applications. Combin
 ### Installation
 
 ```bash
-# Core packages
-npm install @metered/llmrtc-core @metered/llmrtc-backend @metered/llmrtc-web-client
+# Backend (includes all providers - no separate provider installs needed)
+npm install @metered/llmrtc-backend
 
-# Choose your providers
+# Web client for browser apps
+npm install @metered/llmrtc-web-client
+
+# Or install individual packages if needed
+npm install @metered/llmrtc-core
 npm install @metered/llmrtc-provider-openai @metered/llmrtc-provider-elevenlabs
 ```
 
 ### Backend Setup
+
+**Option 1: Library Mode (Recommended)**
+
+```typescript
+// All providers are re-exported from @metered/llmrtc-backend
+import {
+  LLMRTCServer,
+  OpenAILLMProvider,
+  OpenAIWhisperProvider,
+  ElevenLabsTTSProvider
+} from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: {
+    llm: new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY! }),
+    stt: new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY! }),
+    tts: new ElevenLabsTTSProvider({ apiKey: process.env.ELEVENLABS_API_KEY! })
+  },
+  port: 8787,
+  systemPrompt: 'You are a helpful voice assistant.'
+});
+
+await server.start();
+```
+
+**Option 2: CLI Mode**
+
+```bash
+# Create .env file
+echo "OPENAI_API_KEY=sk-..." > .env
+echo "ELEVENLABS_API_KEY=xi-..." >> .env
+
+# Run the server
+npx llmrtc-backend
+```
+
+**Using the Orchestrator Directly (Advanced)**
 
 ```typescript
 import { ConversationOrchestrator } from '@metered/llmrtc-core';
 import { OpenAILLMProvider, OpenAIWhisperProvider } from '@metered/llmrtc-provider-openai';
 import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
 
-// Configure providers
-const providers = {
-  llm: new OpenAILLMProvider({
-    apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-4o-mini'
-  }),
-  stt: new OpenAIWhisperProvider({
-    apiKey: process.env.OPENAI_API_KEY
-  }),
-  tts: new ElevenLabsTTSProvider({
-    apiKey: process.env.ELEVENLABS_API_KEY,
-    voiceId: '21m00Tcm4TlvDq8ikWAM'
-  })
-};
-
-// Create orchestrator
 const orchestrator = new ConversationOrchestrator({
   systemPrompt: 'You are a helpful voice assistant.',
   historyLimit: 8,
-  providers
+  providers: {
+    llm: new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY! }),
+    stt: new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY! }),
+    tts: new ElevenLabsTTSProvider({ apiKey: process.env.ELEVENLABS_API_KEY! })
+  }
 });
 
 // Process a turn (audio -> transcript -> response -> speech)
@@ -456,9 +485,106 @@ const vision = new LlavaVisionProvider({
 
 ## Backend Server
 
-The backend package includes a ready-to-use WebRTC signaling server with VAD.
+The backend package can be used in two ways:
+1. **CLI Mode** - Run directly with `npx llmrtc-backend` using environment variables
+2. **Library Mode** - Import and configure programmatically with `LLMRTCServer`
 
-### Environment Variables
+### CLI Usage
+
+```bash
+# Install
+npm install @metered/llmrtc-backend
+
+# Configure with .env file
+echo "OPENAI_API_KEY=sk-..." > .env
+echo "ELEVENLABS_API_KEY=xi-..." >> .env
+
+# Run
+npx llmrtc-backend
+```
+
+### Library Usage
+
+```typescript
+// All providers are re-exported from @metered/llmrtc-backend
+import {
+  LLMRTCServer,
+  OpenAILLMProvider,
+  OpenAIWhisperProvider,
+  ElevenLabsTTSProvider
+} from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: {
+    llm: new OpenAILLMProvider({ apiKey: 'sk-...' }),
+    stt: new OpenAIWhisperProvider({ apiKey: 'sk-...' }),
+    tts: new ElevenLabsTTSProvider({ apiKey: '...' })
+  },
+  port: 3000,
+  systemPrompt: 'You are a helpful assistant.'
+});
+
+await server.start();
+console.log('Server running on port 3000');
+
+// Graceful shutdown
+process.on('SIGTERM', () => server.stop());
+```
+
+### Library Usage with Events
+
+```typescript
+import {
+  LLMRTCServer,
+  AnthropicLLMProvider,
+  FasterWhisperProvider,
+  OpenAITTSProvider
+} from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: {
+    llm: new AnthropicLLMProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+      model: 'claude-sonnet-4-5-20250929'
+    }),
+    stt: new FasterWhisperProvider({
+      baseUrl: 'http://localhost:9000'
+    }),
+    tts: new OpenAITTSProvider({
+      apiKey: process.env.OPENAI_API_KEY!,
+      voice: 'nova'
+    })
+  },
+  streamingTTS: true
+});
+
+// Listen to events
+server.on('listening', ({ host, port }) => console.log(`Listening on ${host}:${port}`));
+server.on('connection', ({ id }) => console.log(`Client connected: ${id}`));
+server.on('disconnect', ({ id }) => console.log(`Client disconnected: ${id}`));
+server.on('error', (err) => console.error('Server error:', err));
+
+// Add custom routes to the internal Express app
+const app = server.getApp();
+app?.get('/api/status', (req, res) => res.json({ status: 'ok' }));
+
+await server.start();
+```
+
+### LLMRTCServer Config Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `providers` | `ConversationProviders` | *required* | Pre-built provider instances (llm, stt, tts, vision?) |
+| `port` | `number` | `8787` | Server port |
+| `host` | `string` | `'127.0.0.1'` | Server host |
+| `systemPrompt` | `string` | `'You are a helpful...'` | System prompt for the AI |
+| `historyLimit` | `number` | `8` | Number of messages to keep in context |
+| `streamingTTS` | `boolean` | `true` | Enable streaming TTS for lower latency |
+| `heartbeatTimeout` | `number` | `45000` | Connection heartbeat timeout (ms) |
+| `cors` | `CorsOptions` | `undefined` | CORS configuration |
+
+### Environment Variables (CLI Mode)
 
 ```bash
 # Provider selection (optional - auto-detects based on available API keys)
@@ -487,6 +613,8 @@ OPENAI_TTS_VOICE=nova
 # Server config
 PORT=8787
 HOST=127.0.0.1
+SYSTEM_PROMPT=You are a helpful assistant.
+STREAMING_TTS=true
 
 # Local providers
 LOCAL_ONLY=true                           # Use local providers only
@@ -502,39 +630,15 @@ Anthropic → Google → Bedrock → OpenRouter → OpenAI (default)
 ### Running the Backend
 
 ```bash
-# Development
+# Development (monorepo)
 npm run dev:backend
 
-# Production
+# Production CLI
 npm run build
-node packages/backend/dist/index.js
-```
+npx llmrtc-backend
 
-### Custom Backend Configuration
-
-```typescript
-import express from 'express';
-import { WebSocketServer } from 'ws';
-import { ConversationOrchestrator } from '@metered/llmrtc-core';
-import { NativePeerServer } from '@metered/llmrtc-backend';
-
-const app = express();
-const server = app.listen(8787);
-const wss = new WebSocketServer({ server });
-
-wss.on('connection', (ws) => {
-  const orchestrator = new ConversationOrchestrator({
-    systemPrompt: 'Custom system prompt',
-    providers: {
-      llm: yourLLMProvider,
-      stt: yourSTTProvider,
-      tts: yourTTSProvider
-    }
-  });
-
-  // Handle WebRTC signaling and audio processing
-  // See packages/backend/src/index.ts for full implementation
-});
+# Or direct execution
+node packages/backend/dist/cli.js
 ```
 
 ---
@@ -666,11 +770,15 @@ npm run build
 ### Running Examples
 
 ```bash
-# Start backend
+# Start backend (development mode)
 npm run dev:backend
 
 # Start frontend (Vite demo)
 npm run dev
+
+# Or use CLI after building
+npm run build
+npx llmrtc-backend
 ```
 
 ### Scripts

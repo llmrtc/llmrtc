@@ -41,13 +41,54 @@ Goal: Let app devs plug in their preferred LLM/STT/TTS/vision providers, transpo
 - `Developer.md`: (this doc)
 
 ## Backend (packages/backend)
-- Entry: `src/index.ts`.
-- Key modules:
-  - `native-peer-server.ts`: Wraps RTCPeerConnection for server-side WebRTC using @roamhq/wrtc. Manages RTCAudioSink (receive audio) and RTCAudioSource (send TTS).
-  - `audio-processor.ts`: Silero VAD (via avr-vad) for speech detection. Receives 48kHz PCM from RTCAudioSink, detects speech boundaries, emits speech start/end events with buffered audio.
-  - `session-manager.ts`: Maintains session state for reconnection support. Sessions preserved for 30 minutes (configurable) to allow clients to reconnect and resume conversation history.
-  - `mp3-decoder.ts`: Decodes MP3 TTS output to PCM for streaming via RTCAudioSource.
-- Behaviour:
+The backend supports two usage modes:
+1. **CLI Mode**: `npx llmrtc-backend` (uses environment variables)
+2. **Library Mode**: Import `LLMRTCServer` class and configure programmatically
+
+### File Structure
+- `src/index.ts`: Public API exports (LLMRTCServer, all providers, core types)
+- `src/server.ts`: Main `LLMRTCServer` class
+- `src/cli.ts`: CLI entry point (loads .env, creates server from env vars)
+- `src/providers.ts`: Provider factory functions for CLI usage
+- `src/native-peer-server.ts`: Wraps RTCPeerConnection for server-side WebRTC using @roamhq/wrtc
+- `src/audio-processor.ts`: Silero VAD (via avr-vad) for speech detection
+- `src/session-manager.ts`: Maintains session state for reconnection support
+- `src/mp3-decoder.ts`: Decodes MP3 TTS output to PCM for streaming via RTCAudioSource
+
+### LLMRTCServer Class
+```typescript
+import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, ElevenLabsTTSProvider } from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: {
+    llm: new OpenAILLMProvider({ apiKey: 'sk-...' }),
+    stt: new OpenAIWhisperProvider({ apiKey: 'sk-...' }),
+    tts: new ElevenLabsTTSProvider({ apiKey: '...' })
+  },
+  port: 8787,
+  host: '127.0.0.1',
+  systemPrompt: 'You are a helpful assistant.',
+  historyLimit: 8,
+  streamingTTS: true
+});
+
+await server.start();
+
+// Events
+server.on('listening', ({ host, port }) => console.log(`Listening on ${host}:${port}`));
+server.on('connection', ({ id }) => console.log(`Client connected: ${id}`));
+server.on('disconnect', ({ id }) => console.log(`Client disconnected: ${id}`));
+server.on('error', (err) => console.error(err));
+
+// Access internals
+const app = server.getApp();  // Express app for custom routes
+const httpServer = server.getServer();
+
+// Graceful shutdown
+await server.stop();
+```
+
+### Behaviour:
   - Starts HTTP server with `/health` endpoint and WS signalling.
   - On WS connection: creates per-connection `ConversationOrchestrator`, sets up NativePeerServer with RTCAudioSink/Source.
   - Audio flow: RTCAudioSink → AudioProcessor (VAD) → on speechEnd → orchestrator.runTurnStream → TTS audio → RTCAudioSource.
@@ -128,8 +169,9 @@ Goal: Let app devs plug in their preferred LLM/STT/TTS/vision providers, transpo
 - Fixtures: `test-audio.wav` (speech with silence gaps for VAD), `test-video.y4m`.
 
 ## Running (dev)
-- Backend: `npm run dev:backend` (uses ts-node ESM). Requires `@roamhq/wrtc` for WebRTC.
+- Backend: `npm run dev:backend` (uses ts-node ESM with cli.ts). Requires `@roamhq/wrtc` for WebRTC.
 - Frontend demo: `npm run dev` (runs Vite demo). Open http://localhost:5173 and set signalling URL (default ws://localhost:8787).
+- CLI: After building, run `npx llmrtc-backend` or `node packages/backend/dist/cli.js`.
 
 ## Building
 - `npm run typecheck` (project refs build)
