@@ -53,7 +53,22 @@ Goal: Let app devs plug in their preferred LLM/STT/TTS/vision providers, transpo
   - Audio flow: RTCAudioSink → AudioProcessor (VAD) → on speechEnd → orchestrator.runTurnStream → TTS audio → RTCAudioSource.
   - TTS barge-in: When user starts speaking during TTS playback, current TTS is cancelled immediately.
   - Heartbeat: 15s interval, 45s timeout for connection health monitoring.
-- Config env vars: `OPENAI_API_KEY`, `OPENAI_BASE_URL?`, `ELEVENLABS_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `OPENROUTER_API_KEY`, `LOCAL_ONLY=true`, `FASTER_WHISPER_URL?`, `PIPER_URL?`, `PORT`, `HOST`.
+- Provider selection env vars:
+  - `LLM_PROVIDER`: openai (default), anthropic, google, bedrock, openrouter, lmstudio, ollama
+  - `TTS_PROVIDER`: elevenlabs (default), openai, piper
+  - `STT_PROVIDER`: openai (default), faster-whisper
+- Provider API keys:
+  - `OPENAI_API_KEY`, `OPENAI_BASE_URL?`, `OPENAI_MODEL?`, `OPENAI_TTS_VOICE?`
+  - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL?`
+  - `GOOGLE_API_KEY`, `GOOGLE_MODEL?`
+  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION?`, `BEDROCK_MODEL?`
+  - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL?`
+  - `ELEVENLABS_API_KEY`
+  - `LMSTUDIO_BASE_URL?`, `LMSTUDIO_MODEL?`
+  - `OLLAMA_BASE_URL?`, `OLLAMA_MODEL?`
+  - `FASTER_WHISPER_URL?`, `PIPER_URL?`
+- Other env vars: `LOCAL_ONLY=true`, `PORT`, `HOST`
+- Auto-detection: If no `LLM_PROVIDER` is set, the backend auto-detects based on available API keys (priority: Anthropic → Google → Bedrock → OpenRouter → OpenAI).
 - WebRTC: Requires @roamhq/wrtc for Node.js WebRTC support. If not available, server will warn and WebRTC connections will fail.
 
 ## Core (packages/core)

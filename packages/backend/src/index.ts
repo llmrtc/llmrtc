@@ -20,7 +20,8 @@ import { NativePeerServer, AudioData } from './native-peer-server.js';
 import { SessionManager } from './session-manager.js';
 import {
   OpenAILLMProvider,
-  OpenAIWhisperProvider
+  OpenAIWhisperProvider,
+  OpenAITTSProvider
 } from '@metered/llmrtc-provider-openai';
 import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
 import {
@@ -29,19 +30,218 @@ import {
   FasterWhisperProvider,
   PiperTTSProvider
 } from '@metered/llmrtc-provider-local';
+import { AnthropicLLMProvider } from '@metered/llmrtc-provider-anthropic';
+import { GeminiLLMProvider } from '@metered/llmrtc-provider-google';
+import { BedrockLLMProvider } from '@metered/llmrtc-provider-bedrock';
+import { OpenRouterLLMProvider } from '@metered/llmrtc-provider-openrouter';
+import { LMStudioLLMProvider } from '@metered/llmrtc-provider-lmstudio';
+import type { LLMProvider, STTProvider, TTSProvider } from '@metered/llmrtc-core';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8787;
 const HOST = process.env.HOST ?? '127.0.0.1';
 
 const HEARTBEAT_TIMEOUT_MS = 45000; // 45 seconds (3 missed heartbeats)
 
-// eslint-disable-next-line no-console
-console.log(
-  '[backend] Env loaded - OPENAI_API_KEY:',
-  process.env.OPENAI_API_KEY ? 'set' : 'NOT SET',
-  'ELEVENLABS_API_KEY:',
-  process.env.ELEVENLABS_API_KEY ? 'set' : 'NOT SET'
-);
+// =============================================================================
+// Provider Selection
+// =============================================================================
+
+/**
+ * LLM Provider selection priority:
+ * 1. LLM_PROVIDER env var (explicit selection)
+ * 2. LOCAL_ONLY=true → ollama
+ * 3. Auto-detect based on available API keys
+ */
+function createLLMProvider(): LLMProvider {
+  const explicit = process.env.LLM_PROVIDER?.toLowerCase();
+
+  if (explicit) {
+    switch (explicit) {
+      case 'anthropic':
+        return new AnthropicLLMProvider({
+          apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+          model: process.env.ANTHROPIC_MODEL
+        });
+      case 'google':
+      case 'gemini':
+        return new GeminiLLMProvider({
+          apiKey: process.env.GOOGLE_API_KEY ?? '',
+          model: process.env.GOOGLE_MODEL
+        });
+      case 'bedrock':
+        return new BedrockLLMProvider({
+          region: process.env.AWS_REGION ?? 'us-east-1',
+          credentials: process.env.AWS_ACCESS_KEY_ID ? {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? ''
+          } : undefined,
+          model: process.env.BEDROCK_MODEL
+        });
+      case 'openrouter':
+        return new OpenRouterLLMProvider({
+          apiKey: process.env.OPENROUTER_API_KEY ?? '',
+          model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-3.5-sonnet'
+        });
+      case 'lmstudio':
+        return new LMStudioLLMProvider({
+          baseUrl: process.env.LMSTUDIO_BASE_URL,
+          model: process.env.LMSTUDIO_MODEL
+        });
+      case 'ollama':
+        return new OllamaLLMProvider({
+          baseUrl: process.env.OLLAMA_BASE_URL,
+          model: process.env.OLLAMA_MODEL
+        });
+      case 'openai':
+      default:
+        return new OpenAILLMProvider({
+          apiKey: process.env.OPENAI_API_KEY ?? '',
+          baseURL: process.env.OPENAI_BASE_URL,
+          model: process.env.OPENAI_MODEL
+        });
+    }
+  }
+
+  // LOCAL_ONLY mode
+  if (process.env.LOCAL_ONLY === 'true') {
+    return new OllamaLLMProvider({
+      baseUrl: process.env.OLLAMA_BASE_URL,
+      model: process.env.OLLAMA_MODEL
+    });
+  }
+
+  // Auto-detect based on available API keys
+  if (process.env.ANTHROPIC_API_KEY) {
+    return new AnthropicLLMProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.ANTHROPIC_MODEL
+    });
+  }
+  if (process.env.GOOGLE_API_KEY) {
+    return new GeminiLLMProvider({
+      apiKey: process.env.GOOGLE_API_KEY,
+      model: process.env.GOOGLE_MODEL
+    });
+  }
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    return new BedrockLLMProvider({
+      region: process.env.AWS_REGION ?? 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      },
+      model: process.env.BEDROCK_MODEL
+    });
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return new OpenRouterLLMProvider({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-3.5-sonnet'
+    });
+  }
+
+  // Default to OpenAI
+  return new OpenAILLMProvider({
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    baseURL: process.env.OPENAI_BASE_URL,
+    model: process.env.OPENAI_MODEL
+  });
+}
+
+/**
+ * STT Provider selection priority:
+ * 1. STT_PROVIDER env var (explicit selection)
+ * 2. LOCAL_ONLY=true → faster-whisper
+ * 3. Default to OpenAI Whisper
+ */
+function createSTTProvider(): STTProvider {
+  const explicit = process.env.STT_PROVIDER?.toLowerCase();
+
+  if (explicit === 'faster-whisper' || explicit === 'fasterwhisper') {
+    return new FasterWhisperProvider({
+      baseUrl: process.env.FASTER_WHISPER_URL
+    });
+  }
+
+  if (process.env.LOCAL_ONLY === 'true') {
+    return new FasterWhisperProvider({
+      baseUrl: process.env.FASTER_WHISPER_URL
+    });
+  }
+
+  return new OpenAIWhisperProvider({
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    baseURL: process.env.OPENAI_BASE_URL
+  });
+}
+
+/**
+ * TTS Provider selection priority:
+ * 1. TTS_PROVIDER env var (explicit selection)
+ * 2. LOCAL_ONLY=true → piper
+ * 3. Auto-detect based on available API keys
+ */
+function createTTSProvider(): TTSProvider {
+  const explicit = process.env.TTS_PROVIDER?.toLowerCase();
+
+  if (explicit) {
+    switch (explicit) {
+      case 'openai':
+        return new OpenAITTSProvider({
+          apiKey: process.env.OPENAI_API_KEY ?? '',
+          baseURL: process.env.OPENAI_BASE_URL,
+          voice: (process.env.OPENAI_TTS_VOICE as any) ?? 'nova'
+        });
+      case 'piper':
+        return new PiperTTSProvider({
+          baseUrl: process.env.PIPER_URL
+        });
+      case 'elevenlabs':
+      default:
+        return new ElevenLabsTTSProvider({
+          apiKey: process.env.ELEVENLABS_API_KEY ?? ''
+        });
+    }
+  }
+
+  if (process.env.LOCAL_ONLY === 'true') {
+    return new PiperTTSProvider({
+      baseUrl: process.env.PIPER_URL
+    });
+  }
+
+  // Auto-detect: prefer ElevenLabs if key is set, otherwise OpenAI
+  if (process.env.ELEVENLABS_API_KEY) {
+    return new ElevenLabsTTSProvider({
+      apiKey: process.env.ELEVENLABS_API_KEY
+    });
+  }
+
+  // Fall back to OpenAI TTS if no ElevenLabs key
+  return new OpenAITTSProvider({
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    baseURL: process.env.OPENAI_BASE_URL,
+    voice: (process.env.OPENAI_TTS_VOICE as any) ?? 'nova'
+  });
+}
+
+// =============================================================================
+// Initialize Providers
+// =============================================================================
+
+const llmProvider = createLLMProvider();
+const sttProvider = createSTTProvider();
+const ttsProvider = createTTSProvider();
+const visionProvider = process.env.LOCAL_ONLY === 'true' ? new LlavaVisionProvider({}) : undefined;
+
+// Log selected providers
+console.log('='.repeat(60));
+console.log('[backend] Provider Configuration:');
+console.log(`  LLM: ${llmProvider.name}`);
+console.log(`  STT: ${sttProvider.name}`);
+console.log(`  TTS: ${ttsProvider.name}`);
+console.log(`  Vision: ${visionProvider?.name ?? 'disabled'}`);
+console.log('='.repeat(60));
 
 let wrtcLib: any = null;
 let RTCAudioSource: any = null;
@@ -50,13 +250,10 @@ try {
   wrtcLib = (mod as any).default ?? mod;
   // Get nonstandard APIs for audio sink/source
   RTCAudioSource = wrtcLib.nonstandard?.RTCAudioSource;
-  // eslint-disable-next-line no-console
   console.log('[backend] wrtc loaded (@roamhq/wrtc), WebRTC enabled');
-  // eslint-disable-next-line no-console
   console.log('[backend] RTCAudioSource available:', !!RTCAudioSource);
 } catch (err) {
-  // eslint-disable-next-line no-console
-  console.warn('[backend] wrtc not available, falling back to WebSocket-only');
+  console.warn('[backend] wrtc not available, WebRTC connections will fail');
 }
 
 const app = express();
@@ -69,25 +266,10 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const sharedProviders: ConversationProviders = {
-  llm:
-    process.env.LOCAL_ONLY === 'true'
-      ? new OllamaLLMProvider({})
-      : new OpenAILLMProvider({
-          apiKey: process.env.OPENAI_API_KEY ?? '',
-          baseURL: process.env.OPENAI_BASE_URL
-        }),
-  stt:
-    process.env.LOCAL_ONLY === 'true'
-      ? new FasterWhisperProvider({ baseUrl: process.env.FASTER_WHISPER_URL })
-      : new OpenAIWhisperProvider({
-          apiKey: process.env.OPENAI_API_KEY ?? '',
-          baseURL: process.env.OPENAI_BASE_URL
-        }),
-  tts:
-    process.env.LOCAL_ONLY === 'true'
-      ? new PiperTTSProvider({ baseUrl: process.env.PIPER_URL })
-      : new ElevenLabsTTSProvider({ apiKey: process.env.ELEVENLABS_API_KEY ?? '' }),
-  vision: process.env.LOCAL_ONLY === 'true' ? new LlavaVisionProvider({}) : undefined
+  llm: llmProvider,
+  stt: sttProvider,
+  tts: ttsProvider,
+  vision: visionProvider
 };
 
 // Initialize shared provider clients once

@@ -461,24 +461,43 @@ The backend package includes a ready-to-use WebRTC signaling server with VAD.
 ### Environment Variables
 
 ```bash
-# Required for cloud providers
+# Provider selection (optional - auto-detects based on available API keys)
+LLM_PROVIDER=openai        # openai, anthropic, google, bedrock, openrouter, lmstudio, ollama
+TTS_PROVIDER=elevenlabs    # elevenlabs, openai, piper
+STT_PROVIDER=openai        # openai, faster-whisper
+
+# API Keys (set the ones for your chosen providers)
 OPENAI_API_KEY=sk-...
 ELEVENLABS_API_KEY=xi-...
-
-# Optional
 ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AIza...
+OPENROUTER_API_KEY=sk-or-...
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
+
+# Model overrides (optional)
+OPENAI_MODEL=gpt-4o-mini
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+GOOGLE_MODEL=gemini-2.5-flash
+BEDROCK_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0
+OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+OPENAI_TTS_VOICE=nova
 
 # Server config
 PORT=8787
 HOST=127.0.0.1
 
-# For local-only mode
-LOCAL_ONLY=true
+# Local providers
+LOCAL_ONLY=true                           # Use local providers only
+OLLAMA_BASE_URL=http://localhost:11434
+LMSTUDIO_BASE_URL=http://localhost:1234/v1
 FASTER_WHISPER_URL=http://localhost:8000
 PIPER_URL=http://localhost:5000
 ```
+
+**Auto-detection:** If `LLM_PROVIDER` is not set, the backend auto-detects based on available API keys:
+Anthropic → Google → Bedrock → OpenRouter → OpenAI (default)
 
 ### Running the Backend
 
@@ -523,6 +542,10 @@ wss.on('connection', (ws) => {
 ## Advanced Usage
 
 ### Dynamic Provider Selection
+
+The built-in backend (`packages/backend`) automatically selects providers based on environment variables. Set `LLM_PROVIDER`, `TTS_PROVIDER`, or `STT_PROVIDER` to choose explicitly, or just set the API keys and let auto-detection pick the right provider.
+
+For custom backends, you can implement provider selection like this:
 
 ```typescript
 function createLLMProvider(): LLMProvider {
