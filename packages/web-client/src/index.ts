@@ -6,10 +6,12 @@ import {
   ConnectionState,
   ReconnectionConfig
 } from './connection-state.js';
+import { PROTOCOL_VERSION } from '@metered/llmrtc-core';
 
 // Re-export for convenience
 export { ConnectionState } from './connection-state.js';
 export { NativePeer } from './native-peer.js';
+export { PROTOCOL_VERSION } from '@metered/llmrtc-core';
 
 export interface WebClientConfig {
   signallingUrl: string;
@@ -193,7 +195,16 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           if (msg.type === 'ready') {
             clearTimeout(timeout);
             this.sessionId = msg.id;
-            console.log('[web-client] Session ID:', this.sessionId);
+
+            // Check protocol version
+            const serverVersion = msg.protocolVersion ?? 0;
+            if (serverVersion !== PROTOCOL_VERSION) {
+              console.warn(
+                `[web-client] Protocol version mismatch: client=${PROTOCOL_VERSION}, server=${serverVersion}`
+              );
+            }
+
+            console.log('[web-client] Session ID:', this.sessionId, 'Protocol version:', serverVersion);
             this.ws?.removeEventListener('message', handler);
             resolve();
           }
@@ -372,7 +383,7 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           break;
         case 'error':
           this.emit('error', {
-            code: 'SERVER_ERROR',
+            code: msg.code ?? 'SERVER_ERROR',
             message: msg.message ?? 'Unknown error',
             recoverable: false
           });

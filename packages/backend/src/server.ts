@@ -12,7 +12,11 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   ConversationOrchestrator,
   VisionAttachment,
-  ConversationProviders
+  ConversationProviders,
+  PROTOCOL_VERSION,
+  createReadyMessage,
+  createErrorMessage,
+  type ErrorCode
 } from '@metered/llmrtc-core';
 import { AudioProcessor } from './audio-processor.js';
 import {
@@ -257,7 +261,7 @@ export class LLMRTCServer {
         isTTSPlaying = false;
       };
 
-      ws.send(JSON.stringify({ type: 'ready', id: connId }));
+      ws.send(JSON.stringify(createReadyMessage(connId)));
 
       const resetHeartbeatTimeout = () => {
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
@@ -388,7 +392,7 @@ export class LLMRTCServer {
 
   private createPeer(ws: WebSocket): NativePeerServer | null {
     if (!this.wrtcLib) {
-      ws.send(JSON.stringify({ type: 'error', message: 'WebRTC not available on server' }));
+      ws.send(JSON.stringify(createErrorMessage('WEBRTC_UNAVAILABLE', 'WebRTC not available on server')));
       return null;
     }
 
@@ -650,7 +654,7 @@ export class LLMRTCServer {
       }
     } catch (err) {
       console.error('[server] handleAudio error:', err);
-      this.sendBoth({ type: 'error', message: (err as Error).message }, ws, peer);
+      this.sendBoth(createErrorMessage('AUDIO_PROCESSING_ERROR', (err as Error).message), ws, peer);
     }
   }
 
