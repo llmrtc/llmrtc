@@ -16,7 +16,16 @@ import {
   PROTOCOL_VERSION,
   createReadyMessage,
   createErrorMessage,
-  type ErrorCode
+  type ErrorCode,
+  type OrchestratorHooks,
+  type ServerHooks,
+  type MetricsAdapter,
+  type ErrorContext,
+  MetricNames,
+  NoopMetrics,
+  createTimingInfo,
+  createErrorContext,
+  callHookSafe
 } from '@metered/llmrtc-core';
 import { AudioProcessor } from './audio-processor.js';
 import {
@@ -58,6 +67,24 @@ export interface LLMRTCServerConfig {
 
   /** CORS options */
   cors?: cors.CorsOptions;
+
+  /**
+   * Hooks for server-level events (connection, disconnect, speech, errors)
+   * These hooks also include orchestrator hooks which are passed to each session.
+   */
+  hooks?: ServerHooks & OrchestratorHooks;
+
+  /**
+   * Metrics adapter for emitting timing and counter metrics
+   * Use ConsoleMetrics for debugging or implement MetricsAdapter for Prometheus, etc.
+   */
+  metrics?: MetricsAdapter;
+
+  /**
+   * Custom sentence boundary splitter for streaming TTS
+   * Use this to customize how text is split into sentences for TTS streaming.
+   */
+  sentenceChunker?: (text: string) => string[];
 }
 
 export interface LLMRTCServerEvents {
@@ -73,11 +100,13 @@ export interface LLMRTCServerEvents {
 
 export class LLMRTCServer {
   private readonly config: Required<
-    Omit<LLMRTCServerConfig, 'cors'>
+    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker'>
   > &
-    Pick<LLMRTCServerConfig, 'cors'>;
+    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker'>;
   private readonly providers: ConversationProviders;
   private readonly sessionManager: SessionManager;
+  private readonly hooks: ServerHooks & OrchestratorHooks;
+  private readonly metrics: MetricsAdapter;
 
   private app: express.Express | null = null;
   private server: http.Server | null = null;
@@ -100,6 +129,8 @@ export class LLMRTCServer {
 
     this.providers = config.providers;
     this.sessionManager = new SessionManager();
+    this.hooks = config.hooks ?? {};
+    this.metrics = config.metrics ?? new NoopMetrics();
   }
 
   /**
@@ -227,19 +258,47 @@ export class LLMRTCServer {
   private setupWebSocketServer(): void {
     if (!this.wss) return;
 
-    this.wss.on('connection', (ws) => {
+    this.wss.on('connection', async (ws) => {
       const connId = uuidv4();
+      const connectionStartTime = Date.now();
       console.log(`[server] New connection: ${connId}`);
+
+      // Update active connections gauge
+      this.metrics.gauge(MetricNames.CONNECTIONS, this.wss!.clients.size);
+
+      // Call onConnection hook
+      await callHookSafe(this.hooks.onConnection, connId, connId);
       this.emit('connection', { id: connId });
 
-      // Create session
+      // Extract orchestrator hooks from combined hooks
+      const orchestratorHooks: OrchestratorHooks = {
+        onTurnStart: this.hooks.onTurnStart,
+        onTurnEnd: this.hooks.onTurnEnd,
+        onSTTStart: this.hooks.onSTTStart,
+        onSTTEnd: this.hooks.onSTTEnd,
+        onSTTError: this.hooks.onSTTError,
+        onLLMStart: this.hooks.onLLMStart,
+        onLLMChunk: this.hooks.onLLMChunk,
+        onLLMEnd: this.hooks.onLLMEnd,
+        onLLMError: this.hooks.onLLMError,
+        onTTSStart: this.hooks.onTTSStart,
+        onTTSChunk: this.hooks.onTTSChunk,
+        onTTSEnd: this.hooks.onTTSEnd,
+        onTTSError: this.hooks.onTTSError
+      };
+
+      // Create session with hooks and metrics
       let session = this.sessionManager.createSession(
         connId,
         new ConversationOrchestrator({
           systemPrompt: this.config.systemPrompt,
           historyLimit: this.config.historyLimit,
           providers: this.providers,
-          streamingTTS: this.config.streamingTTS
+          streamingTTS: this.config.streamingTTS,
+          sessionId: connId,
+          hooks: orchestratorHooks,
+          metrics: this.metrics,
+          sentenceChunker: this.config.sentenceChunker
         })
       );
 
@@ -332,6 +391,7 @@ export class LLMRTCServer {
                     audioProcessor,
                     ws,
                     session.orchestrator,
+                    connId,
                     () => pendingAttachments,
                     (atts) => {
                       pendingAttachments = atts;
@@ -374,17 +434,34 @@ export class LLMRTCServer {
         }
       });
 
-      ws.on('close', () => {
+      ws.on('close', async () => {
         console.log(`[server] Connection closed: ${connId}`);
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
         cancelCurrentTTS();
         peer?.destroy();
         audioProcessor?.destroy();
+
+        // Update active connections gauge
+        this.metrics.gauge(MetricNames.CONNECTIONS, this.wss!.clients.size);
+
+        // Call onDisconnect hook with session timing
+        const sessionTiming = createTimingInfo(connectionStartTime, Date.now());
+        this.metrics.timing(MetricNames.SESSION_DURATION, sessionTiming.durationMs);
+        await callHookSafe(this.hooks.onDisconnect, connId, sessionTiming);
+
         this.emit('disconnect', { id: connId });
       });
 
-      ws.on('error', (err) => {
+      ws.on('error', async (err) => {
         console.error(`[server] WebSocket error for ${connId}:`, err);
+
+        // Call onError hook
+        const errorContext = createErrorContext('INTERNAL_ERROR', 'server', {
+          sessionId: connId
+        });
+        this.metrics.increment(MetricNames.ERRORS, 1, { component: 'server' });
+        await callHookSafe(this.hooks.onError, err, errorContext);
+
         this.emit('error', err);
       });
     });
@@ -415,6 +492,7 @@ export class LLMRTCServer {
     audioProcessor: AudioProcessor,
     ws: WebSocket,
     orchestrator: ConversationOrchestrator,
+    sessionId: string,
     getPendingAttachments: () => VisionAttachment[],
     setPendingAttachments: (atts: VisionAttachment[]) => void,
     getIsTTSPlaying: () => boolean,
@@ -447,8 +525,15 @@ export class LLMRTCServer {
           console.error('[server] Failed to initialize VAD:', err);
         }
 
-        audioProcessor.on('speechStart', () => {
+        let speechStartTime = 0;
+
+        audioProcessor.on('speechStart', async () => {
           console.log('[server] VAD detected speech start');
+          speechStartTime = Date.now();
+
+          // Call onSpeechStart hook
+          await callHookSafe(this.hooks.onSpeechStart, sessionId, speechStartTime);
+
           if (getIsTTSPlaying()) {
             console.log('[server] User interrupted TTS - cancelling playback');
             cancelCurrentTTS();
@@ -458,7 +543,13 @@ export class LLMRTCServer {
         });
 
         audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
+          const speechEndTime = Date.now();
+          const audioDurationMs = speechEndTime - speechStartTime;
           console.log('[server] VAD detected speech end, processing', pcmBuffer.length, 'bytes');
+
+          // Call onSpeechEnd hook
+          await callHookSafe(this.hooks.onSpeechEnd, sessionId, speechEndTime, audioDurationMs);
+
           this.sendBoth({ type: 'speech-end' }, ws, peer);
 
           if (pcmBuffer.length > 0) {

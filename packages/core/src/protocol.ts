@@ -248,16 +248,37 @@ export interface SpeechEndMessage extends BaseMessage {
 
 /**
  * Error codes for structured error messages
+ *
+ * Error codes are grouped by category:
+ * - WebRTC/Connection: WEBRTC_*, CONNECTION_*, SESSION_*
+ * - Provider: STT_*, LLM_*, TTS_*
+ * - Processing: AUDIO_*, VAD_*, INVALID_*
+ * - Generic: INTERNAL_*, RATE_LIMITED
  */
 export type ErrorCode =
+  // WebRTC/Connection errors
   | 'WEBRTC_UNAVAILABLE'
-  | 'AUDIO_PROCESSING_ERROR'
-  | 'STT_ERROR'
-  | 'LLM_ERROR'
-  | 'TTS_ERROR'
-  | 'INVALID_MESSAGE'
+  | 'CONNECTION_FAILED'
   | 'SESSION_NOT_FOUND'
-  | 'INTERNAL_ERROR';
+  | 'SESSION_EXPIRED'
+
+  // Provider errors
+  | 'STT_ERROR'
+  | 'STT_TIMEOUT'
+  | 'LLM_ERROR'
+  | 'LLM_TIMEOUT'
+  | 'TTS_ERROR'
+  | 'TTS_TIMEOUT'
+
+  // Processing errors
+  | 'AUDIO_PROCESSING_ERROR'
+  | 'VAD_ERROR'
+  | 'INVALID_MESSAGE'
+  | 'INVALID_AUDIO_FORMAT'
+
+  // Generic errors
+  | 'INTERNAL_ERROR'
+  | 'RATE_LIMITED';
 
 /**
  * Error message from server

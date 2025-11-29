@@ -759,6 +759,82 @@ client.on('reconnecting', (attempt, maxAttempts) => {
 });
 ```
 
+### Hooks and Observability
+
+The SDK provides a comprehensive hooks system for observability, metrics, and extensibility:
+
+```typescript
+import {
+  LLMRTCServer,
+  createLoggingHooks,
+  ConsoleMetrics,
+  InMemoryMetrics
+} from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: { llm, stt, tts },
+
+  // Pre-built structured logging
+  hooks: {
+    ...createLoggingHooks({ level: 'info' }),
+
+    // Custom guardrail - check LLM output
+    async onLLMEnd(ctx, result, timing) {
+      if (result.fullText.includes('inappropriate')) {
+        throw new Error('Content policy violation');
+      }
+      console.log(`Turn ${ctx.turnId}: LLM took ${timing.durationMs}ms`);
+    },
+
+    // Track errors
+    onError(error, context) {
+      reportToSentry(error, {
+        component: context.component,
+        sessionId: context.sessionId,
+        errorCode: context.code
+      });
+    }
+  },
+
+  // Metrics reporting (use ConsoleMetrics for debugging)
+  metrics: new ConsoleMetrics(),
+
+  // Custom sentence chunking for streaming TTS
+  sentenceChunker: (text) => text.split(/(?<=[.!?。！？])\s*/)
+});
+```
+
+**Available Hooks:**
+
+| Hook | Description |
+|------|-------------|
+| `onConnection` | WebSocket connection established |
+| `onDisconnect` | Connection closed (includes session duration) |
+| `onSpeechStart` | VAD detected user started speaking |
+| `onSpeechEnd` | VAD detected user stopped speaking |
+| `onTurnStart` | Conversation turn started |
+| `onSTTStart/End/Error` | Speech-to-text lifecycle |
+| `onLLMStart/Chunk/End/Error` | LLM inference lifecycle |
+| `onTTSStart/Chunk/End/Error` | Text-to-speech lifecycle |
+| `onTurnEnd` | Turn completed (includes total timing) |
+| `onError` | Any error with context |
+
+**Metrics Adapters:**
+
+```typescript
+// For production: implement MetricsAdapter
+class PrometheusMetrics implements MetricsAdapter {
+  increment(name, value, tags) { /* push to prometheus */ }
+  timing(name, durationMs, tags) { /* record histogram */ }
+  gauge(name, value, tags) { /* set gauge */ }
+}
+
+// Standard metric names (all prefixed with llmrtc.):
+// - stt.duration_ms, llm.ttft_ms, llm.duration_ms
+// - tts.duration_ms, turn.duration_ms, session.duration_ms
+// - errors (counter), connections.active (gauge)
+```
+
 ---
 
 ## Development

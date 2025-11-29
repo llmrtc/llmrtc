@@ -201,7 +201,86 @@ When `streamingTTS: false` (default):
 - Add streaming TTS/STT: extend provider interfaces (`speakStream`, `transcribeStream`) and update orchestrator to handle streaming if provided.
 - Add auth: protect signalling WS with JWT; pass token in client config and validate in backend on connection.
 - Persist history: implement a history store (e.g., Redis) and modify orchestrator to hydrate/persist per session id.
-- Observability: add structured logging, metrics hooks around STT/LLM/TTS latencies, and connection lifecycle.
+- Observability: use the built-in hooks system (see below) for structured logging, metrics, and custom guardrails.
+
+## Hooks and Observability
+
+The SDK includes a comprehensive hooks system for observability and extensibility:
+
+### Key Files
+- `packages/core/src/hooks.ts` - Hook interfaces (`OrchestratorHooks`, `ServerHooks`, `TurnContext`, `TimingInfo`, `ErrorContext`)
+- `packages/core/src/metrics.ts` - Metrics adapter interface and implementations (`MetricsAdapter`, `NoopMetrics`, `ConsoleMetrics`, `InMemoryMetrics`)
+- `packages/core/src/logging-hooks.ts` - Pre-built logging hooks (`createLoggingHooks`, `createVerboseHooks`, `createErrorOnlyHooks`)
+
+### Hook Flow
+```
+Connection established → onConnection
+  └─► Speech detected → onSpeechStart
+        └─► Turn starts → onTurnStart
+              ├─► STT: onSTTStart → onSTTEnd (or onSTTError)
+              ├─► LLM: onLLMStart → onLLMChunk* → onLLMEnd (or onLLMError)
+              └─► TTS: onTTSStart → onTTSChunk* → onTTSEnd (or onTTSError)
+        └─► Turn ends → onTurnEnd
+  └─► Speech ends → onSpeechEnd
+Connection closed → onDisconnect
+```
+
+### TurnContext
+Every orchestrator hook receives a `TurnContext` with:
+- `turnId` - Unique identifier for this conversation turn (UUID)
+- `sessionId` - Optional session identifier (from config)
+- `startTime` - Timestamp when the turn started (Date.now())
+
+### TimingInfo
+Timing hooks receive a `TimingInfo` object with:
+- `startTime` - Operation start timestamp
+- `endTime` - Operation end timestamp
+- `durationMs` - Duration in milliseconds
+
+### ErrorContext
+The `onError` hook receives error context:
+- `code` - Structured error code (e.g., `'STT_ERROR'`, `'LLM_TIMEOUT'`)
+- `component` - Which component failed (`'stt'`, `'llm'`, `'tts'`, `'vad'`, `'webrtc'`, `'server'`)
+- `sessionId`, `turnId` - For correlation
+- `timestamp` - When the error occurred
+
+### Standard Metrics
+The SDK emits these metrics via `MetricsAdapter`:
+- `llmrtc.stt.duration_ms` - STT latency
+- `llmrtc.llm.ttft_ms` - Time to first LLM token
+- `llmrtc.llm.duration_ms` - Total LLM time
+- `llmrtc.tts.duration_ms` - TTS generation time
+- `llmrtc.turn.duration_ms` - Total turn time
+- `llmrtc.session.duration_ms` - Session duration
+- `llmrtc.errors` - Error counter (tagged by component)
+- `llmrtc.connections.active` - Active connection gauge
+
+### Custom Metrics Adapter
+For production metrics (Prometheus, DataDog, etc.):
+```typescript
+class PrometheusMetrics implements MetricsAdapter {
+  private histogram = new promClient.Histogram({
+    name: 'llmrtc_duration_ms',
+    help: 'Operation duration',
+    labelNames: ['operation', 'provider']
+  });
+
+  timing(name: string, durationMs: number, tags?: Record<string, string>) {
+    this.histogram.observe({ operation: name, ...tags }, durationMs);
+  }
+  // ... increment, gauge
+}
+```
+
+### Custom Sentence Chunker
+Override sentence boundary detection for streaming TTS:
+```typescript
+const server = new LLMRTCServer({
+  providers: { llm, stt, tts },
+  // Split on Japanese/Chinese punctuation too
+  sentenceChunker: (text) => text.split(/(?<=[.!?。！？])\s*/)
+});
+```
 
 ## Common issues
 - Record button stays disabled / "connecting…": backend lacks wrtc; install `@roamhq/wrtc` on a compatible platform.

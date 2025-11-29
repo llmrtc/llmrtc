@@ -147,6 +147,8 @@ export interface ConversationOrchestratorConfig extends SessionConfig {
   logger?: Logger;
   /** Enable streaming TTS with sentence-boundary detection (default: true) */
   streamingTTS?: boolean;
+  /** Optional session ID for hook context */
+  sessionId?: string;
 }
 
 // =============================================================================
