@@ -1,0 +1,28 @@
+{
+  "name": "@metered/llmrtc-example-observability",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:logging": "tsx watch server-logging.ts",
+    "dev:metrics": "tsx watch server-metrics.ts",
+    "dev:guardrails": "tsx watch server-guardrails.ts",
+    "dev:chunker": "tsx watch server-chunker.ts",
+    "dev:client": "vite client"
+  },
+  "dependencies": {
+    "@metered/llmrtc-backend": "file:../../packages/backend",
+    "@metered/llmrtc-web-client": "file:../../packages/web-client",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.14"
+  }
+}

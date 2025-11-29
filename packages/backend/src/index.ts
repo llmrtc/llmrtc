@@ -88,6 +88,42 @@ export type {
 } from '@metered/llmrtc-core';
 
 // =============================================================================
+// Re-export hooks, metrics, and logging utilities
+// =============================================================================
+
+export {
+  // Logging hooks factory
+  createLoggingHooks,
+  createErrorOnlyHooks,
+  createVerboseHooks,
+  createTimingHooks,
+
+  // Metrics adapters
+  MetricNames,
+  NoopMetrics,
+  ConsoleMetrics,
+  InMemoryMetrics
+} from '@metered/llmrtc-core';
+
+export type {
+  // Hook types
+  OrchestratorHooks,
+  ServerHooks,
+  TurnContext,
+  TimingInfo,
+  ErrorContext,
+
+  // Logging types
+  LogLevel,
+  LoggerLike,
+  LoggingHooksConfig,
+
+  // Metrics types
+  MetricsAdapter,
+  MetricName
+} from '@metered/llmrtc-core';
+
+// =============================================================================
 // Re-export utilities for advanced use
 // =============================================================================
 
