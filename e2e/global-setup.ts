@@ -30,12 +30,12 @@ async function globalSetup(_config: FullConfig) {
     console.log('\nLocal Services:');
     const ollamaOk = await checkService(
       'Ollama',
-      process.env.OLLAMA_URL ?? 'http://localhost:11434',
+      process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434',
       '/api/tags'
     );
     const lmstudioOk = await checkService(
       'LMStudio',
-      process.env.LMSTUDIO_URL ?? 'http://localhost:1234',
+      process.env.LMSTUDIO_BASE_URL ?? 'http://localhost:1234',
       '/v1/models'
     );
     const fasterWhisperOk = await checkService(

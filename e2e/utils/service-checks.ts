@@ -93,8 +93,8 @@ export async function checkAllLocalServices(): Promise<{
   piper: ServiceStatus;
 }> {
   const [ollama, lmstudio, fasterWhisper, piper] = await Promise.all([
-    checkOllama(process.env.OLLAMA_URL),
-    checkLMStudio(process.env.LMSTUDIO_URL),
+    checkOllama(process.env.OLLAMA_BASE_URL),
+    checkLMStudio(process.env.LMSTUDIO_BASE_URL),
     checkFasterWhisper(process.env.FASTER_WHISPER_URL),
     checkPiper(process.env.PIPER_URL),
   ]);

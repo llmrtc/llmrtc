@@ -483,6 +483,27 @@ const vision = new LlavaVisionProvider({
 
 ---
 
+## Runtime Dependencies
+
+### FFmpeg (Required for Streaming TTS)
+
+When using `streamingTTS: true`, the backend uses FFmpeg to process and stream audio chunks in real-time. Install FFmpeg before enabling streaming TTS:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt-get install ffmpeg
+
+# Windows (with chocolatey)
+choco install ffmpeg
+```
+
+Without FFmpeg installed, streaming TTS will fail with an error. Non-streaming TTS (`streamingTTS: false` or omitted) works without FFmpeg.
+
+---
+
 ## Backend Server
 
 The backend package can be used in two ways:
@@ -668,7 +689,7 @@ function createLLMProvider(): LLMProvider {
         model: process.env.OPENROUTER_MODEL
       });
     case 'lmstudio':
-      return new LMStudioLLMProvider({ baseUrl: process.env.LMSTUDIO_URL });
+      return new LMStudioLLMProvider({ baseUrl: process.env.LMSTUDIO_BASE_URL });
     default:
       return new OllamaLLMProvider({ model: process.env.OLLAMA_MODEL });
   }

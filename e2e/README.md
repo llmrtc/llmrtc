@@ -148,19 +148,19 @@ npm run build
 
 ## Running Tests
 
-### Start the Backend First
-
-In a separate terminal:
-
-```bash
-npm run dev:backend
-```
-
 ### Run All E2E Tests
+
+Playwright automatically starts the backend and frontend servers:
 
 ```bash
 npm run test:e2e
 ```
+
+The test runner will:
+1. Start the backend server on port 8787 (or `TEST_BACKEND_PORT`)
+2. Start the frontend dev server on port 5173 (or `TEST_FRONTEND_PORT`)
+3. Wait for both servers to be healthy before running tests
+4. Clean up servers after tests complete
 
 ### Run with Playwright UI
 
@@ -177,6 +177,23 @@ Opens browser with DevTools:
 ```bash
 npm run test:e2e:debug
 ```
+
+### Manual Mode (Advanced)
+
+If you want to run servers manually for debugging or development:
+
+```bash
+# Terminal 1: Start backend
+npm run dev:backend
+
+# Terminal 2: Start frontend
+npm run dev
+
+# Terminal 3: Run tests (will reuse existing servers)
+npm run test:e2e
+```
+
+Playwright's `reuseExistingServer` option automatically detects running servers and reuses them instead of starting new ones.
 
 ### Run Provider Tests Only
 
@@ -332,10 +349,10 @@ AWS_REGION=us-east-1
 # Local Services
 # =============================================================================
 
-OLLAMA_URL=http://localhost:11434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 
-LMSTUDIO_URL=http://localhost:1234/v1
+LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_MODEL=local-model
 
 FASTER_WHISPER_URL=http://localhost:8000
@@ -558,12 +575,12 @@ console.log('Available models:', ollamaStatus.models);
 
 ### Tests Fail to Start
 
-**Symptom:** Tests hang at startup
+**Symptom:** Tests hang at startup or timeout
 
 **Solutions:**
-1. Ensure backend is running: `npm run dev:backend`
-2. Check if port 5173 is available (frontend dev server)
-3. Verify Chromium is installed: `npx playwright install chromium`
+1. Check if ports 8787 and 5173 are available (backend and frontend)
+2. Verify Chromium is installed: `npx playwright install chromium`
+3. Check for startup errors in the test output (servers auto-start via Playwright)
 
 ### No Transcript Received
 
@@ -659,20 +676,12 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Start backend
-        run: npm run dev:backend &
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-
-      - name: Wait for backend
-        run: npx wait-on http://localhost:8787/health
-
       - name: Run E2E tests
         run: npm run test:e2e
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          CI: true
 
       - name: Upload test report
         uses: actions/upload-artifact@v4

@@ -137,6 +137,23 @@ await server.stop();
   - `reconnecting` – reconnection attempt info
   - `error` – error events
 - Config: `signallingUrl`, `iceServers`, `reconnection` (enabled by default with exponential backoff).
+
+### TTS Events Detail
+
+When `streamingTTS: true` on the server:
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `ttsStart` | `{ id: string }` | Audio streaming is starting |
+| `ttsTrack` | `MediaStream` | WebRTC audio track for playback |
+| `ttsComplete` | `{ id: string }` | All audio delivered and played |
+| `ttsCancelled` | `{ id: string }` | User interrupted (barge-in) |
+
+When `streamingTTS: false` (default):
+- `ttsStart` fires when audio begins
+- `ttsTrack` contains complete audio
+- `ttsComplete` fires when playback ends
+- No incremental chunks; lower complexity but higher latency
 - No external WebRTC dependencies: Uses native browser RTCPeerConnection.
 
 ## Providers (packages/providers)
