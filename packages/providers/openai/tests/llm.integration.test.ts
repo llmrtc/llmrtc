@@ -8,15 +8,19 @@
  *
  * Run with: INTEGRATION_TESTS=true OPENAI_API_KEY=sk-... npm run test
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '../src/index.js';
 
 const SKIP = !process.env.INTEGRATION_TESTS || !process.env.OPENAI_API_KEY;
 
 describe.skipIf(SKIP)('OpenAILLMProvider Integration', () => {
-  const provider = new OpenAILLMProvider({
-    apiKey: process.env.OPENAI_API_KEY!,
-    model: 'gpt-4o-mini'
+  let provider: OpenAILLMProvider;
+
+  beforeAll(() => {
+    provider = new OpenAILLMProvider({
+      apiKey: process.env.OPENAI_API_KEY!,
+      model: 'gpt-4o-mini'
+    });
   });
 
   it('should complete a real request', async () => {
@@ -69,8 +73,12 @@ describe.skipIf(SKIP)('OpenAILLMProvider Integration', () => {
 });
 
 describe.skipIf(SKIP)('OpenAIWhisperProvider Integration', () => {
-  const provider = new OpenAIWhisperProvider({
-    apiKey: process.env.OPENAI_API_KEY!
+  let provider: OpenAIWhisperProvider;
+
+  beforeAll(() => {
+    provider = new OpenAIWhisperProvider({
+      apiKey: process.env.OPENAI_API_KEY!
+    });
   });
 
   it('should transcribe audio buffer', async () => {
@@ -106,10 +114,14 @@ describe.skipIf(SKIP)('OpenAIWhisperProvider Integration', () => {
 });
 
 describe.skipIf(SKIP)('OpenAITTSProvider Integration', () => {
-  const provider = new OpenAITTSProvider({
-    apiKey: process.env.OPENAI_API_KEY!,
-    model: 'tts-1',
-    voice: 'alloy'
+  let provider: OpenAITTSProvider;
+
+  beforeAll(() => {
+    provider = new OpenAITTSProvider({
+      apiKey: process.env.OPENAI_API_KEY!,
+      model: 'tts-1',
+      voice: 'alloy'
+    });
   });
 
   it('should generate speech audio', async () => {
