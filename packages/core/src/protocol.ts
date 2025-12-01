@@ -243,6 +243,54 @@ export interface SpeechEndMessage extends BaseMessage {
 }
 
 // =============================================================================
+// Playbook Events (Tool Calls and Stage Transitions)
+// =============================================================================
+
+/**
+ * Tool call started
+ * Sent when PlaybookOrchestrator begins executing a tool
+ */
+export interface ToolCallStartMessage extends BaseMessage {
+  type: 'tool-call-start';
+  /** Tool function name */
+  name: string;
+  /** Unique call ID for correlation with tool-call-end */
+  callId: string;
+  /** Arguments passed to the tool */
+  arguments: Record<string, unknown>;
+}
+
+/**
+ * Tool call completed
+ * Sent when tool execution finishes (success or failure)
+ */
+export interface ToolCallEndMessage extends BaseMessage {
+  type: 'tool-call-end';
+  /** Unique call ID matching tool-call-start */
+  callId: string;
+  /** Tool execution result (on success) */
+  result?: unknown;
+  /** Error message (on failure) */
+  error?: string;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Stage transition in playbook
+ * Sent when PlaybookOrchestrator moves to a different stage
+ */
+export interface StageChangeMessage extends BaseMessage {
+  type: 'stage-change';
+  /** Previous stage name */
+  from: string;
+  /** New stage name */
+  to: string;
+  /** Reason for transition (e.g., tool result, keyword match) */
+  reason: string;
+}
+
+// =============================================================================
 // Error Handling
 // =============================================================================
 
@@ -275,6 +323,10 @@ export type ErrorCode =
   | 'VAD_ERROR'
   | 'INVALID_MESSAGE'
   | 'INVALID_AUDIO_FORMAT'
+
+  // Playbook/Tool errors
+  | 'TOOL_ERROR'
+  | 'PLAYBOOK_ERROR'
 
   // Generic errors
   | 'INTERNAL_ERROR'
@@ -309,6 +361,9 @@ export type ServerMessage =
   | TTSCancelledMessage
   | SpeechStartMessage
   | SpeechEndMessage
+  | ToolCallStartMessage
+  | ToolCallEndMessage
+  | StageChangeMessage
   | ErrorMessage;
 
 /**
@@ -345,6 +400,9 @@ const SERVER_MESSAGE_TYPES = new Set([
   'tts-cancelled',
   'speech-start',
   'speech-end',
+  'tool-call-start',
+  'tool-call-end',
+  'stage-change',
   'error'
 ]);
 
@@ -443,4 +501,38 @@ export function createTTSChunkMessage(
  */
 export function createTTSMessage(data: string, format: string): TTSMessage {
   return { type: 'tts', data, format };
+}
+
+/**
+ * Create a tool call start message
+ */
+export function createToolCallStartMessage(
+  name: string,
+  callId: string,
+  args: Record<string, unknown>
+): ToolCallStartMessage {
+  return { type: 'tool-call-start', name, callId, arguments: args };
+}
+
+/**
+ * Create a tool call end message
+ */
+export function createToolCallEndMessage(
+  callId: string,
+  durationMs: number,
+  result?: unknown,
+  error?: string
+): ToolCallEndMessage {
+  return { type: 'tool-call-end', callId, result, error, durationMs };
+}
+
+/**
+ * Create a stage change message
+ */
+export function createStageChangeMessage(
+  from: string,
+  to: string,
+  reason: string
+): StageChangeMessage {
+  return { type: 'stage-change', from, to, reason };
 }

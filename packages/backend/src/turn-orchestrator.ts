@@ -48,6 +48,14 @@ export type TurnOrchestratorYield =
   | StageChangeEvent;
 
 /**
+ * Options for running a turn
+ */
+export interface TurnOptions {
+  /** Abort signal for cancelling the turn */
+  signal?: AbortSignal;
+}
+
+/**
  * Interface for orchestrators that can process voice turns.
  * Allows LLMRTCServer to work with either simple conversation mode
  * or playbook mode with tools.
@@ -57,10 +65,14 @@ export interface TurnOrchestrator {
    * Run a single voice turn: audio → STT → LLM (+ tools) → TTS
    * Yields various events as the turn progresses.
    * In playbook mode, may also yield tool-call-start, tool-call-end, and stage-change events.
+   * @param audio - Audio buffer to transcribe
+   * @param attachments - Optional vision attachments
+   * @param options - Optional turn options including abort signal
    */
   runTurnStream(
     audio: Buffer,
-    attachments?: VisionAttachment[]
+    attachments?: VisionAttachment[],
+    options?: TurnOptions
   ): AsyncIterable<TurnOrchestratorYield>;
 
   /**

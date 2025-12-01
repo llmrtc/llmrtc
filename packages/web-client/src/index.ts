@@ -34,6 +34,25 @@ export interface ClientError {
   recoverable: boolean;
 }
 
+export interface ToolCallStartPayload {
+  name: string;
+  callId: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface ToolCallEndPayload {
+  callId: string;
+  result?: unknown;
+  error?: string;
+  durationMs: number;
+}
+
+export interface StageChangePayload {
+  from: string;
+  to: string;
+  reason: string;
+}
+
 export type ClientEvents = {
   transcript: (text: string) => void;
   llm: (text: string) => void;
@@ -45,6 +64,9 @@ export type ClientEvents = {
   ttsCancelled: () => void;
   speechStart: () => void;
   speechEnd: () => void;
+  toolCallStart: (payload: ToolCallStartPayload) => void;
+  toolCallEnd: (payload: ToolCallEndPayload) => void;
+  stageChange: (payload: StageChangePayload) => void;
   error: (error: ClientError) => void;
   stateChange: (state: ConnectionState) => void;
   reconnecting: (attempt: number, maxAttempts: number) => void;
@@ -386,6 +408,28 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
         case 'speech-end':
           this.sendAttachments();
           this.emit('speechEnd');
+          break;
+        case 'tool-call-start':
+          this.emit('toolCallStart', {
+            name: msg.name,
+            callId: msg.callId,
+            arguments: msg.arguments ?? {}
+          });
+          break;
+        case 'tool-call-end':
+          this.emit('toolCallEnd', {
+            callId: msg.callId,
+            result: msg.result,
+            error: msg.error,
+            durationMs: msg.durationMs ?? 0
+          });
+          break;
+        case 'stage-change':
+          this.emit('stageChange', {
+            from: msg.from,
+            to: msg.to,
+            reason: msg.reason ?? ''
+          });
           break;
         case 'error':
           this.emit('error', {

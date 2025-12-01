@@ -15,6 +15,7 @@ import {
   type ConversationProviders,
   type LLMRequest,
   type LLMResult,
+  type LLMChunk,
   type VisionAttachment,
   type OrchestratorHooks,
   type TTSChunk,
@@ -31,13 +32,14 @@ import {
 import type {
   TurnOrchestrator,
   TurnOrchestratorYield,
+  TurnOptions,
   ToolCallStartEvent,
   ToolCallEndEvent,
   StageChangeEvent
 } from './turn-orchestrator.js';
 
 // Re-export types for convenience
-export type { ToolCallStartEvent, ToolCallEndEvent, StageChangeEvent, TurnOrchestratorYield };
+export type { ToolCallStartEvent, ToolCallEndEvent, StageChangeEvent, TurnOrchestratorYield, TurnOptions };
 
 // Sentence boundary regex: matches .!? followed by space or end of string
 const SENTENCE_BOUNDARY = /[.!?]+(?:\s+|$)/;
@@ -138,11 +140,16 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
    * 1. STT: audio → transcript
    * 2. Phase 1: Tool loop (silent, emit events)
    * 3. Phase 2: Streaming LLM → TTS
+   * @param audio - Audio buffer to transcribe
+   * @param attachments - Optional vision attachments
+   * @param options - Optional turn options including abort signal
    */
   async *runTurnStream(
     audio: Buffer,
-    attachments: VisionAttachment[] = []
+    attachments: VisionAttachment[] = [],
+    options?: TurnOptions
   ): AsyncGenerator<VoicePlaybookYield, void, unknown> {
+    const signal = options?.signal;
     const turnStartTime = Date.now();
     const ctx: TurnContext = {
       turnId: globalThis.crypto.randomUUID(),
@@ -152,6 +159,11 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
 
     // Call onTurnStart hook
     await callHookSafe(this.hooks.onTurnStart, ctx, audio);
+
+    // Check for abort before starting
+    if (signal?.aborted) {
+      return;
+    }
 
     // =========================================================================
     // STT Phase
@@ -221,7 +233,12 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
       const llmStartTime = Date.now();
       await callHookSafe(this.hooks.onLLMStart, ctx, { messages: [] } as LLMRequest);
 
-      for await (const item of this.playbookOrchestrator.streamTurn(transcript.text)) {
+      for await (const item of this.playbookOrchestrator.streamTurn(transcript.text, attachments)) {
+        // Check for abort
+        if (signal?.aborted) {
+          break;
+        }
+
         // Yield all accumulated tool events
         while (toolCallEvents.length > 0) {
           yield toolCallEvents.shift()!;
@@ -230,10 +247,21 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
         if (item.type === 'tool_call') {
           // Already handled via event listener
         } else if (item.type === 'content') {
-          // Phase 2 content from PlaybookOrchestrator
-          phase1Response += item.data;
+          // Stream LLM content chunks to client
+          const contentData = item.data as string;
+          phase1Response += contentData;
+          const llmChunk: LLMChunk = {
+            content: contentData,
+            done: false
+          };
+          yield llmChunk;
         } else if (item.type === 'done') {
-          // Turn complete from PlaybookOrchestrator
+          // Yield final LLM chunk with done=true
+          const finalChunk: LLMChunk = {
+            content: '',
+            done: true
+          };
+          yield finalChunk;
         }
       }
 
@@ -260,8 +288,8 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
       // =========================================================================
       // TTS Phase
       // =========================================================================
-      if (phase1Response.trim()) {
-        yield* this.generateTTSStream(ctx, phase1Response);
+      if (phase1Response.trim() && !signal?.aborted) {
+        yield* this.generateTTSStream(ctx, phase1Response, signal);
       }
 
       // Turn complete
@@ -276,10 +304,14 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
 
   /**
    * Stream TTS with sentence-boundary chunking
+   * @param ctx - Turn context
+   * @param text - Text to speak
+   * @param signal - Optional abort signal
    */
   private async *generateTTSStream(
     ctx: TurnContext,
-    text: string
+    text: string,
+    signal?: AbortSignal
   ): AsyncGenerator<TTSStart | TTSChunk | TTSComplete | TTSResult, void, unknown> {
     const ttsStartTime = Date.now();
     const canStreamTTS = this.streamingTTS && !!this.providers.tts.speakStream;
@@ -293,11 +325,21 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
 
       let chunkIndex = 0;
       for (const sentence of sentences) {
+        // Check for abort before each sentence
+        if (signal?.aborted) {
+          break;
+        }
+
         const trimmed = sentence.trim();
         if (!trimmed) continue;
 
         try {
           for await (const audioChunk of this.providers.tts.speakStream!(trimmed, { format: 'pcm' })) {
+            // Check for abort during streaming
+            if (signal?.aborted) {
+              break;
+            }
+
             const ttsChunk: TTSChunk = {
               type: 'tts-chunk',
               audio: audioChunk,

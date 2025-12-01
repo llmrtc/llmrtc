@@ -692,7 +692,7 @@ export class LLMRTCServer {
     let ttsStarted = false;
 
     try {
-      for await (const item of orchestrator.runTurnStream(audio, attachments)) {
+      for await (const item of orchestrator.runTurnStream(audio, attachments, { signal })) {
         if (signal?.aborted) {
           console.log('[server] Response generation cancelled by user interruption');
           if (pcmFeederState) {

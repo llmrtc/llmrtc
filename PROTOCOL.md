@@ -260,6 +260,51 @@ VAD detected user stopped speaking.
 }
 ```
 
+---
+
+### Playbook Mode Events
+
+These messages are sent when using the PlaybookOrchestrator for tool-calling workflows.
+
+#### `tool-call-start`
+A tool is being executed.
+
+```typescript
+{
+  type: "tool-call-start";
+  name: string;                      // Tool function name
+  callId: string;                    // Unique call ID for correlation
+  arguments: Record<string, unknown>; // Arguments passed to the tool
+}
+```
+
+#### `tool-call-end`
+Tool execution completed.
+
+```typescript
+{
+  type: "tool-call-end";
+  callId: string;   // Matches tool-call-start callId
+  result?: unknown; // Tool result (on success)
+  error?: string;   // Error message (on failure)
+  durationMs: number; // Execution duration in milliseconds
+}
+```
+
+#### `stage-change`
+Playbook transitioned to a different stage.
+
+```typescript
+{
+  type: "stage-change";
+  from: string;   // Previous stage name
+  to: string;     // New stage name
+  reason: string; // Reason for transition (e.g., "tool_result", "keyword_match")
+}
+```
+
+---
+
 #### `error`
 Error notification with structured error code.
 
@@ -282,6 +327,8 @@ Error notification with structured error code.
 | `STT_ERROR` | Speech-to-text provider error |
 | `LLM_ERROR` | LLM provider error |
 | `TTS_ERROR` | Text-to-speech provider error |
+| `TOOL_ERROR` | Tool execution failed |
+| `PLAYBOOK_ERROR` | Playbook orchestration error |
 | `INVALID_MESSAGE` | Malformed or unknown message type |
 | `SESSION_NOT_FOUND` | Reconnect with invalid session ID |
 | `INTERNAL_ERROR` | Unexpected server error |
@@ -360,6 +407,35 @@ Client                                    Server
    │                                         │
 ```
 
+### Playbook Mode with Tool Calls
+
+```
+Client                                    Server
+   │                                         │
+   │  ──── "Book a table for 2" ──────────► │
+   │                                         │
+   │  ◄──────── transcript ─────────────────┤
+   │  {text: "Book a table for 2"}           │
+   │                                         │
+   │  ◄──────── llm-chunk ──────────────────┤
+   │  {content: "I'll book", done: false}    │
+   │                                         │
+   │  ◄──────── tool-call-start ────────────┤
+   │  {name: "bookTable", callId: "xyz"}     │
+   │                                         │
+   │  ◄──────── tool-call-end ──────────────┤
+   │  {callId: "xyz", result: {...}}         │
+   │                                         │
+   │  ◄──────── stage-change ───────────────┤
+   │  {from: "greeting", to: "confirmation"} │
+   │                                         │
+   │  ◄──────── llm-chunk ──────────────────┤
+   │  {content: "Done!", done: true}         │
+   │                                         │
+   │  ◄──────── tts-start ──────────────────┤
+   │                                         │
+```
+
 ---
 
 ## TypeScript Types
@@ -396,6 +472,9 @@ import {
   TTSCancelledMessage,
   SpeechStartMessage,
   SpeechEndMessage,
+  ToolCallStartMessage,
+  ToolCallEndMessage,
+  StageChangeMessage,
   ErrorMessage,
   ErrorCode,
 
@@ -412,7 +491,10 @@ import {
   createLLMChunkMessage,
   createLLMMessage,
   createTTSChunkMessage,
-  createTTSMessage
+  createTTSMessage,
+  createToolCallStartMessage,
+  createToolCallEndMessage,
+  createStageChangeMessage
 } from '@metered/llmrtc-core';
 ```
 

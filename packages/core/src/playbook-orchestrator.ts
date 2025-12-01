@@ -8,7 +8,7 @@
  * Integrates with STT/TTS for voice-based interactions.
  */
 
-import type { LLMProvider, LLMRequest, LLMResult, Message } from './types.js';
+import type { LLMProvider, LLMRequest, LLMResult, Message, VisionAttachment } from './types.js';
 import type { ToolDefinition, ToolCallRequest, ToolCallResult } from './tools.js';
 import { ToolRegistry } from './tools.js';
 import { ToolExecutor } from './tool-executor.js';
@@ -228,7 +228,8 @@ export class PlaybookOrchestrator {
    * LLM can call tools repeatedly until it decides to respond
    */
   private async executePhase1(
-    userMessage: string
+    userMessage: string,
+    attachments?: VisionAttachment[]
   ): Promise<{
     toolCalls: Array<{ request: ToolCallRequest; result: ToolCallResult }>;
     llmResponses: LLMResult[];
@@ -243,8 +244,12 @@ export class PlaybookOrchestrator {
     let iterationCount = 0;
     const startTime = Date.now();
 
-    // Add user message to history
-    this.conversationHistory.push({ role: 'user', content: userMessage });
+    // Add user message to history (with optional attachments for vision)
+    const userMsg: Message = { role: 'user', content: userMessage };
+    if (attachments && attachments.length > 0) {
+      userMsg.attachments = attachments;
+    }
+    this.conversationHistory.push(userMsg);
 
     while (iterationCount < this.options.maxToolCallsPerTurn!) {
       // Check timeout
@@ -389,15 +394,17 @@ export class PlaybookOrchestrator {
 
   /**
    * Execute a complete turn with user input
+   * @param userMessage - The user's message text
+   * @param attachments - Optional vision attachments (images)
    */
-  async executeTurn(userMessage: string): Promise<TurnResult> {
+  async executeTurn(userMessage: string, attachments?: VisionAttachment[]): Promise<TurnResult> {
     const stage = this.engine.getCurrentStage();
     const useTwoPhase = stage.twoPhaseExecution !== false;
 
     this.log('info', `Executing turn in stage '${stage.id}' (two-phase: ${useTwoPhase})`);
 
     // Phase 1: Tool loop
-    const phase1Result = await this.executePhase1(userMessage);
+    const phase1Result = await this.executePhase1(userMessage, attachments);
 
     let response: string;
     let transitioned = false;
@@ -484,13 +491,15 @@ export class PlaybookOrchestrator {
 
   /**
    * Execute a turn with streaming response
+   * @param userMessage - The user's message text
+   * @param attachments - Optional vision attachments (images)
    */
-  async *streamTurn(userMessage: string): AsyncIterable<{
+  async *streamTurn(userMessage: string, attachments?: VisionAttachment[]): AsyncIterable<{
     type: 'tool_call' | 'content' | 'done';
     data: ToolCallRequest | string | TurnResult;
   }> {
     // For streaming, we run phase 1 first, then stream phase 2
-    const phase1Result = await this.executePhase1(userMessage);
+    const phase1Result = await this.executePhase1(userMessage, attachments);
 
     // Yield tool calls
     for (const tc of phase1Result.toolCalls) {
