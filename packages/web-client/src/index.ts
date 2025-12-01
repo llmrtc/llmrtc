@@ -329,8 +329,14 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
         case 'reconnect-ack':
           console.log(
             '[web-client] Reconnect acknowledged:',
-            msg.historyRecovered ? 'history recovered' : 'new session'
+            msg.historyRecovered ? 'history recovered' : 'new session',
+            'sessionId:', msg.sessionId
           );
+          // Update session ID to the one confirmed by the server
+          // This ensures sessionId is preserved across reconnections when history is recovered
+          if (msg.sessionId) {
+            this.sessionId = msg.sessionId;
+          }
           break;
 
         default:
@@ -455,6 +461,9 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
   }
 
   private async attemptReconnect(): Promise<void> {
+    // Save old session ID BEFORE cleanup/connect (connect() will set a new sessionId)
+    const oldSessionId = this.sessionId;
+
     // Clean up existing connections but keep session ID
     this.cleanup(false);
 
@@ -463,12 +472,15 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     try {
       await this.connect();
 
-      // Send reconnect message to try to recover session
-      if (this.sessionId) {
+      // Send reconnect message with OLD session ID to recover the previous session
+      // Note: connect() sets this.sessionId to a new value from the server's ready message,
+      // so we must use oldSessionId here to request session recovery
+      if (oldSessionId) {
+        console.log('[web-client] Sending reconnect request for session:', oldSessionId);
         this.ws?.send(
           JSON.stringify({
             type: 'reconnect',
-            sessionId: this.sessionId
+            sessionId: oldSessionId
           })
         );
       }

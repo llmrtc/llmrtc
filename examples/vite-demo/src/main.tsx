@@ -93,9 +93,25 @@ function App() {
     clientRef.current = client;
     // Expose client on window for E2E tests
     (window as any).llmrtcClient = client;
+    // Expose testing helpers for E2E tests
+    (window as any).llmrtcTestHelpers = {
+      forceDisconnect: () => {
+        // Access internal WebSocket and close it to trigger reconnection
+        // The close code 4000+ is in the private use range and triggers the onclose handler
+        const ws = (client as any).ws as WebSocket | null;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.close(4000, 'Test: simulating disconnect');
+        }
+      },
+      getSessionId: () => (client as any).currentSessionId ?? null,
+      getConnectionState: () => client.state,
+      // Direct access to client for debugging
+      getClient: () => client,
+    };
     return () => {
       client.close();
       delete (window as any).llmrtcClient;
+      delete (window as any).llmrtcTestHelpers;
     };
   }, [client]);
 

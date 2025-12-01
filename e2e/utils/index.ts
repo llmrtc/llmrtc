@@ -4,3 +4,4 @@
 
 export * from './service-checks';
 export * from './wait-helpers';
+export * from './connection-helpers';

@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import {
   ConversationOrchestratorConfig,
   ConversationProviders,
@@ -135,7 +134,7 @@ export class ConversationOrchestrator {
     // Generate turn context
     const turnStartTime = Date.now();
     const ctx: TurnContext = {
-      turnId: randomUUID(),
+      turnId: globalThis.crypto.randomUUID(),
       sessionId: this.sessionId,
       startTime: turnStartTime
     };

@@ -54,6 +54,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: '**/barge-in.spec.ts', // Barge-in tests run in separate project
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
@@ -74,6 +75,29 @@ export default defineConfig({
         permissions: ['microphone', 'camera'],
         contextOptions: {
           // Ensure media permissions are granted
+          permissions: ['microphone', 'camera'],
+        },
+      },
+    },
+    {
+      // Special project for barge-in tests that need longer audio with silence
+      name: 'barge-in',
+      testMatch: '**/barge-in.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: [
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            // Use barge-in audio: speech + 8s silence (loops to trigger barge-in)
+            `--use-file-for-fake-audio-capture=${path.join(__dirname, 'fixtures', 'barge-in-audio.wav')}`,
+            `--use-file-for-fake-video-capture=${path.join(__dirname, 'fixtures', 'test-video.y4m')}`,
+            '--disable-web-security',
+            '--allow-running-insecure-content',
+          ],
+        },
+        permissions: ['microphone', 'camera'],
+        contextOptions: {
           permissions: ['microphone', 'camera'],
         },
       },
