@@ -1,5 +1,9 @@
 import OpenAI from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionAssistantMessageParam,
+  ChatCompletionToolMessageParam,
+} from 'openai/resources/chat/completions';
 import {
   LLMChunk,
   LLMProvider,
@@ -7,6 +11,15 @@ import {
   LLMResult,
   Message
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToOpenAI,
+  mapToolChoiceToOpenAI,
+  parseToolCallsFromOpenAI,
+  mapStopReasonFromOpenAI,
+  processToolCallDelta,
+  finalizeToolCalls,
+  StreamingToolCallAccumulator,
+} from './tool-adapter.js';
 
 export interface OpenRouterConfig {
   /** OpenRouter API key */
@@ -67,10 +80,17 @@ export class OpenRouterLLMProvider implements LLMProvider {
       temperature: request.config?.temperature,
       top_p: request.config?.topP,
       max_tokens: request.config?.maxTokens,
-      stream: false
+      stream: false,
+      ...(request.tools?.length && {
+        tools: mapToolsToOpenAI(request.tools),
+        tool_choice: mapToolChoiceToOpenAI(request.toolChoice),
+      }),
     });
-    const fullText = completion.choices?.[0]?.message?.content ?? '';
-    return { fullText, raw: completion };
+    const choice = completion.choices?.[0];
+    const fullText = choice?.message?.content ?? '';
+    const toolCalls = parseToolCallsFromOpenAI(choice?.message?.tool_calls);
+    const stopReason = mapStopReasonFromOpenAI(choice?.finish_reason);
+    return { fullText, raw: completion, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
@@ -80,18 +100,42 @@ export class OpenRouterLLMProvider implements LLMProvider {
       temperature: request.config?.temperature,
       top_p: request.config?.topP,
       max_tokens: request.config?.maxTokens,
-      stream: true
+      stream: true,
+      ...(request.tools?.length && {
+        tools: mapToolsToOpenAI(request.tools),
+        tool_choice: mapToolChoiceToOpenAI(request.toolChoice),
+      }),
     });
+    const toolCallAccumulators = new Map<number, StreamingToolCallAccumulator>();
+    let finishReason: string | null = null;
+
     for await (const part of stream) {
-      const delta = part.choices?.[0]?.delta?.content ?? '';
-      yield { content: delta ?? '', done: false, raw: part };
+      const choice = part.choices?.[0];
+      const delta = choice?.delta;
+      if (delta?.tool_calls) {
+        for (const toolCallDelta of delta.tool_calls) {
+          processToolCallDelta(toolCallAccumulators, toolCallDelta);
+        }
+      }
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      yield { content: delta?.content ?? '', done: false, raw: part };
     }
-    yield { content: '', done: true };
+
+    const toolCalls = toolCallAccumulators.size > 0 ? finalizeToolCalls(toolCallAccumulators) : undefined;
+    const stopReason = mapStopReasonFromOpenAI(finishReason);
+    yield { content: '', done: true, toolCalls, stopReason };
   }
 }
 
 function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
   return messages.map((m) => {
+    if (m.role === 'tool') {
+      return {
+        role: 'tool',
+        content: m.content,
+        tool_call_id: m.toolCallId ?? '',
+      } as ChatCompletionToolMessageParam;
+    }
     if (!m.attachments?.length) {
       return { role: m.role, content: m.content } as ChatCompletionMessageParam;
     }

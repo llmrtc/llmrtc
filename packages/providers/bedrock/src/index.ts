@@ -5,7 +5,8 @@ import {
   ContentBlock,
   Message as BedrockMessage,
   SystemContentBlock,
-  ImageFormat
+  ImageFormat,
+  ToolResultContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
 import {
   LLMChunk,
@@ -14,6 +15,17 @@ import {
   LLMResult,
   Message
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToBedrock,
+  mapToolChoiceToBedrock,
+  parseToolCallsFromBedrock,
+  mapStopReasonFromBedrock,
+  processToolUseStart,
+  processToolUseDelta,
+  finalizeToolCalls,
+  createToolResultBlock,
+  StreamingToolUseAccumulator,
+} from './tool-adapter.js';
 
 export interface BedrockConfig {
   /** AWS region (default: 'us-east-1') */
@@ -70,17 +82,27 @@ export class BedrockLLMProvider implements LLMProvider {
         temperature: request.config?.temperature,
         topP: request.config?.topP,
         maxTokens: request.config?.maxTokens ?? 4096
-      }
+      },
+      ...(request.tools?.length && {
+        toolConfig: {
+          ...mapToolsToBedrock(request.tools),
+          toolChoice: mapToolChoiceToBedrock(request.toolChoice),
+        },
+      }),
     });
 
     const response = await this.client.send(command);
+    const content = response.output?.message?.content;
     const fullText =
-      response.output?.message?.content
+      content
         ?.filter((block): block is { text: string } => 'text' in block)
         .map((block) => block.text)
         .join('') ?? '';
 
-    return { fullText, raw: response };
+    const toolCalls = parseToolCallsFromBedrock(content);
+    const stopReason = mapStopReasonFromBedrock(response.stopReason);
+
+    return { fullText, raw: response, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
@@ -94,13 +116,25 @@ export class BedrockLLMProvider implements LLMProvider {
         temperature: request.config?.temperature,
         topP: request.config?.topP,
         maxTokens: request.config?.maxTokens ?? 4096
-      }
+      },
+      ...(request.tools?.length && {
+        toolConfig: {
+          ...mapToolsToBedrock(request.tools),
+          toolChoice: mapToolChoiceToBedrock(request.toolChoice),
+        },
+      }),
     });
 
     const response = await this.client.send(command);
 
+    // Accumulate tool use blocks across streaming events
+    const toolUseAccumulators = new Map<number, StreamingToolUseAccumulator>();
+    let stopReason: string | undefined;
+    let currentBlockIndex = 0;
+
     if (response.stream) {
       for await (const event of response.stream) {
+        // Handle text content deltas
         if (event.contentBlockDelta?.delta && 'text' in event.contentBlockDelta.delta) {
           yield {
             content: event.contentBlockDelta.delta.text ?? '',
@@ -108,10 +142,43 @@ export class BedrockLLMProvider implements LLMProvider {
             raw: event
           };
         }
+
+        // Handle tool use block start
+        if (event.contentBlockStart?.start && 'toolUse' in event.contentBlockStart.start) {
+          const toolUse = event.contentBlockStart.start.toolUse;
+          processToolUseStart(toolUseAccumulators, event.contentBlockStart.contentBlockIndex ?? currentBlockIndex, {
+            toolUseId: toolUse?.toolUseId,
+            name: toolUse?.name,
+          });
+          currentBlockIndex++;
+        }
+
+        // Handle tool use input deltas
+        if (event.contentBlockDelta?.delta && 'toolUse' in event.contentBlockDelta.delta) {
+          const input = event.contentBlockDelta.delta.toolUse?.input;
+          if (input) {
+            processToolUseDelta(
+              toolUseAccumulators,
+              event.contentBlockDelta.contentBlockIndex ?? currentBlockIndex - 1,
+              input
+            );
+          }
+        }
+
+        // Track stop reason
+        if (event.messageStop?.stopReason) {
+          stopReason = event.messageStop.stopReason;
+        }
       }
     }
 
-    yield { content: '', done: true };
+    // Final chunk with accumulated tool calls
+    const toolCalls = toolUseAccumulators.size > 0
+      ? finalizeToolCalls(toolUseAccumulators)
+      : undefined;
+    const mappedStopReason = mapStopReasonFromBedrock(stopReason);
+
+    yield { content: '', done: true, toolCalls, stopReason: mappedStopReason };
   }
 }
 
@@ -128,6 +195,39 @@ function convertMessages(messages: Message[]): {
   for (const msg of messages) {
     if (msg.role === 'system') {
       system = [{ text: msg.content }];
+      continue;
+    }
+
+    // Handle tool result messages
+    if (msg.role === 'tool') {
+      converted.push({
+        role: 'user',
+        content: [{
+          toolResult: createToolResultBlock(msg.toolCallId ?? '', msg.content),
+        }],
+      });
+      continue;
+    }
+
+    // Handle assistant messages with tool calls
+    if (msg.role === 'assistant' && msg.toolCalls?.length) {
+      const content: ContentBlock[] = [];
+      if (msg.content) {
+        content.push({ text: msg.content });
+      }
+      for (const tc of msg.toolCalls) {
+        content.push({
+          toolUse: {
+            toolUseId: tc.callId,
+            name: tc.name,
+            input: tc.arguments,
+          },
+        });
+      }
+      converted.push({
+        role: 'assistant',
+        content,
+      });
       continue;
     }
 

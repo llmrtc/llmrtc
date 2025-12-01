@@ -3,7 +3,9 @@ import type {
   MessageParam,
   ContentBlockParam,
   ImageBlockParam,
-  TextBlockParam
+  TextBlockParam,
+  ToolResultBlockParam,
+  ToolUseBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
 import {
   LLMChunk,
@@ -12,6 +14,16 @@ import {
   LLMResult,
   Message
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToAnthropic,
+  mapToolChoiceToAnthropic,
+  parseToolCallsFromAnthropic,
+  mapStopReasonFromAnthropic,
+  processToolUseStart,
+  processToolUseDelta,
+  finalizeToolCalls,
+  StreamingToolUseAccumulator,
+} from './tool-adapter.js';
 
 export interface AnthropicConfig {
   /** Anthropic API key */
@@ -57,7 +69,11 @@ export class AnthropicLLMProvider implements LLMProvider {
       system: systemPrompt,
       messages: messages,
       temperature: request.config?.temperature,
-      top_p: request.config?.topP
+      top_p: request.config?.topP,
+      ...(request.tools?.length && {
+        tools: mapToolsToAnthropic(request.tools),
+        tool_choice: mapToolChoiceToAnthropic(request.toolChoice),
+      }),
     });
 
     const fullText = (response.content ?? [])
@@ -65,7 +81,10 @@ export class AnthropicLLMProvider implements LLMProvider {
       .map((block) => block.text ?? '')
       .join('');
 
-    return { fullText, raw: response };
+    const toolCalls = parseToolCallsFromAnthropic(response.content);
+    const stopReason = mapStopReasonFromAnthropic(response.stop_reason);
+
+    return { fullText, raw: response, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
@@ -77,19 +96,52 @@ export class AnthropicLLMProvider implements LLMProvider {
       system: systemPrompt,
       messages: messages,
       temperature: request.config?.temperature,
-      top_p: request.config?.topP
+      top_p: request.config?.topP,
+      ...(request.tools?.length && {
+        tools: mapToolsToAnthropic(request.tools),
+        tool_choice: mapToolChoiceToAnthropic(request.toolChoice),
+      }),
     });
 
+    // Accumulate tool use blocks across streaming events
+    const toolUseAccumulators = new Map<number, StreamingToolUseAccumulator>();
+    let stopReason: string | null = null;
+
     for await (const event of stream) {
+      // Handle text content deltas
       if (
         event.type === 'content_block_delta' &&
         event.delta.type === 'text_delta'
       ) {
         yield { content: event.delta.text, done: false, raw: event };
       }
+
+      // Handle tool use block start
+      if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+        processToolUseStart(toolUseAccumulators, event.index, event.content_block);
+      }
+
+      // Handle tool use input deltas
+      if (
+        event.type === 'content_block_delta' &&
+        event.delta.type === 'input_json_delta'
+      ) {
+        processToolUseDelta(toolUseAccumulators, event.index, event.delta.partial_json);
+      }
+
+      // Track stop reason from message_delta event
+      if (event.type === 'message_delta' && event.delta.stop_reason) {
+        stopReason = event.delta.stop_reason;
+      }
     }
 
-    yield { content: '', done: true };
+    // Final chunk with accumulated tool calls
+    const toolCalls = toolUseAccumulators.size > 0
+      ? finalizeToolCalls(toolUseAccumulators)
+      : undefined;
+    const mappedStopReason = mapStopReasonFromAnthropic(stopReason);
+
+    yield { content: '', done: true, toolCalls, stopReason: mappedStopReason };
   }
 }
 
@@ -106,6 +158,40 @@ function extractSystemAndMessages(messages: Message[]): {
   for (const msg of messages) {
     if (msg.role === 'system') {
       systemPrompt = msg.content;
+      continue;
+    }
+
+    // Handle tool result messages
+    if (msg.role === 'tool') {
+      converted.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: msg.toolCallId ?? '',
+          content: msg.content,
+        } as ToolResultBlockParam],
+      });
+      continue;
+    }
+
+    // Handle assistant messages with tool calls
+    if (msg.role === 'assistant' && msg.toolCalls?.length) {
+      const content: ContentBlockParam[] = [];
+      if (msg.content) {
+        content.push({ type: 'text', text: msg.content } as TextBlockParam);
+      }
+      for (const tc of msg.toolCalls) {
+        content.push({
+          type: 'tool_use',
+          id: tc.callId,
+          name: tc.name,
+          input: tc.arguments,
+        } as ToolUseBlockParam);
+      }
+      converted.push({
+        role: 'assistant',
+        content,
+      });
       continue;
     }
 

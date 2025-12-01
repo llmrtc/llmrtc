@@ -13,6 +13,11 @@ import {
   VisionRequest,
   VisionResult
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToOllama,
+  parseToolCallsFromOllama,
+  mapStopReasonFromOllama,
+} from './tool-adapter.js';
 
 export interface OllamaConfig {
   model?: string;
@@ -32,25 +37,35 @@ export class OllamaLLMProvider implements LLMProvider {
   async complete(request: LLMRequest): Promise<LLMResult> {
     const res: any = await this.call(request, false);
     const fullText = res.message?.content ?? '';
-    return { fullText, raw: res };
+    const toolCalls = parseToolCallsFromOllama(res.message?.tool_calls);
+    const stopReason = mapStopReasonFromOllama(res.message ?? {});
+    return { fullText, raw: res, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
+    const body: any = {
+      model: this.model,
+      stream: true,
+      messages: this.mapMessages(request.messages),
+    };
+    if (request.tools?.length) {
+      body.tools = mapToolsToOllama(request.tools);
+    }
+
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.model,
-        stream: true,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content }))
-      })
+      body: JSON.stringify(body)
     });
     if (!res.body) throw new Error('ollama stream missing body');
+
+    let lastMessage: any = null;
     for await (const chunk of res.body as any as AsyncIterable<Buffer>) {
       const text = chunk.toString();
       for (const line of text.split('\n').filter(Boolean)) {
         try {
           const parsed = JSON.parse(line);
+          lastMessage = parsed;
           const content = parsed?.message?.content ?? '';
           if (content) yield { content, done: false, raw: parsed };
         } catch (_) {
@@ -58,18 +73,38 @@ export class OllamaLLMProvider implements LLMProvider {
         }
       }
     }
-    yield { content: '', done: true };
+
+    // Final chunk with tool calls if present
+    const toolCalls = lastMessage?.message?.tool_calls
+      ? parseToolCallsFromOllama(lastMessage.message.tool_calls)
+      : undefined;
+    const stopReason = mapStopReasonFromOllama(lastMessage?.message ?? {});
+    yield { content: '', done: true, toolCalls, stopReason };
+  }
+
+  private mapMessages(messages: LLMRequest['messages']): any[] {
+    return messages.map((m) => {
+      if (m.role === 'tool') {
+        return { role: 'tool', content: m.content };
+      }
+      return { role: m.role, content: m.content };
+    });
   }
 
   private async call(request: LLMRequest, stream: boolean) {
+    const body: any = {
+      model: this.model,
+      stream,
+      messages: this.mapMessages(request.messages),
+    };
+    if (request.tools?.length) {
+      body.tools = mapToolsToOllama(request.tools);
+    }
+
     const resp = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.model,
-        stream,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content }))
-      })
+      body: JSON.stringify(body)
     });
     if (!resp.ok) throw new Error(`ollama failed: ${resp.status}`);
     return resp.json();

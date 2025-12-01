@@ -1,5 +1,9 @@
 import OpenAI, { toFile } from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionAssistantMessageParam,
+  ChatCompletionToolMessageParam,
+} from 'openai/resources/chat/completions';
 import {
   LLMChunk,
   LLMProvider,
@@ -12,6 +16,15 @@ import {
   TTSConfig,
   TTSResult
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToOpenAI,
+  mapToolChoiceToOpenAI,
+  parseToolCallsFromOpenAI,
+  mapStopReasonFromOpenAI,
+  processToolCallDelta,
+  finalizeToolCalls,
+  StreamingToolCallAccumulator,
+} from './tool-adapter.js';
 
 export interface OpenAILLMConfig {
   apiKey: string;
@@ -36,10 +49,18 @@ export class OpenAILLMProvider implements LLMProvider {
       temperature: request.config?.temperature,
       top_p: request.config?.topP,
       max_tokens: request.config?.maxTokens,
-      stream: false
+      stream: false,
+      ...(request.tools?.length && {
+        tools: mapToolsToOpenAI(request.tools),
+        tool_choice: mapToolChoiceToOpenAI(request.toolChoice),
+      }),
     });
-    const fullText = completion.choices?.[0]?.message?.content ?? '';
-    return { fullText, raw: completion };
+    const choice = completion.choices?.[0];
+    const fullText = choice?.message?.content ?? '';
+    const toolCalls = parseToolCallsFromOpenAI(choice?.message?.tool_calls);
+    const stopReason = mapStopReasonFromOpenAI(choice?.finish_reason);
+
+    return { fullText, raw: completion, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
@@ -49,13 +70,45 @@ export class OpenAILLMProvider implements LLMProvider {
       temperature: request.config?.temperature,
       top_p: request.config?.topP,
       max_tokens: request.config?.maxTokens,
-      stream: true
+      stream: true,
+      ...(request.tools?.length && {
+        tools: mapToolsToOpenAI(request.tools),
+        tool_choice: mapToolChoiceToOpenAI(request.toolChoice),
+      }),
     });
+
+    // Accumulate tool calls across streaming chunks
+    const toolCallAccumulators = new Map<number, StreamingToolCallAccumulator>();
+    let finishReason: string | null = null;
+
     for await (const part of stream) {
-      const delta = part.choices?.[0]?.delta?.content ?? '';
-      yield { content: delta ?? '', done: false, raw: part };
+      const choice = part.choices?.[0];
+      const delta = choice?.delta;
+
+      // Accumulate tool call deltas
+      if (delta?.tool_calls) {
+        for (const toolCallDelta of delta.tool_calls) {
+          processToolCallDelta(toolCallAccumulators, toolCallDelta);
+        }
+      }
+
+      // Track finish reason
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
+      // Yield content delta
+      const content = delta?.content ?? '';
+      yield { content, done: false, raw: part };
     }
-    yield { content: '', done: true };
+
+    // Final chunk with accumulated tool calls
+    const toolCalls = toolCallAccumulators.size > 0
+      ? finalizeToolCalls(toolCallAccumulators)
+      : undefined;
+    const stopReason = mapStopReasonFromOpenAI(finishReason);
+
+    yield { content: '', done: true, toolCalls, stopReason };
   }
 }
 
@@ -92,9 +145,43 @@ export class OpenAIWhisperProvider implements STTProvider {
 
 function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
   return messages.map((m) => {
-    if (!m.attachments?.length) return { role: m.role, content: m.content } as ChatCompletionMessageParam;
-    const imageParts = m.attachments.map((att) => ({ type: 'image_url', image_url: { url: att.data } }));
-    return { role: m.role, content: [{ type: 'text', text: m.content }, ...imageParts] } as ChatCompletionMessageParam;
+    // Handle tool result messages
+    if (m.role === 'tool') {
+      return {
+        role: 'tool',
+        content: m.content,
+        tool_call_id: m.toolCallId ?? '',
+      } as ChatCompletionToolMessageParam;
+    }
+
+    // Handle assistant messages (may contain tool_calls reference for context)
+    if (m.role === 'assistant') {
+      const assistantMsg: ChatCompletionAssistantMessageParam = {
+        role: 'assistant',
+        content: m.content || null,
+      };
+
+      // Include tool_calls if present (required for tool result messages to work)
+      if (m.toolCalls?.length) {
+        assistantMsg.tool_calls = m.toolCalls.map(tc => ({
+          id: tc.callId,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments),
+          },
+        }));
+      }
+
+      return assistantMsg;
+    }
+
+    // Handle system and user messages
+    if (!m.attachments?.length) {
+      return { role: m.role, content: m.content } as ChatCompletionMessageParam;
+    }
+    const imageParts = m.attachments.map((att) => ({ type: 'image_url' as const, image_url: { url: att.data } }));
+    return { role: m.role, content: [{ type: 'text' as const, text: m.content }, ...imageParts] } as ChatCompletionMessageParam;
   });
 }
 

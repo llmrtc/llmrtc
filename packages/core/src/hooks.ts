@@ -15,6 +15,8 @@ import type {
   TTSChunk
 } from './types.js';
 import type { ErrorCode } from './protocol.js';
+import type { ToolCallRequest, ToolCallResult } from './tools.js';
+import type { Stage, Transition } from './playbook.js';
 
 // =============================================================================
 // Context Types
@@ -52,7 +54,7 @@ export interface ErrorContext {
   /** Structured error code */
   code: ErrorCode;
   /** Component that produced the error */
-  component: 'stt' | 'llm' | 'tts' | 'vad' | 'webrtc' | 'server';
+  component: 'stt' | 'llm' | 'tts' | 'vad' | 'webrtc' | 'server' | 'tool' | 'playbook';
   /** Session identifier if available */
   sessionId?: string;
   /** Turn identifier if available */
@@ -206,6 +208,34 @@ export interface OrchestratorHooks {
    * @param error - Error that occurred
    */
   onTTSError?(ctx: TurnContext, error: Error): void | Promise<void>;
+
+  // ---------------------------------------------------------------------------
+  // Tool Hooks
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Called before a tool is executed
+   * @param ctx - Turn context
+   * @param request - Tool call request with name and arguments
+   */
+  onToolStart?(ctx: TurnContext, request: ToolCallRequest): void | Promise<void>;
+
+  /**
+   * Called when a tool execution completes
+   * Use this hook to log tool results or add guardrails
+   * @param ctx - Turn context
+   * @param result - Tool execution result
+   * @param timing - Tool execution duration
+   */
+  onToolEnd?(ctx: TurnContext, result: ToolCallResult, timing: TimingInfo): void | Promise<void>;
+
+  /**
+   * Called when a tool execution fails
+   * @param ctx - Turn context
+   * @param request - The tool call that failed
+   * @param error - Error that occurred
+   */
+  onToolError?(ctx: TurnContext, request: ToolCallRequest, error: Error): void | Promise<void>;
 }
 
 // =============================================================================
@@ -276,14 +306,101 @@ export interface ServerHooks {
 }
 
 // =============================================================================
+// Playbook Hooks
+// =============================================================================
+
+/**
+ * Context for playbook hooks
+ */
+export interface PlaybookContext {
+  /** Playbook ID */
+  playbookId: string;
+  /** Current stage ID */
+  stageId: string;
+  /** Session ID if available */
+  sessionId?: string;
+  /** Number of turns in current stage */
+  turnCount: number;
+  /** Time spent in current stage (ms) */
+  timeInStage: number;
+}
+
+/**
+ * Hooks for playbook execution
+ *
+ * These hooks are called during playbook stage transitions
+ * and can be used for logging, analytics, or custom behavior.
+ *
+ * @example
+ * ```typescript
+ * const orchestrator = new PlaybookOrchestrator({
+ *   llm,
+ *   playbook,
+ *   hooks: {
+ *     onStageEnter(ctx, stage) {
+ *       console.log(`Entered stage: ${stage.name}`);
+ *       analytics.track('stage_entered', { stage: stage.id });
+ *     },
+ *     onTransition(ctx, transition, from, to) {
+ *       console.log(`Transitioned: ${from.id} -> ${to.id}`);
+ *     }
+ *   }
+ * });
+ * ```
+ */
+export interface PlaybookHooks {
+  /**
+   * Called when entering a new stage
+   * @param ctx - Playbook context
+   * @param stage - The stage being entered
+   * @param previousStage - The previous stage (undefined if initial)
+   */
+  onStageEnter?(ctx: PlaybookContext, stage: Stage, previousStage?: Stage): void | Promise<void>;
+
+  /**
+   * Called when exiting a stage
+   * @param ctx - Playbook context
+   * @param stage - The stage being exited
+   * @param nextStage - The stage being transitioned to
+   * @param timing - Time spent in the exited stage
+   */
+  onStageExit?(ctx: PlaybookContext, stage: Stage, nextStage: Stage, timing: TimingInfo): void | Promise<void>;
+
+  /**
+   * Called when a stage transition occurs
+   * @param ctx - Playbook context
+   * @param transition - The transition that was triggered
+   * @param from - Source stage
+   * @param to - Target stage
+   */
+  onTransition?(ctx: PlaybookContext, transition: Transition, from: Stage, to: Stage): void | Promise<void>;
+
+  /**
+   * Called when a playbook turn completes
+   * @param ctx - Playbook context
+   * @param response - The assistant's response
+   * @param toolCallCount - Number of tool calls made in this turn
+   */
+  onPlaybookTurnEnd?(ctx: PlaybookContext, response: string, toolCallCount: number): void | Promise<void>;
+
+  /**
+   * Called when playbook execution completes
+   * @param ctx - Playbook context
+   * @param finalStage - The stage where execution ended
+   * @param totalTurns - Total turns across all stages
+   */
+  onPlaybookComplete?(ctx: PlaybookContext, finalStage: Stage, totalTurns: number): void | Promise<void>;
+}
+
+// =============================================================================
 // Combined Hooks
 // =============================================================================
 
 /**
  * Combined hooks interface for convenience
- * Can be used when you want a single hooks object for both server and orchestrator
+ * Can be used when you want a single hooks object for server, orchestrator, and playbook
  */
-export interface CombinedHooks extends OrchestratorHooks, ServerHooks {}
+export interface CombinedHooks extends OrchestratorHooks, ServerHooks, PlaybookHooks {}
 
 // =============================================================================
 // Utility Functions

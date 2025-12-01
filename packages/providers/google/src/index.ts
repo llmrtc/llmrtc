@@ -7,6 +7,16 @@ import {
   LLMResult,
   Message
 } from '@metered/llmrtc-core';
+import {
+  mapToolsToGemini,
+  mapToolChoiceToGemini,
+  parseToolCallsFromGemini,
+  mapStopReasonFromGemini,
+  processStreamingFunctionCall,
+  finalizeToolCalls,
+  createFunctionResponsePart,
+  StreamingFunctionCallAccumulator,
+} from './tool-adapter.js';
 
 export interface GeminiConfig {
   /** Google AI API key */
@@ -49,12 +59,25 @@ export class GeminiLLMProvider implements LLMProvider {
         systemInstruction,
         temperature: request.config?.temperature,
         topP: request.config?.topP,
-        maxOutputTokens: request.config?.maxTokens
+        maxOutputTokens: request.config?.maxTokens,
+        ...(request.tools?.length && {
+          tools: mapToolsToGemini(request.tools),
+          toolConfig: {
+            functionCallingConfig: mapToolChoiceToGemini(request.toolChoice, request.tools),
+          },
+        }),
       }
     });
 
+    const candidate = response.candidates?.[0];
+    const parts = candidate?.content?.parts;
     const fullText = response.text ?? '';
-    return { fullText, raw: response };
+    const toolCalls = parseToolCallsFromGemini(parts);
+    const stopReason = toolCalls?.length
+      ? 'tool_use' as const
+      : mapStopReasonFromGemini(candidate?.finishReason);
+
+    return { fullText, raw: response, toolCalls, stopReason };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
@@ -67,16 +90,51 @@ export class GeminiLLMProvider implements LLMProvider {
         systemInstruction,
         temperature: request.config?.temperature,
         topP: request.config?.topP,
-        maxOutputTokens: request.config?.maxTokens
+        maxOutputTokens: request.config?.maxTokens,
+        ...(request.tools?.length && {
+          tools: mapToolsToGemini(request.tools),
+          toolConfig: {
+            functionCallingConfig: mapToolChoiceToGemini(request.toolChoice, request.tools),
+          },
+        }),
       }
     });
 
+    // Accumulate function calls across streaming chunks
+    const functionCallAccumulators = new Map<number, StreamingFunctionCallAccumulator>();
+    let finishReason: string | undefined;
+
     for await (const chunk of stream) {
+      const candidate = chunk.candidates?.[0];
+      const parts = candidate?.content?.parts ?? [];
+
+      // Process function calls
+      let callIndex = 0;
+      for (const part of parts) {
+        if (part.functionCall) {
+          processStreamingFunctionCall(functionCallAccumulators, callIndex, part.functionCall);
+          callIndex++;
+        }
+      }
+
+      // Track finish reason
+      if (candidate?.finishReason) {
+        finishReason = candidate.finishReason;
+      }
+
       const text = chunk.text ?? '';
       yield { content: text, done: false, raw: chunk };
     }
 
-    yield { content: '', done: true };
+    // Final chunk with accumulated tool calls
+    const toolCalls = functionCallAccumulators.size > 0
+      ? finalizeToolCalls(functionCallAccumulators)
+      : undefined;
+    const stopReason = toolCalls?.length
+      ? 'tool_use' as const
+      : mapStopReasonFromGemini(finishReason);
+
+    yield { content: '', done: true, toolCalls, stopReason };
   }
 }
 
@@ -93,6 +151,23 @@ function convertMessages(messages: Message[]): {
   for (const msg of messages) {
     if (msg.role === 'system') {
       systemInstruction = msg.content;
+      continue;
+    }
+
+    // Handle tool result messages
+    if (msg.role === 'tool') {
+      // Parse the tool result content as JSON if possible
+      let response: unknown;
+      try {
+        response = JSON.parse(msg.content);
+      } catch {
+        response = { result: msg.content };
+      }
+
+      contents.push({
+        role: 'user',
+        parts: [createFunctionResponsePart(msg.toolName ?? '', response)],
+      });
       continue;
     }
 

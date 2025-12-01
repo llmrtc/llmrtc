@@ -79,7 +79,27 @@ export const MetricNames = {
   /** Number of active WebSocket connections */
   CONNECTIONS: 'llmrtc.connections.active',
   /** Reconnection attempts */
-  RECONNECTIONS: 'llmrtc.reconnections'
+  RECONNECTIONS: 'llmrtc.reconnections',
+
+  // Tool metrics
+  /** Tool execution duration in milliseconds */
+  TOOL_DURATION: 'llmrtc.tool.duration_ms',
+  /** Number of tool calls */
+  TOOL_CALLS: 'llmrtc.tool.calls',
+  /** Tool call errors */
+  TOOL_ERRORS: 'llmrtc.tool.errors',
+
+  // Playbook metrics
+  /** Stage duration in milliseconds */
+  STAGE_DURATION: 'llmrtc.playbook.stage.duration_ms',
+  /** Number of stage transitions */
+  STAGE_TRANSITIONS: 'llmrtc.playbook.transitions',
+  /** Turns per stage */
+  STAGE_TURNS: 'llmrtc.playbook.stage.turns',
+  /** Current playbook stage (gauge) */
+  CURRENT_STAGE: 'llmrtc.playbook.stage.current',
+  /** Playbook completion counter */
+  PLAYBOOK_COMPLETIONS: 'llmrtc.playbook.completions'
 } as const;
 
 export type MetricName = typeof MetricNames[keyof typeof MetricNames];

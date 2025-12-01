@@ -1,4 +1,6 @@
-export type Role = 'system' | 'user' | 'assistant';
+import type { ToolDefinition, ToolCallRequest, ToolChoice } from './tools.js';
+
+export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface VisionAttachment {
   /** base64-encoded image (data URI) or remote URL depending on provider */
@@ -11,6 +13,12 @@ export interface Message {
   role: Role;
   content: string;
   attachments?: VisionAttachment[];
+  /** Tool call ID (for role='tool' messages containing tool results) */
+  toolCallId?: string;
+  /** Tool name (for role='tool' messages) */
+  toolName?: string;
+  /** Tool calls made by assistant (for role='assistant' messages that called tools) */
+  toolCalls?: ToolCallRequest[];
 }
 
 export interface SessionConfig {
@@ -25,17 +33,32 @@ export interface LLMRequest {
   messages: Message[];
   config?: SessionConfig;
   stream?: boolean;
+  /** Tool definitions available for this request */
+  tools?: ToolDefinition[];
+  /** How the LLM should choose tools */
+  toolChoice?: ToolChoice;
 }
 
 export interface LLMChunk {
   content: string;
   done: boolean;
   raw?: unknown;
+  /** Tool calls (only in final chunk when done=true and stopReason='tool_use') */
+  toolCalls?: ToolCallRequest[];
+  /** Stop reason (only in final chunk when done=true) */
+  stopReason?: StopReason;
 }
+
+/** Why the LLM stopped generating */
+export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 
 export interface LLMResult {
   fullText: string;
   raw?: unknown;
+  /** Tool calls requested by the LLM (if stopReason is 'tool_use') */
+  toolCalls?: ToolCallRequest[];
+  /** Why generation stopped */
+  stopReason?: StopReason;
 }
 
 export interface LLMProvider {

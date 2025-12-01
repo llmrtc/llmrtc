@@ -6,6 +6,8 @@ A TypeScript SDK for building real-time voice and vision AI applications. Combin
 
 - **Real-time Voice Conversations** - WebRTC-based audio streaming with server-side VAD (Voice Activity Detection)
 - **Multi-Provider Support** - OpenAI, Anthropic Claude, Google Gemini, AWS Bedrock, OpenRouter, and local models
+- **Tool Calling** - Provider-agnostic tool definitions with JSON Schema, works across all LLM providers
+- **Playbooks** - Multi-stage conversation flows with automatic transitions, per-stage tools, and two-phase turn execution
 - **Vision/Multimodal** - Camera and screen capture with automatic frame extraction
 - **Streaming Responses** - Stream LLM and TTS responses for minimal latency
 - **Barge-in Support** - Interrupt AI responses mid-speech
@@ -194,13 +196,41 @@ interface LLMRequest {
   messages: Message[];
   config?: SessionConfig;
   stream?: boolean;
+  tools?: ToolDefinition[];      // Available tools for the LLM
+  toolChoice?: ToolChoice;       // How the LLM should use tools
+}
+
+interface LLMResult {
+  fullText: string;
+  raw?: unknown;
+  toolCalls?: ToolCallRequest[]; // Tools the LLM wants to call
+  stopReason?: StopReason;       // Why the LLM stopped
 }
 
 interface Message {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   attachments?: VisionAttachment[];
+  toolCallId?: string;  // For tool role messages
+  toolName?: string;    // For tool role messages
 }
+
+// Tool-related types
+interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: ToolParameterSchema; // JSON Schema
+  executionPolicy?: 'sequential' | 'parallel';
+}
+
+interface ToolCallRequest {
+  callId: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+type ToolChoice = 'auto' | 'none' | 'required' | { name: string };
+type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 ```
 
 #### STTProvider
@@ -833,6 +863,485 @@ class PrometheusMetrics implements MetricsAdapter {
 // - stt.duration_ms, llm.ttft_ms, llm.duration_ms
 // - tts.duration_ms, turn.duration_ms, session.duration_ms
 // - errors (counter), connections.active (gauge)
+```
+
+---
+
+## Tool Calling
+
+The SDK provides a provider-agnostic tool calling system that works across all LLM providers. Define tools once and use them with OpenAI, Anthropic, Google Gemini, AWS Bedrock, OpenRouter, LMStudio, and Ollama.
+
+### Defining Tools
+
+```typescript
+import { ToolRegistry, defineTool, ToolDefinition } from '@metered/llmrtc-core';
+
+// Define a tool with JSON Schema parameters
+const getWeatherTool = defineTool(
+  {
+    name: 'get_weather',
+    description: 'Get the current weather for a city',
+    parameters: {
+      type: 'object',
+      properties: {
+        city: {
+          type: 'string',
+          description: 'The city name'
+        },
+        units: {
+          type: 'string',
+          enum: ['celsius', 'fahrenheit'],
+          description: 'Temperature units'
+        }
+      },
+      required: ['city']
+    }
+  },
+  // Async handler function
+  async (params: { city: string; units?: string }) => {
+    const response = await fetch(`https://api.weather.com/${params.city}`);
+    return await response.json();
+  }
+);
+
+// Create a registry and register tools
+const registry = new ToolRegistry();
+registry.register(getWeatherTool);
+
+// Get definitions for LLM requests
+const definitions = registry.getDefinitions();
+```
+
+### Using Tools with LLM Providers
+
+```typescript
+import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+
+const llm = new OpenAILLMProvider({ apiKey: 'sk-...' });
+
+// Make an LLM request with tools
+const result = await llm.complete({
+  messages: [
+    { role: 'user', content: 'What is the weather in Tokyo?' }
+  ],
+  tools: registry.getDefinitions(),
+  toolChoice: 'auto' // 'auto' | 'none' | 'required' | { name: 'tool_name' }
+});
+
+// Check if the LLM wants to call tools
+if (result.stopReason === 'tool_use' && result.toolCalls) {
+  for (const call of result.toolCalls) {
+    console.log(`Tool: ${call.name}, Args: ${JSON.stringify(call.arguments)}`);
+  }
+}
+```
+
+### Tool Executor
+
+The `ToolExecutor` handles execution of tool calls with support for parallel execution, timeouts, and abort signals:
+
+```typescript
+import { ToolExecutor } from '@metered/llmrtc-core';
+
+const executor = new ToolExecutor(registry, {
+  timeout: 30000,           // Per-tool timeout (ms)
+  maxConcurrency: 5,        // Max parallel executions
+  defaultPolicy: 'parallel' // 'parallel' | 'sequential'
+});
+
+// Execute tool calls from LLM response
+const results = await executor.execute(result.toolCalls, {
+  sessionId: 'session-123',
+  turnId: 'turn-456'
+});
+
+// Results include success status, duration, and result data
+for (const toolResult of results) {
+  console.log(`${toolResult.toolName}: ${toolResult.success ? 'OK' : toolResult.error}`);
+}
+```
+
+### Complete Tool Loop Example
+
+```typescript
+import { ToolRegistry, ToolExecutor, defineTool } from '@metered/llmrtc-core';
+import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+
+// Setup
+const registry = new ToolRegistry();
+registry.register(defineTool(
+  { name: 'calculate', description: 'Do math', parameters: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'] } },
+  async ({ expression }) => eval(expression) // Note: use a proper math library in production
+));
+
+const llm = new OpenAILLMProvider({ apiKey: 'sk-...' });
+const executor = new ToolExecutor(registry);
+
+// Conversation with tool loop
+const messages = [{ role: 'user', content: 'What is 42 * 17?' }];
+
+let response = await llm.complete({
+  messages,
+  tools: registry.getDefinitions(),
+  toolChoice: 'auto'
+});
+
+// Tool loop - keep calling tools until LLM gives final answer
+while (response.stopReason === 'tool_use' && response.toolCalls?.length) {
+  // Execute tools
+  const results = await executor.execute(response.toolCalls, { sessionId: 'demo' });
+
+  // Add assistant message with tool calls
+  messages.push({ role: 'assistant', content: response.fullText || '' });
+
+  // Add tool results
+  for (const result of results) {
+    messages.push({
+      role: 'tool',
+      content: JSON.stringify(result.result),
+      toolCallId: result.callId,
+      toolName: result.toolName
+    });
+  }
+
+  // Call LLM again
+  response = await llm.complete({ messages, tools: registry.getDefinitions() });
+}
+
+console.log('Final answer:', response.fullText);
+```
+
+### Provider Support
+
+Tool calling is supported across all LLM providers with automatic format conversion:
+
+| Provider | Tool Calling | Streaming Tools |
+|----------|-------------|-----------------|
+| OpenAI | ✅ | ✅ |
+| Anthropic | ✅ | ✅ |
+| Google Gemini | ✅ | ✅ |
+| AWS Bedrock | ✅ | ✅ |
+| OpenRouter | ✅ | ✅ |
+| LMStudio | ✅ | ✅ |
+| Ollama | ✅ | ✅ |
+
+---
+
+## Playbooks
+
+Playbooks define multi-stage conversation flows with automatic transitions between stages. Each stage can have its own system prompt, tools, and LLM configuration.
+
+### Core Concepts
+
+- **Stage**: A conversation state with its own system prompt and available tools
+- **Transition**: A rule that triggers movement from one stage to another
+- **Two-Phase Turn**: Phase 1 (tool loop) → Phase 2 (final response)
+- **PlaybookOrchestrator**: Manages playbook execution and turn handling
+
+### Defining a Playbook
+
+```typescript
+import { Playbook, Stage, Transition } from '@metered/llmrtc-core';
+
+const playbook: Playbook = {
+  id: 'customer-support',
+  name: 'Customer Support Assistant',
+
+  stages: [
+    {
+      id: 'greeting',
+      name: 'Greeting',
+      systemPrompt: 'Greet the customer and understand their issue.',
+      maxTurns: 3 // Auto-transition after 3 turns
+    },
+    {
+      id: 'troubleshooting',
+      name: 'Troubleshooting',
+      systemPrompt: 'Help the customer resolve their technical issue.',
+      tools: [diagnosticTool.definition, lookupTool.definition],
+      toolChoice: 'auto',
+      twoPhaseExecution: true // Enable tool loop + final response
+    },
+    {
+      id: 'resolution',
+      name: 'Resolution',
+      systemPrompt: 'Confirm the issue is resolved and close the ticket.',
+      llmConfig: { temperature: 0.3 } // More deterministic for closing
+    }
+  ],
+
+  transitions: [
+    // Keyword-based: greeting → troubleshooting
+    {
+      id: 'start-troubleshooting',
+      from: 'greeting',
+      condition: { type: 'keyword', keywords: ['help', 'problem', 'issue', 'broken'] },
+      action: { targetStage: 'troubleshooting' }
+    },
+    // Tool call trigger: troubleshooting → resolution
+    {
+      id: 'issue-resolved',
+      from: 'troubleshooting',
+      condition: { type: 'tool_call', toolName: 'mark_resolved' },
+      action: { targetStage: 'resolution' }
+    },
+    // LLM decision: allow LLM to request transition
+    {
+      id: 'llm-transition',
+      from: '*', // From any stage
+      condition: { type: 'llm_decision' },
+      action: { targetStage: 'resolution' }
+    },
+    // Max turns fallback
+    {
+      id: 'greeting-timeout',
+      from: 'greeting',
+      condition: { type: 'max_turns', count: 3 },
+      action: { targetStage: 'troubleshooting' },
+      priority: -1 // Lower priority than keyword match
+    }
+  ],
+
+  initialStage: 'greeting',
+  globalSystemPrompt: 'You are a helpful customer support agent.',
+  defaultLLMConfig: { temperature: 0.7, maxTokens: 500 }
+};
+```
+
+### Transition Conditions
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `keyword` | Match keywords in assistant response | `{ type: 'keyword', keywords: ['done', 'goodbye'] }` |
+| `tool_call` | Triggered when specific tool is called | `{ type: 'tool_call', toolName: 'submit_form' }` |
+| `llm_decision` | LLM calls `playbook_transition` tool | `{ type: 'llm_decision' }` |
+| `max_turns` | Exceeded turn count in stage | `{ type: 'max_turns', count: 5 }` |
+| `timeout` | Time spent in stage exceeds limit | `{ type: 'timeout', durationMs: 60000 }` |
+| `intent` | Intent detection (via context) | `{ type: 'intent', intent: 'book_appointment', confidence: 0.8 }` |
+| `custom` | Custom evaluation function | `{ type: 'custom', evaluate: (ctx) => ctx.turnCount > 2 }` |
+
+### Using PlaybookOrchestrator
+
+```typescript
+import {
+  PlaybookOrchestrator,
+  ToolRegistry
+} from '@metered/llmrtc-core';
+import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+
+// Setup
+const llm = new OpenAILLMProvider({ apiKey: 'sk-...' });
+const registry = new ToolRegistry();
+// Register your tools...
+
+const orchestrator = new PlaybookOrchestrator(llm, playbook, registry, {
+  maxToolCallsPerTurn: 10,
+  phase1TimeoutMs: 30000,
+  debug: true
+});
+
+// Execute a turn
+const result = await orchestrator.executeTurn('Hi, my internet is not working');
+
+console.log('Response:', result.response);
+console.log('Current stage:', orchestrator.getEngine().getCurrentStage().name);
+console.log('Tool calls made:', result.toolCalls.length);
+console.log('Transitioned:', result.transitioned);
+
+// Streaming turn execution
+for await (const event of orchestrator.streamTurn('Can you run a diagnostic?')) {
+  if (event.type === 'tool_call') {
+    console.log('Calling tool:', event.data.name);
+  } else if (event.type === 'content') {
+    process.stdout.write(event.data); // Stream response
+  } else if (event.type === 'done') {
+    console.log('\nTurn complete');
+  }
+}
+```
+
+### Two-Phase Turn Execution
+
+When `twoPhaseExecution: true` (default), each turn executes in two phases:
+
+1. **Phase 1 (Tool Loop)**: LLM can call tools repeatedly until it decides to respond
+2. **Phase 2 (Final Response)**: Generate the user-facing response
+
+```
+User Input
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│ Phase 1: Tool Loop                          │
+│                                             │
+│   LLM Request ──► Tool Call? ──► Execute   │
+│        ▲              │              │      │
+│        └──────────────┴──────────────┘      │
+│                       │ No                  │
+│                       ▼                     │
+└─────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────┐
+│ Phase 2: Final Response                     │
+│                                             │
+│   Generate user-facing response             │
+└─────────────────────────────────────────────┘
+                        │
+                        ▼
+              Response to User
+```
+
+### PlaybookEngine API
+
+The `PlaybookEngine` manages playbook state and transitions:
+
+```typescript
+import { PlaybookEngine } from '@metered/llmrtc-core';
+
+const engine = new PlaybookEngine(playbook);
+
+// State management
+engine.getCurrentStage();           // Get current stage
+engine.getState();                  // Get full state (turnCount, history, etc.)
+engine.updateContext({ key: val }); // Update conversation context
+engine.setSessionMetadata({ ... }); // Set session metadata
+
+// Transition evaluation
+const result = await engine.evaluateTransitions(
+  'Thanks, that fixed it!',  // Last assistant message
+  [{ name: 'mark_resolved', arguments: {} }] // Tool calls
+);
+
+if (result.shouldTransition) {
+  await engine.executeTransition(result.transition);
+}
+
+// Event handling
+engine.on(event => {
+  switch (event.type) {
+    case 'stage_enter': console.log('Entered:', event.stage.name); break;
+    case 'stage_exit': console.log('Exited:', event.stage.name); break;
+    case 'transition': console.log('Transitioned via:', event.transition.id); break;
+  }
+});
+
+// Helpers
+engine.getEffectiveSystemPrompt(); // Combined global + stage prompt
+engine.getAvailableTools();        // Combined global + stage tools
+engine.getEffectiveLLMConfig();    // Merged LLM config
+```
+
+### Stage Lifecycle Hooks
+
+```typescript
+const stage: Stage = {
+  id: 'checkout',
+  name: 'Checkout',
+  systemPrompt: 'Process the customer order.',
+
+  // Called when entering this stage
+  async onEnter(ctx) {
+    console.log('Entering checkout from:', ctx.otherStage?.name);
+    // Initialize checkout state
+    await initializeCart(ctx.sessionMetadata.userId);
+  },
+
+  // Called when leaving this stage
+  async onExit(ctx) {
+    console.log('Leaving checkout, going to:', ctx.otherStage?.name);
+    // Save cart state
+    await saveCart(ctx.conversationContext.cartId);
+  }
+};
+```
+
+### Built-in playbook_transition Tool
+
+When stages have `llm_decision` transitions, the `playbook_transition` tool is automatically available:
+
+```typescript
+// The LLM can call this tool to request a stage transition:
+{
+  name: 'playbook_transition',
+  arguments: {
+    targetStage: 'resolution',
+    reason: 'Customer confirmed the issue is resolved',
+    data: { satisfactionScore: 5 } // Optional data passed to new stage
+  }
+}
+```
+
+### Simple Playbook Helper
+
+For single-stage use cases:
+
+```typescript
+import { createSimplePlaybook } from '@metered/llmrtc-core';
+
+const playbook = createSimplePlaybook(
+  'assistant',
+  'You are a helpful assistant.',
+  [weatherTool.definition, searchTool.definition]
+);
+```
+
+### Playbook Validation
+
+```typescript
+import { validatePlaybook } from '@metered/llmrtc-core';
+
+const result = validatePlaybook(playbook);
+if (!result.valid) {
+  console.error('Playbook errors:', result.errors);
+}
+// Checks: duplicate IDs, invalid stage references, missing initial stage
+```
+
+### Hooks for Playbooks
+
+```typescript
+import { PlaybookHooks, PlaybookContext } from '@metered/llmrtc-core';
+
+const hooks: PlaybookHooks = {
+  onStageEnter(ctx: PlaybookContext, stage, previousStage) {
+    analytics.track('stage_entered', { stage: stage.id });
+  },
+
+  onStageExit(ctx, stage, nextStage, timing) {
+    metrics.timing('stage_duration', timing.durationMs, { stage: stage.id });
+  },
+
+  onTransition(ctx, transition, from, to) {
+    console.log(`${from.name} → ${to.name} via ${transition.id}`);
+  },
+
+  onPlaybookTurnEnd(ctx, response, toolCallCount) {
+    console.log(`Turn complete: ${toolCallCount} tool calls`);
+  },
+
+  onPlaybookComplete(ctx, finalStage, totalTurns) {
+    console.log(`Playbook finished in ${totalTurns} turns`);
+  }
+};
+```
+
+### Metrics for Tools and Playbooks
+
+```typescript
+import { MetricNames, ConsoleMetrics } from '@metered/llmrtc-core';
+
+// Tool metrics
+MetricNames.TOOL_DURATION      // 'llmrtc.tool.duration_ms'
+MetricNames.TOOL_CALLS         // 'llmrtc.tool.calls'
+MetricNames.TOOL_ERRORS        // 'llmrtc.tool.errors'
+
+// Playbook metrics
+MetricNames.STAGE_DURATION     // 'llmrtc.playbook.stage.duration_ms'
+MetricNames.STAGE_TRANSITIONS  // 'llmrtc.playbook.transitions'
+MetricNames.STAGE_TURNS        // 'llmrtc.playbook.stage.turns'
+MetricNames.CURRENT_STAGE      // 'llmrtc.playbook.stage.current'
+MetricNames.PLAYBOOK_COMPLETIONS // 'llmrtc.playbook.completions'
 ```
 
 ---
