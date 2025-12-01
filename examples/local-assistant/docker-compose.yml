@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  faster-whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=base
+      - DEVICE=cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    ports:
+      - "5000:10200"
+    command: --voice en_US-lessac-medium
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
