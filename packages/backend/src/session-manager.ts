@@ -1,10 +1,10 @@
-import { ConversationOrchestrator } from '@metered/llmrtc-core';
+import type { TurnOrchestrator } from './turn-orchestrator.js';
 
 export interface Session {
   /** Unique session identifier */
   id: string;
-  /** The conversation orchestrator for this session */
-  orchestrator: ConversationOrchestrator;
+  /** The orchestrator for this session (ConversationOrchestrator or VoicePlaybookOrchestrator) */
+  orchestrator: TurnOrchestrator;
   /** When the session was created */
   createdAt: number;
   /** When the session was last active */
@@ -50,7 +50,7 @@ export class SessionManager {
   /**
    * Create a new session.
    */
-  createSession(id: string, orchestrator: ConversationOrchestrator): Session {
+  createSession(id: string, orchestrator: TurnOrchestrator): Session {
     const now = Date.now();
     const session: Session = {
       id,

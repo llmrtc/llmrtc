@@ -25,8 +25,19 @@ import {
   NoopMetrics,
   createTimingInfo,
   createErrorContext,
-  callHookSafe
+  callHookSafe,
+  type Playbook,
+  ToolRegistry,
+  type PlaybookOrchestratorOptions
 } from '@metered/llmrtc-core';
+import type {
+  TurnOrchestrator,
+  TurnOrchestratorYield,
+  ToolCallStartEvent,
+  ToolCallEndEvent,
+  StageChangeEvent
+} from './turn-orchestrator.js';
+import { VoicePlaybookOrchestrator } from './voice-playbook-orchestrator.js';
 import { AudioProcessor } from './audio-processor.js';
 import {
   decodeToPCM,
@@ -85,6 +96,34 @@ export interface LLMRTCServerConfig {
    * Use this to customize how text is split into sentences for TTS streaming.
    */
   sentenceChunker?: (text: string) => string[];
+
+  // ==========================================================================
+  // Playbook Mode (optional)
+  // ==========================================================================
+
+  /**
+   * Playbook definition for multi-stage conversations with tool calling.
+   * When provided, enables VoicePlaybookOrchestrator instead of ConversationOrchestrator.
+   */
+  playbook?: Playbook;
+
+  /**
+   * Tool registry with registered tools.
+   * Required when playbook is provided.
+   */
+  toolRegistry?: ToolRegistry;
+
+  /**
+   * Options for playbook orchestrator
+   */
+  playbookOptions?: {
+    /** Maximum tool calls per turn (default: 10) */
+    maxToolCallsPerTurn?: number;
+    /** Phase 1 timeout in ms (default: 60000) */
+    phase1TimeoutMs?: number;
+    /** Enable debug logging */
+    debug?: boolean;
+  };
 }
 
 export interface LLMRTCServerEvents {
@@ -100,9 +139,9 @@ export interface LLMRTCServerEvents {
 
 export class LLMRTCServer {
   private readonly config: Required<
-    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker'>
+    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions'>
   > &
-    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker'>;
+    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions'>;
   private readonly providers: ConversationProviders;
   private readonly sessionManager: SessionManager;
   private readonly hooks: ServerHooks & OrchestratorHooks;
@@ -252,7 +291,45 @@ export class LLMRTCServer {
     console.log(`  TTS: ${this.providers.tts.name}`);
     console.log(`  Vision: ${this.providers.vision?.name ?? 'disabled'}`);
     console.log(`  Streaming TTS: ${this.config.streamingTTS ? 'enabled' : 'disabled'}`);
+    console.log(`  Playbook Mode: ${this.config.playbook ? 'enabled' : 'disabled'}`);
     console.log('='.repeat(60));
+  }
+
+  /**
+   * Create the appropriate orchestrator based on config
+   */
+  private createOrchestrator(
+    sessionId: string,
+    orchestratorHooks: OrchestratorHooks
+  ): TurnOrchestrator {
+    // Playbook mode: use VoicePlaybookOrchestrator
+    if (this.config.playbook && this.config.toolRegistry) {
+      console.log(`[server] Creating VoicePlaybookOrchestrator for session ${sessionId}`);
+      return new VoicePlaybookOrchestrator({
+        providers: this.providers,
+        playbook: this.config.playbook,
+        toolRegistry: this.config.toolRegistry,
+        systemPrompt: this.config.systemPrompt,
+        streamingTTS: this.config.streamingTTS,
+        hooks: orchestratorHooks,
+        metrics: this.metrics,
+        sessionId,
+        sentenceChunker: this.config.sentenceChunker,
+        playbookOptions: this.config.playbookOptions
+      });
+    }
+
+    // Simple mode: use ConversationOrchestrator
+    return new ConversationOrchestrator({
+      systemPrompt: this.config.systemPrompt,
+      historyLimit: this.config.historyLimit,
+      providers: this.providers,
+      streamingTTS: this.config.streamingTTS,
+      sessionId,
+      hooks: orchestratorHooks,
+      metrics: this.metrics,
+      sentenceChunker: this.config.sentenceChunker
+    });
   }
 
   private setupWebSocketServer(): void {
@@ -287,19 +364,10 @@ export class LLMRTCServer {
         onTTSError: this.hooks.onTTSError
       };
 
-      // Create session with hooks and metrics
+      // Create session with appropriate orchestrator (ConversationOrchestrator or VoicePlaybookOrchestrator)
       let session = this.sessionManager.createSession(
         connId,
-        new ConversationOrchestrator({
-          systemPrompt: this.config.systemPrompt,
-          historyLimit: this.config.historyLimit,
-          providers: this.providers,
-          streamingTTS: this.config.streamingTTS,
-          sessionId: connId,
-          hooks: orchestratorHooks,
-          metrics: this.metrics,
-          sentenceChunker: this.config.sentenceChunker
-        })
+        this.createOrchestrator(connId, orchestratorHooks)
       );
 
       let peer: NativePeerServer | null = null;
@@ -357,14 +425,10 @@ export class LLMRTCServer {
                   })
                 );
               } else {
+                const newSessionId = msg.sessionId || connId;
                 session = this.sessionManager.createSession(
-                  msg.sessionId || connId,
-                  new ConversationOrchestrator({
-                    systemPrompt: this.config.systemPrompt,
-                    historyLimit: this.config.historyLimit,
-                    providers: this.providers,
-                    streamingTTS: this.config.streamingTTS
-                  })
+                  newSessionId,
+                  this.createOrchestrator(newSessionId, orchestratorHooks)
                 );
                 ws.send(
                   JSON.stringify({
@@ -491,7 +555,7 @@ export class LLMRTCServer {
     peer: NativePeerServer,
     audioProcessor: AudioProcessor,
     ws: WebSocket,
-    orchestrator: ConversationOrchestrator,
+    orchestrator: TurnOrchestrator,
     sessionId: string,
     getPendingAttachments: () => VisionAttachment[],
     setPendingAttachments: (atts: VisionAttachment[]) => void,
@@ -608,7 +672,7 @@ export class LLMRTCServer {
   }
 
   private async handleAudio(
-    orchestrator: ConversationOrchestrator,
+    orchestrator: TurnOrchestrator,
     audio: Buffer,
     ws: WebSocket,
     peer: NativePeerServer | null,
@@ -689,6 +753,39 @@ export class LLMRTCServer {
               onTTSEnd?.();
               ttsStarted = false;
               pcmFeederState = null;
+              break;
+
+            // Playbook mode: Tool call events
+            case 'tool-call-start':
+              console.log(`[server] Tool call started: ${(item as ToolCallStartEvent).name}`);
+              this.sendBoth({
+                type: 'tool-call-start',
+                name: (item as ToolCallStartEvent).name,
+                callId: (item as ToolCallStartEvent).callId,
+                arguments: (item as ToolCallStartEvent).arguments
+              }, ws, peer);
+              break;
+
+            case 'tool-call-end':
+              console.log(`[server] Tool call completed: ${(item as ToolCallEndEvent).callId}`);
+              this.sendBoth({
+                type: 'tool-call-end',
+                callId: (item as ToolCallEndEvent).callId,
+                result: (item as ToolCallEndEvent).result,
+                error: (item as ToolCallEndEvent).error,
+                durationMs: (item as ToolCallEndEvent).durationMs
+              }, ws, peer);
+              break;
+
+            // Playbook mode: Stage transition events
+            case 'stage-change':
+              console.log(`[server] Stage changed: ${(item as StageChangeEvent).from} → ${(item as StageChangeEvent).to}`);
+              this.sendBoth({
+                type: 'stage-change',
+                from: (item as StageChangeEvent).from,
+                to: (item as StageChangeEvent).to,
+                reason: (item as StageChangeEvent).reason
+              }, ws, peer);
               break;
           }
         } else if ('audio' in item) {

@@ -497,8 +497,12 @@ export class PlaybookOrchestrator {
       yield { type: 'tool_call', data: tc.request };
     }
 
+    // Track full response for transition evaluation
+    let fullResponse = '';
+
     // If we have a final response from phase 1, yield it
     if (phase1Result.finalResponse) {
+      fullResponse = phase1Result.finalResponse;
       yield { type: 'content', data: phase1Result.finalResponse };
       this.conversationHistory.push({ role: 'assistant', content: phase1Result.finalResponse });
     } else {
@@ -518,7 +522,6 @@ export class PlaybookOrchestrator {
         }
       };
 
-      let fullResponse = '';
       if (this.llmProvider.stream) {
         for await (const chunk of this.llmProvider.stream(request)) {
           if (chunk.content) {
@@ -541,6 +544,7 @@ export class PlaybookOrchestrator {
     let transition: Transition | undefined;
     let newStage: Stage | undefined;
 
+    // 1. Handle pending transition from playbook_transition tool
     if (phase1Result.pendingTransition) {
       const evalResult = await this.engine.evaluateExplicitTransition(
         phase1Result.pendingTransition.targetStage,
@@ -550,13 +554,49 @@ export class PlaybookOrchestrator {
 
       if (evalResult.shouldTransition && evalResult.transition) {
         transition = evalResult.transition;
+        await this.emit({ type: 'transition_triggered', transition });
         await this.engine.executeTransition(transition, phase1Result.pendingTransition.data);
         transitioned = true;
         newStage = this.engine.getCurrentStage();
       }
     }
 
+    // 2. Check for automatic transitions based on tool calls
+    if (!transitioned && phase1Result.toolCalls.length > 0) {
+      const toolCallsForEval = phase1Result.toolCalls.map(tc => ({
+        name: tc.request.name,
+        arguments: tc.request.arguments
+      }));
+
+      const lastResponse = phase1Result.llmResponses[phase1Result.llmResponses.length - 1];
+      const evalResult = await this.engine.evaluateTransitions(
+        lastResponse?.fullText,
+        toolCallsForEval
+      );
+
+      if (evalResult.shouldTransition && evalResult.transition) {
+        transition = evalResult.transition;
+        await this.emit({ type: 'transition_triggered', transition });
+        await this.engine.executeTransition(transition);
+        transitioned = true;
+        newStage = this.engine.getCurrentStage();
+      }
+    }
+
+    // Complete turn
     await this.engine.completeTurn();
+
+    // 3. Check for automatic transitions based on final response (keyword, etc.)
+    if (!transitioned) {
+      const evalResult = await this.engine.evaluateTransitions(fullResponse);
+      if (evalResult.shouldTransition && evalResult.transition) {
+        transition = evalResult.transition;
+        await this.emit({ type: 'transition_triggered', transition });
+        await this.engine.executeTransition(transition);
+        transitioned = true;
+        newStage = this.engine.getCurrentStage();
+      }
+    }
 
     const lastMessage = this.conversationHistory[this.conversationHistory.length - 1];
 

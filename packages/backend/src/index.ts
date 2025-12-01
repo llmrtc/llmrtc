@@ -30,6 +30,20 @@ export { LLMRTCServer } from './server.js';
 export type { LLMRTCServerConfig, LLMRTCServerEvents } from './server.js';
 
 // =============================================================================
+// Playbook Voice Integration
+// =============================================================================
+
+export { VoicePlaybookOrchestrator } from './voice-playbook-orchestrator.js';
+export type { VoicePlaybookConfig, VoicePlaybookYield } from './voice-playbook-orchestrator.js';
+export type {
+  TurnOrchestrator,
+  TurnOrchestratorYield,
+  ToolCallStartEvent,
+  ToolCallEndEvent,
+  StageChangeEvent
+} from './turn-orchestrator.js';
+
+// =============================================================================
 // Re-export all providers for convenience
 // Users don't need to install provider packages separately
 // =============================================================================
@@ -84,8 +98,19 @@ export type {
   STTResult,
   TTSResult,
   VisionResult,
-  VisionAttachment
+  VisionAttachment,
+  // Playbook types
+  Playbook,
+  Stage,
+  Transition,
+  // Tool types
+  ToolDefinition,
+  ToolCallRequest,
+  ToolCallResult
 } from '@metered/llmrtc-core';
+
+// Re-export ToolRegistry class for playbook mode
+export { ToolRegistry, defineTool } from '@metered/llmrtc-core';
 
 // =============================================================================
 // Re-export hooks, metrics, and logging utilities
