@@ -320,18 +320,50 @@ Error notification with structured error code.
 
 ## Error Codes
 
+Error codes are grouped by category for easier identification:
+
+### WebRTC/Connection Errors
+
 | Code | Description |
 |------|-------------|
 | `WEBRTC_UNAVAILABLE` | Server lacks WebRTC support (missing @roamhq/wrtc) |
-| `AUDIO_PROCESSING_ERROR` | VAD or audio decoding failed |
+| `CONNECTION_FAILED` | WebRTC or WebSocket connection failed |
+| `SESSION_NOT_FOUND` | Reconnect with invalid session ID |
+| `SESSION_EXPIRED` | Session timed out and was cleaned up |
+
+### Provider Errors
+
+| Code | Description |
+|------|-------------|
 | `STT_ERROR` | Speech-to-text provider error |
+| `STT_TIMEOUT` | Speech-to-text operation timed out |
 | `LLM_ERROR` | LLM provider error |
+| `LLM_TIMEOUT` | LLM operation timed out |
 | `TTS_ERROR` | Text-to-speech provider error |
+| `TTS_TIMEOUT` | Text-to-speech operation timed out |
+
+### Processing Errors
+
+| Code | Description |
+|------|-------------|
+| `AUDIO_PROCESSING_ERROR` | VAD or audio decoding failed |
+| `VAD_ERROR` | Voice activity detection error |
+| `INVALID_MESSAGE` | Malformed or unknown message type |
+| `INVALID_AUDIO_FORMAT` | Audio format not supported |
+
+### Playbook/Tool Errors
+
+| Code | Description |
+|------|-------------|
 | `TOOL_ERROR` | Tool execution failed |
 | `PLAYBOOK_ERROR` | Playbook orchestration error |
-| `INVALID_MESSAGE` | Malformed or unknown message type |
-| `SESSION_NOT_FOUND` | Reconnect with invalid session ID |
+
+### Generic Errors
+
+| Code | Description |
+|------|-------------|
 | `INTERNAL_ERROR` | Unexpected server error |
+| `RATE_LIMITED` | Request rate limit exceeded |
 
 ---
 

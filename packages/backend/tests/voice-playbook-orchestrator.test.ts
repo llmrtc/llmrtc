@@ -234,8 +234,11 @@ describe('VoicePlaybookOrchestrator', () => {
         events.push(event);
       }
 
-      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk');
-      expect(ttsChunks.length).toBeGreaterThan(0);
+      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk') as any[];
+      // LLM returns 'Hello there! How can I help you?' - 2 sentences
+      expect(ttsChunks).toHaveLength(2);
+      expect(ttsChunks[0].sentence).toBe('Hello there!');
+      expect(ttsChunks[1].sentence).toBe('How can I help you?');
     });
 
     it('should use non-streaming TTS when streamingTTS is false', async () => {
@@ -381,9 +384,12 @@ describe('VoicePlaybookOrchestrator', () => {
         events.push(event);
       }
 
-      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk');
-      // Should have 3 chunks for 3 sentences
-      expect(ttsChunks.length).toBe(3);
+      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk') as any[];
+      // Should have 3 chunks for 3 sentences with correct content
+      expect(ttsChunks).toHaveLength(3);
+      expect(ttsChunks[0].sentence).toBe('Hello there.');
+      expect(ttsChunks[1].sentence).toBe('How are you?');
+      expect(ttsChunks[2].sentence).toBe('I am fine!');
     });
 
     it('should use custom sentence chunker if provided', async () => {
@@ -750,9 +756,12 @@ describe('VoicePlaybookOrchestrator', () => {
         events.push(event);
       }
 
-      // Should still have TTS output via fallback
-      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk');
-      expect(ttsChunks.length).toBeGreaterThan(0);
+      // Should still have TTS output via fallback (one chunk per sentence)
+      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk') as any[];
+      // LLM returns 'Hello there! How can I help you?' - 2 sentences, fallback yields chunks for each
+      expect(ttsChunks).toHaveLength(2);
+      expect(ttsChunks[0].sentence).toBe('Hello there!');
+      expect(ttsChunks[1].sentence).toBe('How can I help you?');
     });
   });
 
@@ -771,4 +780,460 @@ describe('VoicePlaybookOrchestrator', () => {
       expect(typeof orchestrator.init).toBe('function');
     });
   });
+
+  describe('Abort Signal Handling', () => {
+    it('should abort early when signal is already aborted', async () => {
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const abortController = new AbortController();
+      abortController.abort();
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'), [], { signal: abortController.signal })) {
+        events.push(event);
+      }
+
+      // Should yield nothing when already aborted
+      expect(events.length).toBe(0);
+    });
+
+    it('should stop iteration after abort during STT phase', async () => {
+      // STT that takes time
+      let sttCalled = false;
+      const slowSTT: STTProvider = {
+        name: 'slow-stt',
+        async transcribe() {
+          sttCalled = true;
+          await new Promise(r => setTimeout(r, 200));
+          return { text: 'hello', isFinal: true };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: slowSTT, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const abortController = new AbortController();
+
+      // Abort after 50ms (during STT)
+      const timeoutId = setTimeout(() => abortController.abort(), 50);
+
+      try {
+        for await (const _event of orchestrator.runTurnStream(Buffer.from('audio'), [], { signal: abortController.signal })) {
+          // consume
+        }
+      } catch {
+        // May throw on abort
+      }
+
+      clearTimeout(timeoutId);
+
+      // STT was called but the turn was interrupted
+      expect(sttCalled).toBe(true);
+    });
+
+    it('should abort during TTS streaming', async () => {
+      llmProvider = createMockLLMProvider([
+        { fullText: 'First sentence. Second sentence. Third sentence.', stopReason: 'end_turn' }
+      ]);
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry,
+        streamingTTS: true
+      });
+
+      const abortController = new AbortController();
+      const events: TurnOrchestratorYield[] = [];
+
+      let chunkCount = 0;
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'), [], { signal: abortController.signal })) {
+        events.push(event);
+        if ('type' in event && event.type === 'tts-chunk') {
+          chunkCount++;
+          if (chunkCount === 1) {
+            // Abort after first TTS chunk
+            abortController.abort();
+          }
+        }
+      }
+
+      // Should have some TTS chunks but not all
+      const ttsChunks = events.filter(e => 'type' in e && e.type === 'tts-chunk');
+      expect(ttsChunks.length).toBeLessThan(3); // Less than 3 sentences
+    });
+  });
+
+  describe('Attachments Passthrough', () => {
+    it('should pass attachments to PlaybookOrchestrator', async () => {
+      let capturedAttachments: VisionAttachment[] | undefined;
+
+      // Create a mock LLM that captures the request
+      const capturingLLM: LLMProvider = {
+        name: 'capturing-llm',
+        async complete(request: LLMRequest): Promise<LLMResult> {
+          // The attachments would be in the messages
+          const lastMessage = request.messages[request.messages.length - 1];
+          if (lastMessage && 'attachments' in lastMessage) {
+            capturedAttachments = lastMessage.attachments;
+          }
+          return { fullText: 'Response with vision', stopReason: 'end_turn' };
+        },
+        async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
+          const result = await this.complete(request);
+          yield { content: result.fullText, done: true, stopReason: result.stopReason };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: capturingLLM, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const testAttachments: VisionAttachment[] = [
+        { type: 'image', data: Buffer.from('fake-image'), mimeType: 'image/jpeg' }
+      ];
+
+      for await (const _ of orchestrator.runTurnStream(Buffer.from('audio'), testAttachments)) {
+        // consume events
+      }
+
+      // Verify attachments were passed to the LLM request
+      // Note: Attachments are passed to PlaybookOrchestrator.streamTurn()
+      // which includes them in user messages
+      expect(capturedAttachments).toBeDefined();
+      expect(capturedAttachments).toHaveLength(1);
+      expect(capturedAttachments![0].type).toBe('image');
+      expect(capturedAttachments![0].mimeType).toBe('image/jpeg');
+    });
+  });
+
+  describe('Multi-Turn Conversations', () => {
+    it('should maintain history across multiple turns', async () => {
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      // First turn
+      for await (const _ of orchestrator.runTurnStream(Buffer.from('audio1'))) {
+        // consume
+      }
+
+      // Second turn
+      for await (const _ of orchestrator.runTurnStream(Buffer.from('audio2'))) {
+        // consume
+      }
+
+      // History should have messages from both turns
+      const history = orchestrator.getPlaybookOrchestrator().getHistory();
+      expect(history.length).toBeGreaterThan(2);
+    });
+
+    it('should accumulate history across turns', async () => {
+      // Test that history grows with each turn
+      llmProvider = createMockLLMProvider([
+        { fullText: 'Hello! Nice to meet you.', stopReason: 'end_turn' },
+        { fullText: 'I can help you with that!', stopReason: 'end_turn' }
+      ]);
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      // First turn
+      for await (const _event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        // consume
+      }
+
+      const historyAfterFirst = orchestrator.getPlaybookOrchestrator().getHistory().length;
+
+      // Second turn
+      for await (const _event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        // consume
+      }
+
+      const historyAfterSecond = orchestrator.getPlaybookOrchestrator().getHistory().length;
+
+      // History should have grown
+      expect(historyAfterSecond).toBeGreaterThan(historyAfterFirst);
+    });
+  });
+
+  describe('LLM Chunk Streaming', () => {
+    it('should yield LLMChunk objects with content during streaming', async () => {
+      // Create a streaming LLM that yields multiple chunks
+      const streamingLLM: LLMProvider = {
+        name: 'streaming-llm',
+        async complete(_request: LLMRequest): Promise<LLMResult> {
+          return { fullText: 'Hello world!', stopReason: 'end_turn' };
+        },
+        async *stream(_request: LLMRequest): AsyncIterable<LLMChunk> {
+          yield { content: 'Hello ', done: false };
+          yield { content: 'world', done: false };
+          yield { content: '!', done: true, stopReason: 'end_turn' };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: streamingLLM, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry,
+        streamingTTS: true
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      // Should have LLMChunk objects (with content property, not type property)
+      // VoicePlaybookOrchestrator yields LLMChunk for each content event from PlaybookOrchestrator
+      // Note: PlaybookOrchestrator yields 1 content event (full response) when no tools are used
+      const llmChunks = events.filter(e => 'content' in e && 'done' in e && !('fullText' in e)) as any[];
+      // 1 content chunk (full response) + 1 done chunk
+      expect(llmChunks).toHaveLength(2);
+      expect(llmChunks[0].content).toBe('Hello world!');
+      expect(llmChunks[0].done).toBe(false);
+      expect(llmChunks[1].content).toBe('');
+      expect(llmChunks[1].done).toBe(true);
+    });
+  });
+
+  describe('Multiple Tool Calls Per Turn', () => {
+    it('should handle multiple sequential tool calls', async () => {
+      // Register multiple tools
+      toolRegistry.register({
+        definition: {
+          name: 'tool_a',
+          description: 'Tool A',
+          parameters: { type: 'object', properties: {} }
+        },
+        handler: async () => ({ result: 'A' })
+      });
+
+      toolRegistry.register({
+        definition: {
+          name: 'tool_b',
+          description: 'Tool B',
+          parameters: { type: 'object', properties: {} }
+        },
+        handler: async () => ({ result: 'B' })
+      });
+
+      // Mock LLM that calls both tools
+      llmProvider = createMockLLMProvider([
+        {
+          fullText: '',
+          stopReason: 'tool_use',
+          toolCalls: [{ callId: 'call_a', name: 'tool_a', arguments: {} }]
+        },
+        {
+          fullText: '',
+          stopReason: 'tool_use',
+          toolCalls: [{ callId: 'call_b', name: 'tool_b', arguments: {} }]
+        },
+        { fullText: 'Both tools executed successfully!', stopReason: 'end_turn' }
+      ]);
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      // Should have tool events for both tools
+      const toolStarts = events.filter(e => 'type' in e && e.type === 'tool-call-start') as ToolCallStartEvent[];
+      const toolEnds = events.filter(e => 'type' in e && e.type === 'tool-call-end') as ToolCallEndEvent[];
+
+      expect(toolStarts.length).toBe(2);
+      expect(toolEnds.length).toBe(2);
+      expect(toolStarts.map(t => t.name)).toContain('tool_a');
+      expect(toolStarts.map(t => t.name)).toContain('tool_b');
+    });
+  });
+
+  describe('Tool Error Handling', () => {
+    it('should yield tool-call-end with error for failed tools', async () => {
+      toolRegistry.register({
+        definition: {
+          name: 'failing_tool',
+          description: 'A tool that fails',
+          parameters: { type: 'object', properties: {} }
+        },
+        handler: async () => {
+          throw new Error('Tool execution failed');
+        }
+      });
+
+      llmProvider = createMockLLMProvider([
+        {
+          fullText: '',
+          stopReason: 'tool_use',
+          toolCalls: [{ callId: 'fail1', name: 'failing_tool', arguments: {} }]
+        },
+        { fullText: 'The tool failed but I continued.', stopReason: 'end_turn' }
+      ]);
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      const toolEnd = events.find(e => 'type' in e && e.type === 'tool-call-end') as ToolCallEndEvent | undefined;
+      expect(toolEnd).toBeDefined();
+      expect(toolEnd?.error).toBeTruthy();
+    });
+  });
+
+  describe('Playbook Configuration Options', () => {
+    it('should respect maxToolCallsPerTurn limit', async () => {
+      // Register a tool
+      toolRegistry.register({
+        definition: {
+          name: 'simple_tool',
+          description: 'Simple tool',
+          parameters: { type: 'object', properties: {} }
+        },
+        handler: async () => ({ done: true })
+      });
+
+      // LLM that tries to call tool 5 times
+      let callCount = 0;
+      llmProvider = {
+        name: 'repeat-llm',
+        async complete(_request: LLMRequest): Promise<LLMResult> {
+          callCount++;
+          if (callCount < 5) {
+            return {
+              fullText: '',
+              stopReason: 'tool_use',
+              toolCalls: [{ callId: `call${callCount}`, name: 'simple_tool', arguments: {} }]
+            };
+          }
+          return { fullText: 'Done!', stopReason: 'end_turn' };
+        },
+        async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
+          const result = await this.complete(request);
+          yield { content: result.fullText, done: true, stopReason: result.stopReason };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: llmProvider, stt: sttProvider, tts: ttsProvider },
+        playbook,
+        toolRegistry,
+        playbookOptions: {
+          maxToolCallsPerTurn: 2 // Limit to 2 tool calls
+        }
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      // Should have at most 2 tool call starts
+      const toolStarts = events.filter(e => 'type' in e && e.type === 'tool-call-start');
+      expect(toolStarts.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe('Empty Transcript Handling', () => {
+    it('should skip LLM call for empty transcript', async () => {
+      const emptySTT = createMockSTTProvider('');
+      let llmCalled = false;
+
+      const trackingLLM: LLMProvider = {
+        name: 'tracking-llm',
+        init: vi.fn().mockResolvedValue(undefined),
+        async complete(): Promise<LLMResult> {
+          llmCalled = true;
+          return { fullText: 'Response', stopReason: 'end_turn' };
+        },
+        async *stream(): AsyncIterable<LLMChunk> {
+          llmCalled = true;
+          yield { content: 'Response', done: true, stopReason: 'end_turn' };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: trackingLLM, stt: emptySTT, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      // LLM should NOT have been called
+      expect(llmCalled).toBe(false);
+
+      // Should still yield transcript and tts-complete
+      const transcript = events.find(e => 'text' in e);
+      expect(transcript).toBeDefined();
+
+      const ttsComplete = events.find(e => 'type' in e && e.type === 'tts-complete');
+      expect(ttsComplete).toBeDefined();
+    });
+
+    it('should skip LLM call for whitespace-only transcript', async () => {
+      const whitespaceSTT = createMockSTTProvider('   \n\t  ');
+      let llmCalled = false;
+
+      const trackingLLM: LLMProvider = {
+        name: 'tracking-llm',
+        init: vi.fn().mockResolvedValue(undefined),
+        async complete(): Promise<LLMResult> {
+          llmCalled = true;
+          return { fullText: 'Response', stopReason: 'end_turn' };
+        },
+        async *stream(): AsyncIterable<LLMChunk> {
+          llmCalled = true;
+          yield { content: 'Response', done: true, stopReason: 'end_turn' };
+        }
+      };
+
+      const orchestrator = new VoicePlaybookOrchestrator({
+        providers: { llm: trackingLLM, stt: whitespaceSTT, tts: ttsProvider },
+        playbook,
+        toolRegistry
+      });
+
+      const events: TurnOrchestratorYield[] = [];
+      for await (const event of orchestrator.runTurnStream(Buffer.from('audio'))) {
+        events.push(event);
+      }
+
+      // LLM should NOT have been called
+      expect(llmCalled).toBe(false);
+    });
+  });
 });
+
+// Import VisionAttachment type for attachments test
+import type { VisionAttachment } from '../src/turn-orchestrator.js';

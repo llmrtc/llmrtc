@@ -11,6 +11,7 @@ import {
   ToolCallResult,
   ToolExecutionContext,
   ToolRegistry,
+  validateToolArguments,
 } from './tools.js';
 
 // =============================================================================
@@ -27,6 +28,8 @@ export interface ToolExecutorOptions {
   maxConcurrency?: number;
   /** Timeout per tool execution in ms (default: 30000) */
   timeout?: number;
+  /** Validate tool arguments against schema before execution (default: false) */
+  validateArguments?: boolean;
   /** Handler called when a tool execution starts */
   onToolStart?: (toolName: string, callId: string, args: Record<string, unknown>) => void;
   /** Handler called when a tool execution completes */
@@ -54,6 +57,7 @@ export class ToolExecutor {
       defaultPolicy: options.defaultPolicy ?? 'parallel',
       maxConcurrency: options.maxConcurrency ?? 10,
       timeout: options.timeout ?? 30000,
+      validateArguments: options.validateArguments ?? false,
       onToolStart: options.onToolStart,
       onToolEnd: options.onToolEnd,
       onToolError: options.onToolError,
@@ -120,6 +124,25 @@ export class ToolExecutor {
       this.options.onToolError?.(call.name, call.callId, new Error(result.error));
       this.options.onToolEnd?.(result);
       return result;
+    }
+
+    // Validate arguments if enabled
+    if (this.options.validateArguments) {
+      const validation = validateToolArguments(tool.definition, call.arguments);
+      if (!validation.valid) {
+        const errorMsg = `Invalid arguments: ${validation.errors.join(', ')}`;
+        const result: ToolCallResult = {
+          toolName: call.name,
+          callId: call.callId,
+          result: null,
+          durationMs: Date.now() - startTime,
+          success: false,
+          error: errorMsg,
+        };
+        this.options.onToolError?.(call.name, call.callId, new Error(errorMsg));
+        this.options.onToolEnd?.(result);
+        return result;
+      }
     }
 
     // Notify start

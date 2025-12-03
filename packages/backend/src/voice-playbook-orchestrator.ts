@@ -189,6 +189,16 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
     // Yield transcript to client
     yield transcript;
 
+    // Guard against empty transcripts
+    if (!transcript.text.trim()) {
+      console.warn('[voice-playbook-orchestrator] Empty STT transcript received, skipping LLM call');
+      const turnTiming = createTimingInfo(turnStartTime, Date.now());
+      this.metrics.timing(MetricNames.TURN_DURATION, turnTiming.durationMs);
+      await callHookSafe(this.hooks.onTurnEnd, ctx, turnTiming);
+      yield { type: 'tts-complete' } as TTSComplete;
+      return;
+    }
+
     // =========================================================================
     // Phase 1: Tool Loop (Silent)
     // =========================================================================

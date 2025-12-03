@@ -946,7 +946,8 @@ import { ToolExecutor } from '@metered/llmrtc-core';
 const executor = new ToolExecutor(registry, {
   timeout: 30000,           // Per-tool timeout (ms)
   maxConcurrency: 5,        // Max parallel executions
-  defaultPolicy: 'parallel' // 'parallel' | 'sequential'
+  defaultPolicy: 'parallel', // 'parallel' | 'sequential'
+  validateArguments: true   // Opt-in: validate args against JSON Schema before execution
 });
 
 // Execute tool calls from LLM response
@@ -1137,6 +1138,8 @@ const registry = new ToolRegistry();
 const orchestrator = new PlaybookOrchestrator(llm, playbook, registry, {
   maxToolCallsPerTurn: 10,
   phase1TimeoutMs: 30000,
+  llmRetries: 3,      // Retry LLM calls with exponential backoff
+  historyLimit: 50,   // Max messages to keep in conversation history
   debug: true
 });
 
@@ -1159,6 +1162,18 @@ for await (const event of orchestrator.streamTurn('Can you run a diagnostic?')) 
   }
 }
 ```
+
+### PlaybookOrchestrator Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `maxToolCallsPerTurn` | `number` | `10` | Maximum tool calls allowed per turn before forcing final response |
+| `phase1TimeoutMs` | `number` | `60000` | Timeout for Phase 1 (tool loop) in milliseconds |
+| `llmRetries` | `number` | `3` | Number of LLM retry attempts with exponential backoff (1s, 2s, 4s delays) |
+| `historyLimit` | `number` | `50` | Maximum messages to keep in conversation history. Oldest messages are trimmed when exceeded |
+| `debug` | `boolean` | `false` | Enable debug logging |
+| `logger` | `Logger` | `console` | Custom logger implementation |
+| `abortSignal` | `AbortSignal` | `undefined` | Signal to abort ongoing operations |
 
 ### Two-Phase Turn Execution
 

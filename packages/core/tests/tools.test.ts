@@ -530,3 +530,99 @@ describe('createToolExecutor', () => {
     expect(result.success).toBe(true);
   });
 });
+
+// =============================================================================
+// Tool Argument Validation (Opt-in) Tests
+// =============================================================================
+
+describe('ToolExecutor with validateArguments', () => {
+  let registry: ToolRegistry;
+
+  beforeEach(() => {
+    registry = new ToolRegistry();
+    registry.register(createWeatherTool());
+    registry.register(createCalculatorTool());
+  });
+
+  it('should not validate arguments by default', async () => {
+    const executor = new ToolExecutor(registry);
+
+    // Missing required 'location' - should still execute (validation off)
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: { unit: 'celsius' } },
+      {}
+    );
+
+    // Tool executes but may produce unexpected results
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject missing required parameters when validation enabled', async () => {
+    const executor = new ToolExecutor(registry, { validateArguments: true });
+
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: { unit: 'celsius' } },
+      {}
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid arguments');
+    expect(result.error).toContain('Missing required parameter: location');
+  });
+
+  it('should reject invalid enum values when validation enabled', async () => {
+    const executor = new ToolExecutor(registry, { validateArguments: true });
+
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: { location: 'Tokyo', unit: 'kelvin' } },
+      {}
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid arguments');
+    expect(result.error).toContain('must be one of');
+  });
+
+  it('should reject invalid types when validation enabled', async () => {
+    const executor = new ToolExecutor(registry, { validateArguments: true });
+
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'calculate', arguments: { a: 'not-a-number', b: 5, operation: 'add' } },
+      {}
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid arguments');
+    expect(result.error).toContain('must be of type number');
+  });
+
+  it('should allow valid arguments when validation enabled', async () => {
+    const executor = new ToolExecutor(registry, { validateArguments: true });
+
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: { location: 'Tokyo, Japan', unit: 'celsius' } },
+      {}
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.result).toEqual({ temperature: 22, conditions: 'sunny' });
+  });
+
+  it('should call onToolError callback for validation failures', async () => {
+    const errors: Array<{ name: string; error: Error }> = [];
+
+    const executor = new ToolExecutor(registry, {
+      validateArguments: true,
+      onToolError: (name, callId, error) => errors.push({ name, error }),
+    });
+
+    await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: {} },
+      {}
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].name).toBe('get_weather');
+    expect(errors[0].error.message).toContain('Invalid arguments');
+  });
+});

@@ -24,6 +24,10 @@ export interface PlaybookOrchestratorOptions {
   maxToolCallsPerTurn?: number;
   /** Timeout for Phase 1 tool loop (ms) */
   phase1TimeoutMs?: number;
+  /** Number of LLM retry attempts on failure (default: 3) */
+  llmRetries?: number;
+  /** Maximum conversation history messages to retain (default: 50) */
+  historyLimit?: number;
   /** Enable debug logging */
   debug?: boolean;
   /** Custom logger */
@@ -106,6 +110,8 @@ export class PlaybookOrchestrator {
     this.options = {
       maxToolCallsPerTurn: 10,
       phase1TimeoutMs: 60000,
+      llmRetries: 3,
+      historyLimit: 50,
       ...options
     };
 
@@ -198,6 +204,53 @@ export class PlaybookOrchestrator {
   }
 
   /**
+   * Add message to history with automatic cleanup when limit exceeded
+   */
+  private pushHistory(message: Message): void {
+    this.conversationHistory.push(message);
+    const limit = this.options.historyLimit ?? 50;
+    if (this.conversationHistory.length > limit) {
+      // Remove oldest messages beyond the limit
+      const overflow = this.conversationHistory.length - limit;
+      this.conversationHistory.splice(0, overflow);
+      this.log('debug', `Trimmed ${overflow} messages from history (limit: ${limit})`);
+    }
+  }
+
+  /**
+   * Call LLM with retry and exponential backoff
+   */
+  private async callLLMWithRetry(request: LLMRequest): Promise<LLMResult> {
+    const maxRetries = this.options.llmRetries ?? 3;
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Check for abort
+      if (this.options.abortSignal?.aborted) {
+        throw new Error('LLM call aborted');
+      }
+
+      try {
+        return await this.llmProvider.complete(request);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.log('warn', `LLM call failed (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}`);
+
+        // Don't retry on last attempt
+        if (attempt < maxRetries - 1) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = Math.pow(2, attempt) * 1000;
+          this.log('debug', `Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    this.log('error', `LLM call failed after ${maxRetries} attempts`);
+    throw lastError;
+  }
+
+  /**
    * Build LLM request for current state
    */
   private buildLLMRequest(additionalMessages?: Message[]): LLMRequest {
@@ -249,7 +302,7 @@ export class PlaybookOrchestrator {
     if (attachments && attachments.length > 0) {
       userMsg.attachments = attachments;
     }
-    this.conversationHistory.push(userMsg);
+    this.pushHistory(userMsg);
 
     while (iterationCount < this.options.maxToolCallsPerTurn!) {
       // Check timeout
@@ -263,9 +316,9 @@ export class PlaybookOrchestrator {
         throw new Error('Execution aborted');
       }
 
-      // Call LLM
+      // Call LLM with retry
       const request = this.buildLLMRequest();
-      const result = await this.llmProvider.complete(request);
+      const result = await this.callLLMWithRetry(request);
       llmResponses.push(result);
 
       // Check if LLM wants to use tools
@@ -292,11 +345,11 @@ export class PlaybookOrchestrator {
             await this.emit({ type: 'tool_call_complete', call: toolCall, result: transitionResult });
 
             // Add tool result to history
-            this.conversationHistory.push({
+            this.pushHistory({
               role: 'assistant',
               content: result.fullText || `Using tool: ${toolCall.name}`
             });
-            this.conversationHistory.push({
+            this.pushHistory({
               role: 'tool',
               content: JSON.stringify(transitionResult.result),
               toolCallId: toolCall.callId,
@@ -319,11 +372,11 @@ export class PlaybookOrchestrator {
           await this.emit({ type: 'tool_call_complete', call: toolCall, result: toolResult });
 
           // Add tool messages to history
-          this.conversationHistory.push({
+          this.pushHistory({
             role: 'assistant',
             content: result.fullText || `Using tool: ${toolCall.name}`
           });
-          this.conversationHistory.push({
+          this.pushHistory({
             role: 'tool',
             content: JSON.stringify(toolResult.result ?? toolResult.error),
             toolCallId: toolCall.callId,
@@ -381,11 +434,11 @@ export class PlaybookOrchestrator {
       }
     };
 
-    const result = await this.llmProvider.complete(request);
+    const result = await this.callLLMWithRetry(request);
     const response = result.fullText;
 
     // Add assistant response to history
-    this.conversationHistory.push({ role: 'assistant', content: response });
+    this.pushHistory({ role: 'assistant', content: response });
 
     await this.emit({ type: 'phase2_complete', response });
 
@@ -457,7 +510,7 @@ export class PlaybookOrchestrator {
       response = phase1Result.finalResponse ?? '';
       // Add to history if not already added
       if (!this.conversationHistory.some(m => m.role === 'assistant' && m.content === response)) {
-        this.conversationHistory.push({ role: 'assistant', content: response });
+        this.pushHistory({ role: 'assistant', content: response });
       }
     }
 
@@ -513,7 +566,7 @@ export class PlaybookOrchestrator {
     if (phase1Result.finalResponse) {
       fullResponse = phase1Result.finalResponse;
       yield { type: 'content', data: phase1Result.finalResponse };
-      this.conversationHistory.push({ role: 'assistant', content: phase1Result.finalResponse });
+      this.pushHistory({ role: 'assistant', content: phase1Result.finalResponse });
     } else {
       // Stream phase 2
       const systemPrompt = this.engine.getEffectiveSystemPrompt();
@@ -539,13 +592,13 @@ export class PlaybookOrchestrator {
           }
         }
       } else {
-        // Fall back to complete() if stream is not available
-        const result = await this.llmProvider.complete(request);
+        // Fall back to complete() with retry if stream is not available
+        const result = await this.callLLMWithRetry(request);
         fullResponse = result.fullText;
         yield { type: 'content', data: fullResponse };
       }
 
-      this.conversationHistory.push({ role: 'assistant', content: fullResponse });
+      this.pushHistory({ role: 'assistant', content: fullResponse });
     }
 
     // Handle transitions

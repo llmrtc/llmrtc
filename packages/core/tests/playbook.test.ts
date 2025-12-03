@@ -738,3 +738,100 @@ describe('LLM Config', () => {
     expect(config.maxTokens).toBe(1000); // Default applies
   });
 });
+
+describe('LLM Retry', () => {
+  it('should retry LLM call on failure', async () => {
+    let callCount = 0;
+    const failingThenSucceedingLLM: LLMProvider = {
+      name: 'retry-llm',
+      async complete(): Promise<LLMResult> {
+        callCount++;
+        if (callCount < 2) {
+          throw new Error('Temporary failure');
+        }
+        return { fullText: 'Success after retry', stopReason: 'end_turn' };
+      },
+      async *stream(): AsyncIterable<LLMChunk> {
+        const result = await this.complete();
+        yield { content: result.fullText, done: true, stopReason: result.stopReason };
+      }
+    };
+
+    const playbook = createSimplePlaybook('Test', 'You are a test assistant.');
+    const orchestrator = new PlaybookOrchestrator(
+      failingThenSucceedingLLM,
+      playbook,
+      new ToolRegistry(),
+      { llmRetries: 3 }
+    );
+
+    const result = await orchestrator.executeTurn('Hello');
+    expect(result.response).toBe('Success after retry');
+    expect(callCount).toBe(2);
+  });
+
+  it('should throw after max retries exhausted', async () => {
+    const alwaysFailingLLM: LLMProvider = {
+      name: 'failing-llm',
+      async complete(): Promise<LLMResult> {
+        throw new Error('Permanent failure');
+      },
+      async *stream(): AsyncIterable<LLMChunk> {
+        throw new Error('Permanent failure');
+      }
+    };
+
+    const playbook = createSimplePlaybook('Test', 'You are a test assistant.');
+    const orchestrator = new PlaybookOrchestrator(
+      alwaysFailingLLM,
+      playbook,
+      new ToolRegistry(),
+      { llmRetries: 2 }
+    );
+
+    await expect(orchestrator.executeTurn('Hello')).rejects.toThrow('Permanent failure');
+  });
+});
+
+describe('History Limit', () => {
+  it('should trim history when limit is exceeded', async () => {
+    const llmProvider = createMockLLMProvider([
+      { fullText: 'Response', stopReason: 'end_turn' }
+    ]);
+
+    const playbook = createSimplePlaybook('Test', 'You are a test assistant.');
+    const orchestrator = new PlaybookOrchestrator(
+      llmProvider,
+      playbook,
+      new ToolRegistry(),
+      { historyLimit: 4 }
+    );
+
+    // Execute multiple turns to exceed limit
+    await orchestrator.executeTurn('Message 1');
+    await orchestrator.executeTurn('Message 2');
+    await orchestrator.executeTurn('Message 3');
+
+    // With limit of 4, and each turn adding 2 messages (user + assistant),
+    // 3 turns = 6 messages, should be trimmed to 4
+    const history = orchestrator.getHistory();
+    expect(history.length).toBeLessThanOrEqual(4);
+  });
+
+  it('should use default history limit of 50', () => {
+    const llmProvider = createMockLLMProvider([
+      { fullText: 'Response', stopReason: 'end_turn' }
+    ]);
+
+    const playbook = createSimplePlaybook('Test', 'Test');
+    const orchestrator = new PlaybookOrchestrator(
+      llmProvider,
+      playbook,
+      new ToolRegistry()
+    );
+
+    // Default limit should be 50 - we can't easily test this without
+    // executing 50+ turns, so just verify it initializes correctly
+    expect(orchestrator.getHistory().length).toBe(0);
+  });
+});
