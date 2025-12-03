@@ -118,15 +118,18 @@ interface VisionAttachment {
 ### Server → Client Messages
 
 #### `ready`
-Connection established notification with session ID and protocol version.
+Connection established notification with session ID, protocol version, and ICE servers.
 
 ```typescript
 {
   type: "ready";
-  id: string;              // Session ID
-  protocolVersion: number; // Protocol version (currently 1)
+  id: string;               // Session ID
+  protocolVersion: number;  // Protocol version (currently 1)
+  iceServers?: RTCIceServer[]; // ICE servers for WebRTC (STUN/TURN)
 }
 ```
+
+The `iceServers` field contains STUN/TURN server configurations fetched from Metered or configured on the server. Clients should use these for WebRTC peer connection unless they have their own ICE server configuration.
 
 #### `pong`
 Heartbeat response echoing client timestamp.

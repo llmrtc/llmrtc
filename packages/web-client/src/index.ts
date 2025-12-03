@@ -87,6 +87,14 @@ const HEARTBEAT_INTERVAL_MS = 15000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
 const MAX_MISSED_HEARTBEATS = 2;
 
+/**
+ * Default ICE servers - Metered STUN server
+ * Used when no custom ICE servers configured and server doesn't provide any
+ */
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.metered.ca:80' }
+];
+
 export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
   private ws: WebSocket | null = null;
   private peer: NativePeer | null = null;
@@ -96,6 +104,9 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
   private heartbeatTimeout?: ReturnType<typeof setTimeout>;
   private missedHeartbeats: number = 0;
   private reconnectTimeout?: ReturnType<typeof setTimeout>;
+
+  /** ICE servers received from server in ready message */
+  private serverIceServers: RTCIceServer[] | null = null;
 
   // Media state
   private audioTrack?: MediaStreamTrack;
@@ -157,22 +168,31 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
     // 1. Establish WebSocket
     await this.connectWebSocket();
 
-    // 2. Wait for ready message with session ID
+    // 2. Wait for ready message with session ID and ICE servers
     await this.waitForReady();
 
-    // 3. Create peer connection
-    const iceServers = this.config.iceServers ?? [];
+    // 3. Resolve ICE servers
+    // Priority: client config > server-provided > default STUN
+    const iceServers = this.config.iceServers?.length
+      ? this.config.iceServers
+      : this.serverIceServers?.length
+        ? this.serverIceServers
+        : DEFAULT_ICE_SERVERS;
+
+    console.log('[web-client] Using', iceServers.length, 'ICE servers');
+
+    // 4. Create peer connection
     this.peer = new NativePeer({ iceServers, trickle: false }, true);
 
     this.setupPeerEventHandlers();
 
-    // 4. Create offer (triggers signal event which sends to server)
+    // 5. Create offer (triggers signal event which sends to server)
     await this.peer.createOffer();
 
-    // 5. Wait for peer connection to be established
+    // 6. Wait for peer connection to be established
     await this.waitForPeerConnection();
 
-    // 6. Start heartbeat
+    // 7. Start heartbeat
     this.startHeartbeat();
   }
 
@@ -217,6 +237,12 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
           if (msg.type === 'ready') {
             clearTimeout(timeout);
             this.sessionId = msg.id;
+
+            // Store server-provided ICE servers
+            if (msg.iceServers?.length) {
+              this.serverIceServers = msg.iceServers;
+              console.log('[web-client] Received', msg.iceServers.length, 'ICE servers from server');
+            }
 
             // Check protocol version
             const serverVersion = msg.protocolVersion ?? 0;
@@ -693,6 +719,7 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
 
     if (fullCleanup) {
       this.sessionId = null;
+      this.serverIceServers = null;
       this.audioTrack = undefined;
       this.audioStream = undefined;
       this.audioSender = undefined;

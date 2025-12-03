@@ -9,10 +9,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./widgets": {
-      "import": "./dist/widgets.js",
-      "types": "./dist/widgets.d.ts"
     }
   },
   "scripts": {

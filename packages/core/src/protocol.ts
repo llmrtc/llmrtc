@@ -110,6 +110,8 @@ export interface ReadyMessage extends BaseMessage {
   id: string;
   /** Protocol version for compatibility checking */
   protocolVersion: number;
+  /** ICE servers for WebRTC (STUN/TURN) - provided by server for client use */
+  iceServers?: RTCIceServer[];
 }
 
 /**
@@ -453,8 +455,8 @@ export function parseMessage(json: string): ProtocolMessage | null {
 /**
  * Create a ready message
  */
-export function createReadyMessage(id: string): ReadyMessage {
-  return { type: 'ready', id, protocolVersion: PROTOCOL_VERSION };
+export function createReadyMessage(id: string, iceServers?: RTCIceServer[]): ReadyMessage {
+  return { type: 'ready', id, protocolVersion: PROTOCOL_VERSION, iceServers };
 }
 
 /**

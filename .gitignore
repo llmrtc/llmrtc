@@ -14,3 +14,5 @@ npm-debug.log*
 playwright-report/
 playwright/.cache/
 test-results/
+
+M*_docs.md

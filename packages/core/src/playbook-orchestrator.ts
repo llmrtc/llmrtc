@@ -91,6 +91,10 @@ export class PlaybookOrchestrator {
   private readonly listeners: Set<OrchestratorEventListener> = new Set();
   private conversationHistory: Message[] = [];
 
+  // Concurrency protection: serialize turn execution to prevent history corruption
+  private turnLock: Promise<void> = Promise.resolve();
+  private isExecutingTurn = false;
+
   constructor(
     llmProvider: LLMProvider,
     playbook: Playbook,
@@ -204,25 +208,80 @@ export class PlaybookOrchestrator {
   }
 
   /**
-   * Add message to history with automatic cleanup when limit exceeded
+   * Add message to history with automatic cleanup when limit exceeded.
+   * Uses smart trimming to preserve tool call/result pairs (required by OpenAI API).
    */
   private pushHistory(message: Message): void {
     this.conversationHistory.push(message);
     const limit = this.options.historyLimit ?? 50;
+
     if (this.conversationHistory.length > limit) {
-      // Remove oldest messages beyond the limit
       const overflow = this.conversationHistory.length - limit;
-      this.conversationHistory.splice(0, overflow);
-      this.log('debug', `Trimmed ${overflow} messages from history (limit: ${limit})`);
+      let trimPoint = overflow;
+
+      // Find a safe trim point that doesn't split tool call/result pairs
+      // We scan forward from the naive trim point to find a safe boundary
+      while (trimPoint < this.conversationHistory.length) {
+        const msgAtTrim = this.conversationHistory[trimPoint];
+
+        // Can't trim here if it's a tool result (would orphan it)
+        if (msgAtTrim.role === 'tool') {
+          trimPoint++;
+          continue;
+        }
+
+        // Can't trim if the previous message is assistant with toolCalls
+        // (would orphan the following tool results)
+        if (trimPoint > 0) {
+          const prevMsg = this.conversationHistory[trimPoint - 1];
+          if (prevMsg.role === 'assistant' && prevMsg.toolCalls?.length) {
+            trimPoint++;
+            continue;
+          }
+        }
+
+        // Found a safe boundary
+        break;
+      }
+
+      // Only trim if we found a safe point within the history
+      if (trimPoint > 0 && trimPoint < this.conversationHistory.length) {
+        this.conversationHistory.splice(0, trimPoint);
+        this.log('debug', `Trimmed ${trimPoint} messages from history (limit: ${limit})`);
+      }
     }
   }
 
   /**
-   * Call LLM with retry and exponential backoff
+   * Check if an error is retryable.
+   * Non-retryable: client errors (400, 401, 403, 404) except rate limits.
+   * Retryable: rate limits (429), server errors (5xx), timeouts.
+   */
+  private isRetryableError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+
+    // Non-retryable: client errors (except rate limit)
+    if (message.includes('400') || message.includes('bad request')) return false;
+    if (message.includes('401') || message.includes('unauthorized')) return false;
+    if (message.includes('403') || message.includes('forbidden')) return false;
+    if (message.includes('404') || message.includes('not found')) return false;
+
+    // Retryable: rate limits, server errors, timeouts
+    if (message.includes('429') || message.includes('rate limit')) return true;
+    if (message.includes('500') || message.includes('502') || message.includes('503') || message.includes('504')) return true;
+    if (message.includes('timeout') || message.includes('etimedout') || message.includes('econnreset')) return true;
+
+    // Default: retry unknown errors (could be transient network issues)
+    return true;
+  }
+
+  /**
+   * Call LLM with smart retry and exponential backoff.
+   * Only retries on retryable errors (rate limits, server errors, timeouts).
    */
   private async callLLMWithRetry(request: LLMRequest): Promise<LLMResult> {
     const maxRetries = this.options.llmRetries ?? 3;
-    let lastError: Error | undefined;
+    let lastError: Error = new Error('No attempts made');
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       // Check for abort
@@ -235,6 +294,12 @@ export class PlaybookOrchestrator {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         this.log('warn', `LLM call failed (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}`);
+
+        // Don't retry non-retryable errors
+        if (!this.isRetryableError(lastError)) {
+          this.log('error', `Non-retryable error, aborting retries`);
+          throw lastError;
+        }
 
         // Don't retry on last attempt
         if (attempt < maxRetries - 1) {
@@ -323,7 +388,16 @@ export class PlaybookOrchestrator {
 
       // Check if LLM wants to use tools
       if (result.stopReason === 'tool_use' && result.toolCalls?.length) {
-        // Execute tool calls
+        // Valid tool_use with actual tool calls
+        // Add assistant message with ALL tool calls BEFORE executing them
+        // This is required by OpenAI API - tool messages must follow an assistant message with tool_calls
+        this.pushHistory({
+          role: 'assistant',
+          content: result.fullText || '',
+          toolCalls: result.toolCalls
+        });
+
+        // Execute tool calls and add tool result messages
         for (const toolCall of result.toolCalls) {
           await this.emit({ type: 'tool_call_start', call: toolCall });
 
@@ -346,10 +420,6 @@ export class PlaybookOrchestrator {
 
             // Add tool result to history
             this.pushHistory({
-              role: 'assistant',
-              content: result.fullText || `Using tool: ${toolCall.name}`
-            });
-            this.pushHistory({
               role: 'tool',
               content: JSON.stringify(transitionResult.result),
               toolCallId: toolCall.callId,
@@ -371,11 +441,7 @@ export class PlaybookOrchestrator {
           allToolCalls.push({ request: toolCall, result: toolResult });
           await this.emit({ type: 'tool_call_complete', call: toolCall, result: toolResult });
 
-          // Add tool messages to history
-          this.pushHistory({
-            role: 'assistant',
-            content: result.fullText || `Using tool: ${toolCall.name}`
-          });
+          // Add tool result to history
           this.pushHistory({
             role: 'tool',
             content: JSON.stringify(toolResult.result ?? toolResult.error),
@@ -390,6 +456,18 @@ export class PlaybookOrchestrator {
         }
 
         iterationCount++;
+      } else if (result.stopReason === 'tool_use' && (!result.toolCalls || result.toolCalls.length === 0)) {
+        // Edge case: LLM indicated tool_use but provided no tool calls
+        // This can happen with some models/edge cases - treat as done
+        this.log('warn', 'LLM returned tool_use stop reason but no tool calls were provided');
+        await this.emit({ type: 'phase1_complete', toolCallCount: allToolCalls.length });
+
+        return {
+          toolCalls: allToolCalls,
+          llmResponses,
+          pendingTransition,
+          finalResponse: result.fullText
+        };
       } else {
         // LLM is done with tools, has a final response
         await this.emit({ type: 'phase1_complete', toolCallCount: allToolCalls.length });
@@ -446,11 +524,32 @@ export class PlaybookOrchestrator {
   }
 
   /**
-   * Execute a complete turn with user input
+   * Execute a complete turn with user input.
+   * This method is serialized - concurrent calls will be queued.
    * @param userMessage - The user's message text
    * @param attachments - Optional vision attachments (images)
    */
   async executeTurn(userMessage: string, attachments?: VisionAttachment[]): Promise<TurnResult> {
+    // Wait for any pending turn to complete
+    await this.turnLock;
+
+    // Create new lock for this turn
+    let releaseLock!: () => void;
+    this.turnLock = new Promise(resolve => { releaseLock = resolve; });
+    this.isExecutingTurn = true;
+
+    try {
+      return await this._executeTurnInternal(userMessage, attachments);
+    } finally {
+      this.isExecutingTurn = false;
+      releaseLock();
+    }
+  }
+
+  /**
+   * Internal turn execution logic
+   */
+  private async _executeTurnInternal(userMessage: string, attachments?: VisionAttachment[]): Promise<TurnResult> {
     const stage = this.engine.getCurrentStage();
     const useTwoPhase = stage.twoPhaseExecution !== false;
 
@@ -543,11 +642,36 @@ export class PlaybookOrchestrator {
   }
 
   /**
-   * Execute a turn with streaming response
+   * Execute a turn with streaming response.
+   * This method is serialized - concurrent calls will be queued.
    * @param userMessage - The user's message text
    * @param attachments - Optional vision attachments (images)
    */
   async *streamTurn(userMessage: string, attachments?: VisionAttachment[]): AsyncIterable<{
+    type: 'tool_call' | 'content' | 'done';
+    data: ToolCallRequest | string | TurnResult;
+  }> {
+    // Wait for any pending turn to complete
+    await this.turnLock;
+
+    // Create new lock for this turn
+    let releaseLock!: () => void;
+    this.turnLock = new Promise(resolve => { releaseLock = resolve; });
+    this.isExecutingTurn = true;
+
+    try {
+      // Yield from internal implementation
+      yield* this._streamTurnInternal(userMessage, attachments);
+    } finally {
+      this.isExecutingTurn = false;
+      releaseLock();
+    }
+  }
+
+  /**
+   * Internal streaming turn logic
+   */
+  private async *_streamTurnInternal(userMessage: string, attachments?: VisionAttachment[]): AsyncIterable<{
     type: 'tool_call' | 'content' | 'done';
     data: ToolCallRequest | string | TurnResult;
   }> {

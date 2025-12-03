@@ -65,6 +65,129 @@ A TypeScript SDK for building real-time voice and vision AI applications. Combin
 
 ---
 
+## Requirements
+
+### Node.js & TypeScript
+
+- **Node.js 20+** - The SDK uses ESM modules, modern JavaScript features, and native bindings that assume Node 20 or newer.
+- **TypeScript 5.6+** - For type definitions and compilation (if using TypeScript).
+
+```bash
+node --version  # Should be v20.x or higher
+```
+
+### Browser (Web Client)
+
+The web client requires a browser with WebRTC support: **Chrome**, **Firefox**, **Safari**, or **Edge**.
+
+### Native WebRTC Module (Backend)
+
+The backend package (`@metered/llmrtc-backend`) uses `@roamhq/wrtc` for server-side WebRTC. This is a native module that may require C/C++ build tools on platforms without prebuilt binaries.
+
+### FFmpeg (Streaming TTS)
+
+Streaming TTS (`streamingTTS: true`) requires **FFmpeg** in your `$PATH`. Non-streaming TTS works without FFmpeg.
+
+### Platform-Specific Setup
+
+| Platform | Commands |
+|----------|----------|
+| **macOS** | `brew install ffmpeg`<br>`xcode-select --install` (if `@roamhq/wrtc` build fails) |
+| **Ubuntu/Debian** | `sudo apt-get install ffmpeg build-essential` |
+| **Windows** | Install [FFmpeg](https://ffmpeg.org/download.html) and add to PATH<br>Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) for native modules |
+
+### Verify Installation
+
+After installing, verify dependencies are working:
+
+```bash
+# Check Node version
+node --version
+
+# Verify backend package loads (native deps compiled correctly)
+node -e "import('@metered/llmrtc-backend').then(() => console.log('backend ok'))"
+
+# Verify FFmpeg (required for streaming TTS)
+ffmpeg -version
+```
+
+---
+
+## TURN Server Configuration
+
+For reliable WebRTC connections behind NAT/firewalls, configure a TURN server. Without TURN, users behind symmetric NAT or strict corporate firewalls may fail to connect.
+
+### Metered TURN (Recommended)
+
+[Metered](https://www.metered.ca/) provides a global TURN server network with a free tier.
+
+1. Sign up at [metered.ca](https://www.metered.ca/)
+2. Create a TURN credential to get your API key
+3. Configure via environment variables or code
+
+**Environment Variables (CLI Mode):**
+
+```bash
+METERED_APP_NAME=your-app-name    # Your Metered app name
+METERED_API_KEY=your-api-key       # API key from credential creation
+METERED_REGION=us_east             # Optional: us_east, europe, asia, etc.
+```
+
+**Library Mode:**
+
+```typescript
+const server = new LLMRTCServer({
+  providers: { llm, stt, tts },
+  metered: {
+    appName: 'your-app-name',
+    apiKey: 'your-api-key',
+    region: 'us_east'  // Optional
+  }
+});
+```
+
+The server fetches TURN credentials from Metered's API and sends them to clients in the WebSocket `ready` message.
+
+### Custom ICE Servers
+
+Override with your own STUN/TURN servers:
+
+**Environment Variables (CLI Mode):**
+
+```bash
+# JSON array of RTCIceServer objects
+ICE_SERVERS='[{"urls":"stun:stun.example.com:3478"},{"urls":"turn:turn.example.com:3478","username":"user","credential":"pass"}]'
+```
+
+**Library Mode:**
+
+```typescript
+// Backend
+const server = new LLMRTCServer({
+  providers: { llm, stt, tts },
+  iceServers: [
+    { urls: 'stun:stun.example.com:3478' },
+    { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' }
+  ]
+});
+
+// Frontend (optional - overrides server-provided servers)
+const client = new LLMRTCWebClient({
+  signallingUrl: 'ws://localhost:8787',
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+});
+```
+
+### ICE Server Priority
+
+| Priority | Backend | Frontend |
+|----------|---------|----------|
+| 1 (highest) | `iceServers` config | `iceServers` config |
+| 2 | `metered` config → fetch from API | Server-provided in `ready` message |
+| 3 (default) | `stun:stun.metered.ca:80` | `stun:stun.metered.ca:80` |
+
+---
+
 ## Quick Start
 
 ### Installation
@@ -510,27 +633,6 @@ const vision = new LlavaVisionProvider({
   model: 'llava:7b'
 });
 ```
-
----
-
-## Runtime Dependencies
-
-### FFmpeg (Required for Streaming TTS)
-
-When using `streamingTTS: true`, the backend uses FFmpeg to process and stream audio chunks in real-time. Install FFmpeg before enabling streaming TTS:
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt-get install ffmpeg
-
-# Windows (with chocolatey)
-choco install ffmpeg
-```
-
-Without FFmpeg installed, streaming TTS will fail with an error. Non-streaming TTS (`streamingTTS: false` or omitted) works without FFmpeg.
 
 ---
 
@@ -1435,14 +1537,6 @@ npx llmrtc-backend
 - **wrtc module errors**: The native WebRTC module requires compatible binaries. Falls back to WebSocket-only if unavailable.
 - **Missing audio**: Check TTS provider configuration and API keys
 - **VAD not triggering**: Adjust microphone input level, check audio track is active
-
----
-
-## Requirements
-
-- Node.js >= 20
-- TypeScript >= 5.6
-- Browser with WebRTC support (Chrome, Firefox, Safari, Edge)
 
 ---
 

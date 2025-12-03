@@ -28,7 +28,7 @@ export interface ToolExecutorOptions {
   maxConcurrency?: number;
   /** Timeout per tool execution in ms (default: 30000) */
   timeout?: number;
-  /** Validate tool arguments against schema before execution (default: false) */
+  /** Validate tool arguments against schema before execution (default: true) */
   validateArguments?: boolean;
   /** Handler called when a tool execution starts */
   onToolStart?: (toolName: string, callId: string, args: Record<string, unknown>) => void;
@@ -57,7 +57,7 @@ export class ToolExecutor {
       defaultPolicy: options.defaultPolicy ?? 'parallel',
       maxConcurrency: options.maxConcurrency ?? 10,
       timeout: options.timeout ?? 30000,
-      validateArguments: options.validateArguments ?? false,
+      validateArguments: options.validateArguments ?? true,
       onToolStart: options.onToolStart,
       onToolEnd: options.onToolEnd,
       onToolError: options.onToolError,

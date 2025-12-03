@@ -48,13 +48,40 @@ const host = process.env.HOST ?? '127.0.0.1';
 const streamingTTS = process.env.STREAMING_TTS !== 'false';
 const systemPrompt = process.env.SYSTEM_PROMPT ?? 'You are a helpful realtime voice assistant.';
 
+// ICE/TURN configuration from environment
+// Priority: ICE_SERVERS (custom) > METERED_* (Metered TURN) > default STUN
+const metered = process.env.METERED_APP_NAME && process.env.METERED_API_KEY
+  ? {
+      appName: process.env.METERED_APP_NAME,
+      apiKey: process.env.METERED_API_KEY,
+      region: process.env.METERED_REGION
+    }
+  : undefined;
+
+// Custom ICE servers override (JSON array string)
+let iceServers: RTCIceServer[] | undefined;
+if (process.env.ICE_SERVERS) {
+  try {
+    iceServers = JSON.parse(process.env.ICE_SERVERS);
+    console.log(`[cli] Loaded ${iceServers?.length ?? 0} custom ICE servers from ICE_SERVERS env`);
+  } catch (err) {
+    console.warn('[cli] Failed to parse ICE_SERVERS env var:', err);
+  }
+}
+
+if (metered) {
+  console.log(`[cli] Metered TURN configured: ${metered.appName}.metered.live${metered.region ? ` (region: ${metered.region})` : ''}`);
+}
+
 // Create and start server
 const server = new LLMRTCServer({
   providers: createProvidersFromEnv(),
   port,
   host,
   streamingTTS,
-  systemPrompt
+  systemPrompt,
+  metered,
+  iceServers
 });
 
 server.start().catch((err) => {

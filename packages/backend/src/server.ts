@@ -51,6 +51,18 @@ import { NativePeerServer, AudioData } from './native-peer-server.js';
 import { SessionManager } from './session-manager.js';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * Default ICE servers - Metered STUN server
+ * Used when no custom ICE servers or Metered TURN is configured
+ */
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.metered.ca:80' }
+];
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -124,6 +136,30 @@ export interface LLMRTCServerConfig {
     /** Enable debug logging */
     debug?: boolean;
   };
+
+  // ==========================================================================
+  // ICE Server Configuration
+  // ==========================================================================
+
+  /**
+   * Custom ICE servers for WebRTC (STUN/TURN).
+   * If provided, overrides Metered TURN configuration.
+   */
+  iceServers?: RTCIceServer[];
+
+  /**
+   * Metered TURN server configuration (recommended).
+   * Fetches ICE servers from Metered API at connection time.
+   * @see https://www.metered.ca/tools/openrelay/
+   */
+  metered?: {
+    /** App name from Metered dashboard (e.g., 'myapp' for myapp.metered.live) */
+    appName: string;
+    /** API key for fetching TURN credentials */
+    apiKey: string;
+    /** Optional region preference (e.g., 'us_east', 'europe', 'asia') */
+    region?: string;
+  };
 }
 
 export interface LLMRTCServerEvents {
@@ -139,9 +175,9 @@ export interface LLMRTCServerEvents {
 
 export class LLMRTCServer {
   private readonly config: Required<
-    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions'>
+    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered'>
   > &
-    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions'>;
+    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered'>;
   private readonly providers: ConversationProviders;
   private readonly sessionManager: SessionManager;
   private readonly hooks: ServerHooks & OrchestratorHooks;
@@ -152,6 +188,9 @@ export class LLMRTCServer {
   private wss: WebSocketServer | null = null;
   private wrtcLib: any = null;
   private RTCAudioSource: any = null;
+
+  /** Cached ICE servers (fetched once from Metered or using config) */
+  private cachedIceServers: RTCIceServer[] | null = null;
 
   private eventHandlers: Partial<LLMRTCServerEvents> = {};
 
@@ -188,6 +227,68 @@ export class LLMRTCServer {
     if (handler) {
       (handler as (...args: unknown[]) => void)(...args);
     }
+  }
+
+  // ===========================================================================
+  // ICE Server Resolution
+  // ===========================================================================
+
+  /**
+   * Fetch ICE servers from Metered TURN API
+   * @returns Array of RTCIceServer objects from Metered
+   */
+  private async fetchMeteredIceServers(): Promise<RTCIceServer[]> {
+    const { appName, apiKey, region } = this.config.metered!;
+    const regionParam = region ? `&region=${region}` : '';
+    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}${regionParam}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Metered API error: ${response.status} ${response.statusText}`);
+      }
+      const iceServers = await response.json();
+      console.log(`[server] Fetched ${iceServers.length} ICE servers from Metered`);
+      return iceServers;
+    } catch (error) {
+      console.warn('[server] Failed to fetch Metered TURN credentials:', error);
+      console.warn('[server] Falling back to STUN-only mode');
+      return DEFAULT_ICE_SERVERS;
+    }
+  }
+
+  /**
+   * Resolve ICE servers based on configuration
+   * Priority: custom iceServers > metered > default STUN
+   * Results are cached after first resolution
+   */
+  private async resolveIceServers(): Promise<RTCIceServer[]> {
+    // Return cached result if available
+    if (this.cachedIceServers) {
+      return this.cachedIceServers;
+    }
+
+    let iceServers: RTCIceServer[];
+
+    // Priority 1: Custom ICE servers from config
+    if (this.config.iceServers?.length) {
+      console.log('[server] Using custom ICE servers from config');
+      iceServers = this.config.iceServers;
+    }
+    // Priority 2: Fetch from Metered TURN API
+    else if (this.config.metered) {
+      console.log('[server] Fetching ICE servers from Metered TURN API...');
+      iceServers = await this.fetchMeteredIceServers();
+    }
+    // Priority 3: Default STUN server
+    else {
+      console.log('[server] Using default Metered STUN server');
+      iceServers = DEFAULT_ICE_SERVERS;
+    }
+
+    // Cache for future connections
+    this.cachedIceServers = iceServers;
+    return iceServers;
   }
 
   /**
@@ -388,7 +489,11 @@ export class LLMRTCServer {
         isTTSPlaying = false;
       };
 
-      ws.send(JSON.stringify(createReadyMessage(connId)));
+      // Resolve ICE servers (cached after first call)
+      const iceServers = await this.resolveIceServers();
+
+      // Send ready message with ICE servers for client
+      ws.send(JSON.stringify(createReadyMessage(connId, iceServers)));
 
       const resetHeartbeatTimeout = () => {
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
@@ -447,7 +552,7 @@ export class LLMRTCServer {
               console.log('[server] Received', msg.type);
 
               if (!peer || peer.destroyed) {
-                peer = this.createPeer(ws);
+                peer = this.createPeer(ws, iceServers);
                 if (peer) {
                   audioProcessor = new AudioProcessor();
                   this.setupPeerHandlers(
@@ -531,7 +636,7 @@ export class LLMRTCServer {
     });
   }
 
-  private createPeer(ws: WebSocket): NativePeerServer | null {
+  private createPeer(ws: WebSocket, iceServers: RTCIceServer[]): NativePeerServer | null {
     if (!this.wrtcLib) {
       ws.send(JSON.stringify(createErrorMessage('WEBRTC_UNAVAILABLE', 'WebRTC not available on server')));
       return null;
@@ -544,7 +649,7 @@ export class LLMRTCServer {
 
     const peer = new NativePeerServer({
       wrtcLib: this.wrtcLib,
-      iceServers: []
+      iceServers
     });
 
     console.log('[server] Created NativePeerServer');

@@ -544,10 +544,24 @@ describe('ToolExecutor with validateArguments', () => {
     registry.register(createCalculatorTool());
   });
 
-  it('should not validate arguments by default', async () => {
+  it('should validate arguments by default', async () => {
     const executor = new ToolExecutor(registry);
 
-    // Missing required 'location' - should still execute (validation off)
+    // Missing required 'location' - should fail validation (validation on by default)
+    const result = await executor.executeSingle(
+      { callId: 'call-1', name: 'get_weather', arguments: { unit: 'celsius' } },
+      {}
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid arguments');
+    expect(result.error).toContain('Missing required parameter: location');
+  });
+
+  it('should skip validation when explicitly disabled', async () => {
+    const executor = new ToolExecutor(registry, { validateArguments: false });
+
+    // Missing required 'location' - should still execute (validation explicitly disabled)
     const result = await executor.executeSingle(
       { callId: 'call-1', name: 'get_weather', arguments: { unit: 'celsius' } },
       {}
