@@ -1,0 +1,15 @@
+{
+  "extends": "@docusaurus/module-type-aliases",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*",
+    "docs/**/*",
+    "plugins/**/*",
+    "docusaurus.config.ts",
+    "sidebars.ts"
+  ]
+}

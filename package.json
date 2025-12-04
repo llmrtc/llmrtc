@@ -24,7 +24,8 @@
   "workspaces": [
     "packages/*",
     "packages/providers/*",
-    "examples/*"
+    "examples/*",
+    "docs"
   ],
   "engines": {
     "node": ">=20"

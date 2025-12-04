@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="40" viewBox="0 0 140 40" role="img" aria-labelledby="title desc">
+  <title id="title">LLMRTC</title>
+  <desc id="desc">LLMRTC wordmark</desc>
+  <rect width="140" height="40" rx="8" fill="#0f172a" />
+  <text x="16" y="26" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="700" fill="#a5b4fc">LLMRTC</text>
+  <circle cx="116" cy="20" r="6" fill="#4f46e5" />
+  <circle cx="116" cy="20" r="2" fill="#e0e7ff" />
+</svg>

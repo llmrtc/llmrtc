@@ -1,0 +1,21 @@
+:root {
+  --ifm-color-primary: #4f46e5;
+  --ifm-color-primary-dark: #4338ca;
+  --ifm-color-primary-darker: #3730a3;
+  --ifm-color-primary-darkest: #312e81;
+  --ifm-color-primary-light: #6366f1;
+  --ifm-color-primary-lighter: #818cf8;
+  --ifm-color-primary-lightest: #a5b4fc;
+  --ifm-code-font-size: 95%;
+}
+
+audio {
+  max-width: 100%;
+}
+
+.hero--primary {
+  background: radial-gradient(circle at 20% 20%, rgba(99,102,241,0.15), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(79,70,229,0.12), transparent 30%),
+    linear-gradient(135deg, #0f172a 0%, #111827 50%, #0b1021 100%);
+  color: #f8fafc;
+}
