@@ -74,31 +74,26 @@ curl http://localhost:11434/api/tags
 import { OllamaLLMProvider } from '@metered/llmrtc-provider-local';
 
 const llm = new OllamaLLMProvider({
-  model: 'llama3.2',
-  baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+  model: 'llama3.2'
 });
 ```
 
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | - | Default model to use |
-
-### Provider Options
+### Configuration Options
 
 ```ts
 interface OllamaConfig {
-  baseUrl?: string;   // Server URL
-  model: string;      // Model name (e.g., 'llama3.2')
-  options?: {
-    num_ctx?: number;      // Context window size (default: 4096)
-    num_predict?: number;  // Max tokens to generate
-    temperature?: number;  // Sampling temperature (0-1)
-    num_thread?: number;   // CPU threads to use
-  };
+  model?: string;     // Model name (default: 'llama3.1')
+  baseUrl?: string;   // Server URL (default: 'http://localhost:11434')
 }
+```
+
+### Custom Server URL
+
+```ts
+const llm = new OllamaLLMProvider({
+  model: 'llama3.2',
+  baseUrl: 'http://192.168.1.100:11434'
+});
 ```
 
 ---
@@ -112,6 +107,60 @@ interface OllamaConfig {
 | `llama3.1:8b` | 8B | Higher quality |
 | `phi3` | 3.8B | Good balance |
 | `mistral` | 7B | Strong reasoning |
+
+---
+
+## Multimodal/Vision Support
+
+OllamaLLMProvider automatically detects vision-capable models and supports image attachments. When you send images to a non-vision model, the provider throws a clear error.
+
+### Supported Vision Models
+
+| Model | Size | Features |
+|-------|------|----------|
+| `gemma3` | 4B, 12B, 27B | Google's latest multimodal |
+| `llava` | 7B, 13B, 34B | General vision tasks |
+| `llama3.2-vision` | 11B, 90B | Meta's vision model |
+
+### Pull a Vision Model
+
+```bash
+# Gemma 3 (recommended for vision)
+ollama pull gemma3
+
+# LLaVA
+ollama pull llava
+
+# Llama 3.2 Vision
+ollama pull llama3.2-vision
+```
+
+### Usage Example
+
+```ts
+import { OllamaLLMProvider } from '@metered/llmrtc-provider-local';
+
+const llm = new OllamaLLMProvider({
+  model: 'gemma3'  // or 'llava', 'llama3.2-vision'
+});
+
+const result = await llm.complete({
+  messages: [{
+    role: 'user',
+    content: 'What do you see in this image?',
+    attachments: [{ data: 'data:image/png;base64,...' }]
+  }]
+});
+
+console.log(result.fullText);
+```
+
+### How It Works
+
+1. On first request, the provider calls Ollama's `/api/show` endpoint to check model capabilities
+2. If the model supports vision and the message has attachments, images are included in the request
+3. If the model does NOT support vision and attachments are present, an error is thrown
+4. Capability results are cached per provider instance
 
 ---
 

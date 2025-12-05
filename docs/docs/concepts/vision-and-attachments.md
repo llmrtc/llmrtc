@@ -67,8 +67,8 @@ Attachments are sent as base64-encoded data URIs or URLs:
   type: 'attachments',
   attachments: [
     {
-      type: 'image',
-      data: 'data:image/jpeg;base64,/9j/4AAQ...',  // Data URI
+      data: 'data:image/jpeg;base64,/9j/4AAQ...',  // Data URI (required)
+      mimeType: 'image/jpeg',                      // Optional MIME type
       alt: 'Screenshot of user dashboard'          // Optional description
     }
   ]
@@ -158,10 +158,14 @@ Not all LLM providers support vision. Here's the compatibility:
 | Google Gemini | ✅ | Gemini Pro Vision, Gemini 1.5 |
 | AWS Bedrock | ⚠️ | Depends on underlying model |
 | OpenRouter | ⚠️ | Depends on routed model |
-| Ollama | ⚠️ | LLaVA and similar models |
+| Ollama | ✅ | Gemma3, LLaVA, Llama3.2-vision (auto-detected) |
 | LM Studio | ❌ | Text-only models |
 
 When using a provider without native vision, you can configure a separate **Vision Provider** to describe images before passing text to the LLM.
+
+:::tip Local Vision with Ollama
+`OllamaLLMProvider` automatically detects vision-capable models (Gemma3, LLaVA, Llama3.2-vision) via Ollama's `/api/show` endpoint. Just use a vision model and pass attachments - no separate vision provider needed. See [Local Ollama](../providers/local-ollama#multimodalvision-support).
+:::
 
 ---
 

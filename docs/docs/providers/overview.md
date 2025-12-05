@@ -19,7 +19,7 @@ Capabilities (high level)
 | AWS Bedrock         | LLM     | ✅*| model-dependent      | ✅ | Cloud |
 | OpenRouter          | LLM     | ✅ | model-dependent      | ✅ | Cloud |
 | LMStudio            | LLM     | ✅*| model-dependent      | ✅ | Local |
-| Ollama              | LLM     | ✅*| model-dependent      | ✅ | Local |
+| Ollama              | LLM     | ✅*| ✅ (Gemma3, LLaVA, etc.) | ✅ | Local |
 | Faster-Whisper      | STT     | ✅*| –                    | –  | Local |
 | Piper               | TTS     | ✅*| –                    | –  | Local |
 | LLaVA               | Vision  | –  | ✅                   | –  | Local |

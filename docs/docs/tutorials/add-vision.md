@@ -242,7 +242,11 @@ The server automatically forwards image attachments from the client to the LLM.
 :::info Vision-Capable LLM Required
 This tutorial uses Claude (`claude-sonnet-4-20250514`), which supports vision natively. If you switch to a different LLM, ensure it supports image inputs. Most modern models (GPT-4o, Gemini Pro Vision) do.
 
-For LLMs without native vision support, you can use a local vision provider like `LlavaVisionProvider` - see [Local LLaVA](../providers/local-llava) for details.
+**Local Vision Options:**
+- Use `OllamaLLMProvider` with a vision model like `gemma3` or `llava` - vision support is auto-detected
+- Use a separate `LlavaVisionProvider` alongside a text-only LLM
+
+See [Local Ollama - Multimodal Support](../providers/local-ollama#multimodalvision-support) for details.
 :::
 
 ---

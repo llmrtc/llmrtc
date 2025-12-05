@@ -4,6 +4,10 @@ title: Local - LLaVA
 
 Local vision capabilities via [LLaVA](https://llava-vl.github.io/) (Large Language and Vision Assistant), a multimodal model that combines vision and language understanding.
 
+:::tip Alternative: Native Vision with OllamaLLMProvider
+For simpler setups, you can use `OllamaLLMProvider` with a vision-capable model like **Gemma3** or **LLaVA**. The provider automatically detects vision support and handles attachments natively - no separate vision provider needed. See [Local Ollama - Multimodal Support](local-ollama#multimodalvision-support).
+:::
+
 ## Official Documentation
 
 - [LLaVA Project Page](https://llava-vl.github.io/)

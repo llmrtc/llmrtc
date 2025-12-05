@@ -71,7 +71,8 @@ export class OllamaLLMProvider implements LLMProvider {
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
-    const res: any = await this.call(request, false);
+    const supportsVision = await this.checkVisionSupport();
+    const res: any = await this.call(request, false, supportsVision);
     const fullText = res.message?.content ?? '';
     const toolCalls = parseToolCallsFromOllama(res.message?.tool_calls);
     const stopReason = mapStopReasonFromOllama(res.message ?? {});
@@ -79,10 +80,11 @@ export class OllamaLLMProvider implements LLMProvider {
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
+    const supportsVision = await this.checkVisionSupport();
     const body: any = {
       model: this.model,
       stream: true,
-      messages: this.mapMessages(request.messages),
+      messages: this.mapMessages(request.messages, supportsVision),
     };
     if (request.tools?.length) {
       body.tools = mapToolsToOllama(request.tools);
@@ -118,20 +120,39 @@ export class OllamaLLMProvider implements LLMProvider {
     yield { content: '', done: true, toolCalls, stopReason };
   }
 
-  private mapMessages(messages: LLMRequest['messages']): any[] {
+  /**
+   * Map messages to Ollama format, optionally including vision attachments.
+   * @param messages - The messages to map
+   * @param supportsVision - Whether the model supports vision (from checkVisionSupport)
+   */
+  private mapMessages(messages: LLMRequest['messages'], supportsVision: boolean): any[] {
     return messages.map((m) => {
       if (m.role === 'tool') {
         return { role: 'tool', content: m.content };
       }
-      return { role: m.role, content: m.content };
+
+      const mapped: any = { role: m.role, content: m.content };
+
+      // Handle vision attachments for multimodal models (Gemma 3, LLaVA, etc.)
+      if (m.attachments?.length) {
+        if (!supportsVision) {
+          throw new Error(
+            `Model "${this.model}" does not support vision. ` +
+            `Use a vision-capable model like gemma3, llava, or llama3.2-vision.`
+          );
+        }
+        mapped.images = m.attachments.map((a) => this.normalizeImageData(a.data));
+      }
+
+      return mapped;
     });
   }
 
-  private async call(request: LLMRequest, stream: boolean) {
+  private async call(request: LLMRequest, stream: boolean, supportsVision: boolean) {
     const body: any = {
       model: this.model,
       stream,
-      messages: this.mapMessages(request.messages),
+      messages: this.mapMessages(request.messages, supportsVision),
     };
     if (request.tools?.length) {
       body.tools = mapToolsToOllama(request.tools);

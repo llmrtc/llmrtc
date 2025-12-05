@@ -90,16 +90,22 @@ describe('OllamaLLMProvider', () => {
     });
 
     it('should set stream to false', async () => {
-      (fetch as unknown as Mock).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ message: { content: '' } })
-      });
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: [] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: '' } })
+        });
 
       await provider.complete({
         messages: [{ role: 'user', content: 'Hi' }]
       });
 
-      const call = (fetch as unknown as Mock).mock.calls[0];
+      // Second call is /api/chat (first is /api/show)
+      const call = (fetch as unknown as Mock).mock.calls[1];
       const body = JSON.parse(call[1].body);
       expect(body.stream).toBe(false);
     });
@@ -120,10 +126,15 @@ describe('OllamaLLMProvider', () => {
     });
 
     it('should map messages to Ollama format', async () => {
-      (fetch as unknown as Mock).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ message: { content: '' } })
-      });
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: [] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: '' } })
+        });
 
       await provider.complete({
         messages: [
@@ -133,7 +144,8 @@ describe('OllamaLLMProvider', () => {
         ]
       });
 
-      const call = (fetch as unknown as Mock).mock.calls[0];
+      // Second call is /api/chat (first is /api/show)
+      const call = (fetch as unknown as Mock).mock.calls[1];
       const body = JSON.parse(call[1].body);
       expect(body.messages).toEqual([
         { role: 'system', content: 'You are helpful' },
@@ -265,12 +277,17 @@ describe('OllamaLLMProvider', () => {
     });
 
     it('should set stream to true in request', async () => {
-      const body = Readable.from([]);
+      const streamBody = Readable.from([]);
 
-      (fetch as unknown as Mock).mockResolvedValue({
-        ok: true,
-        body
-      });
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: [] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          body: streamBody
+        });
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
@@ -279,7 +296,8 @@ describe('OllamaLLMProvider', () => {
         // consume stream
       }
 
-      const call = (fetch as unknown as Mock).mock.calls[0];
+      // Second call is /api/chat (first is /api/show)
+      const call = (fetch as unknown as Mock).mock.calls[1];
       const requestBody = JSON.parse(call[1].body);
       expect(requestBody.stream).toBe(true);
     });
@@ -372,6 +390,225 @@ describe('OllamaLLMProvider', () => {
       }
 
       expect(received).toEqual(['Hi', 'Bye']);
+    });
+  });
+
+  describe('vision attachments', () => {
+    it('should map single vision attachment to Ollama format', async () => {
+      // Mock /api/show to return vision capability, then /api/chat for the request
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['completion', 'vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'I see an image' } })
+        });
+
+      const result = await provider.complete({
+        messages: [{
+          role: 'user',
+          content: 'What is this?',
+          attachments: [{ data: 'data:image/png;base64,abc123' }]
+        }]
+      });
+
+      expect(result.fullText).toBe('I see an image');
+
+      // Check that the chat call included images (second call)
+      const chatCall = (fetch as unknown as Mock).mock.calls[1];
+      const body = JSON.parse(chatCall[1].body);
+      expect(body.messages[0].images).toEqual(['abc123']);
+    });
+
+    it('should strip data URI prefix and send raw base64', async () => {
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'OK' } })
+        });
+
+      await provider.complete({
+        messages: [{
+          role: 'user',
+          content: 'Describe',
+          attachments: [{ data: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==' }]
+        }]
+      });
+
+      const chatCall = (fetch as unknown as Mock).mock.calls[1];
+      const body = JSON.parse(chatCall[1].body);
+      // Should be raw base64 without the data: prefix
+      expect(body.messages[0].images[0]).toBe('/9j/4AAQSkZJRg==');
+    });
+
+    it('should handle raw base64 without data URI prefix', async () => {
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'OK' } })
+        });
+
+      await provider.complete({
+        messages: [{
+          role: 'user',
+          content: 'Describe',
+          attachments: [{ data: 'rawbase64data' }]
+        }]
+      });
+
+      const chatCall = (fetch as unknown as Mock).mock.calls[1];
+      const body = JSON.parse(chatCall[1].body);
+      // Should pass through unchanged
+      expect(body.messages[0].images[0]).toBe('rawbase64data');
+    });
+
+    it('should map multiple vision attachments', async () => {
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'Two images' } })
+        });
+
+      await provider.complete({
+        messages: [{
+          role: 'user',
+          content: 'Compare these',
+          attachments: [
+            { data: 'data:image/png;base64,img1' },
+            { data: 'data:image/png;base64,img2' }
+          ]
+        }]
+      });
+
+      const chatCall = (fetch as unknown as Mock).mock.calls[1];
+      const body = JSON.parse(chatCall[1].body);
+      expect(body.messages[0].images).toEqual(['img1', 'img2']);
+    });
+
+    it('should throw error when sending images to non-vision model', async () => {
+      // Mock /api/show to return NO vision capability
+      (fetch as unknown as Mock).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ capabilities: ['completion'] })
+      });
+
+      await expect(
+        provider.complete({
+          messages: [{
+            role: 'user',
+            content: 'What is this?',
+            attachments: [{ data: 'data:image/png;base64,abc123' }]
+          }]
+        })
+      ).rejects.toThrow('does not support vision');
+    });
+
+    it('should cache vision capability check', async () => {
+      // First call: /api/show returns vision capability
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'First' } })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'Second' } })
+        });
+
+      // First request
+      await provider.complete({
+        messages: [{ role: 'user', content: 'First request' }]
+      });
+
+      // Second request - should NOT call /api/show again
+      await provider.complete({
+        messages: [{ role: 'user', content: 'Second request' }]
+      });
+
+      // Should have 3 calls total: 1 for /api/show, 2 for /api/chat
+      expect(fetch).toHaveBeenCalledTimes(3);
+
+      // First call should be to /api/show
+      expect((fetch as unknown as Mock).mock.calls[0][0]).toBe('http://localhost:11434/api/show');
+      // Second and third calls should be to /api/chat
+      expect((fetch as unknown as Mock).mock.calls[1][0]).toBe('http://localhost:11434/api/chat');
+      expect((fetch as unknown as Mock).mock.calls[2][0]).toBe('http://localhost:11434/api/chat');
+    });
+
+    it('should handle /api/show failure gracefully', async () => {
+      // Mock /api/show to fail, then /api/chat to succeed
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 404
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: 'OK' } })
+        });
+
+      // Should still work for non-vision requests
+      const result = await provider.complete({
+        messages: [{ role: 'user', content: 'Hello' }]
+      });
+
+      expect(result.fullText).toBe('OK');
+    });
+
+    it('should work with streaming and vision attachments', async () => {
+      const chunks = [
+        JSON.stringify({ message: { content: 'I see ' } }) + '\n',
+        JSON.stringify({ message: { content: 'an image' } }) + '\n'
+      ];
+      const body = Readable.from(chunks);
+
+      (fetch as unknown as Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ capabilities: ['vision'] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          body
+        });
+
+      const received: string[] = [];
+      for await (const chunk of provider.stream({
+        messages: [{
+          role: 'user',
+          content: 'What is this?',
+          attachments: [{ data: 'data:image/png;base64,abc123' }]
+        }]
+      })) {
+        if (chunk.content) {
+          received.push(chunk.content);
+        }
+      }
+
+      expect(received.join('')).toBe('I see an image');
+
+      // Verify images were included in the stream request
+      const streamCall = (fetch as unknown as Mock).mock.calls[1];
+      const streamBody = JSON.parse(streamCall[1].body);
+      expect(streamBody.messages[0].images).toEqual(['abc123']);
     });
   });
 });

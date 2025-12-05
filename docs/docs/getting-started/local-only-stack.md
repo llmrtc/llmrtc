@@ -350,14 +350,56 @@ node server.js
 
 ## Vision Support
 
-Add local vision with LLaVA:
+There are two ways to add local vision:
+
+### Option A: Native Vision with Gemma3 (Recommended)
+
+Use `OllamaLLMProvider` with a vision-capable model. The provider automatically detects vision support.
 
 ```bash
-# Pull LLaVA model
+# Pull Gemma3 (recommended for vision)
+ollama pull gemma3
+
+# Or pull LLaVA
 ollama pull llava
 ```
 
-Update server:
+Update server to use a vision model:
+
+```javascript
+import {
+  LLMRTCServer,
+  OllamaLLMProvider,
+  FasterWhisperProvider,
+  PiperTTSProvider
+} from '@metered/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  providers: {
+    llm: new OllamaLLMProvider({
+      baseUrl: 'http://localhost:11434',
+      model: 'gemma3'  // Vision-capable model handles images natively
+    }),
+    stt: new FasterWhisperProvider({
+      baseUrl: 'http://localhost:9000'
+    }),
+    tts: new PiperTTSProvider({
+      baseUrl: 'http://localhost:5002'
+    })
+    // No separate vision provider needed!
+  },
+  systemPrompt: 'You are a helpful assistant that can see and hear.'
+});
+```
+
+### Option B: Separate Vision Provider
+
+Use a dedicated vision provider alongside a text-only LLM:
+
+```bash
+# Pull LLaVA for vision
+ollama pull llava
+```
 
 ```javascript
 import {
@@ -372,7 +414,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new OllamaLLMProvider({
       baseUrl: 'http://localhost:11434',
-      model: 'llama3.2'
+      model: 'llama3.2'  // Text-only model
     }),
     stt: new FasterWhisperProvider({
       baseUrl: 'http://localhost:9000'
@@ -388,6 +430,14 @@ const server = new LLMRTCServer({
   systemPrompt: 'You are a helpful assistant that can see and hear.'
 });
 ```
+
+### Vision Model Comparison
+
+| Model | Provider | Notes |
+|-------|----------|-------|
+| `gemma3` | OllamaLLMProvider | Google's multimodal, good balance of speed/quality |
+| `llava` | OllamaLLMProvider or LlavaVisionProvider | General vision tasks |
+| `llama3.2-vision` | OllamaLLMProvider | Meta's vision model, larger but more capable |
 
 ---
 

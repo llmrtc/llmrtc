@@ -8,7 +8,7 @@ Stack
 - Ollama (LLM)
 - FasterWhisper (STT)
 - Piper (TTS)
-- Optional LLaVA (vision)
+- Optional vision: gemma3, llava, or llama3.2-vision (via OllamaLLMProvider)
 
 Run
 ```bash
