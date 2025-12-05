@@ -44,29 +44,29 @@ async function startCamera() {
     }
   });
 
-  // Share with 1 FPS (default)
+  // Share with default interval (1000ms between frames)
   const controller = client.shareVideo(stream);
 
   return controller;
 }
 ```
 
-### Frame Rate Control
+### Frame Interval Control
 
-Adjust FPS to balance quality and bandwidth:
+Adjust interval between frames to balance quality and bandwidth:
 
 ```typescript
-// Low FPS for bandwidth savings
-const controller = client.shareVideo(stream, 0.5);  // 1 frame per 2 seconds
+// Lower frequency for bandwidth savings
+const controller = client.shareVideo(stream, 2000);  // 1 frame per 2 seconds
 
-// Higher FPS for real-time applications
-const controller = client.shareVideo(stream, 2);   // 2 frames per second
+// Higher frequency for real-time applications
+const controller = client.shareVideo(stream, 500);   // 2 frames per second
 ```
 
-Recommended FPS:
-- 0.5 - Basic context (what's on screen)
-- 1 - General use (default)
-- 2 - Active demonstrations
+Recommended intervals:
+- 2000ms - Basic context (what's on screen)
+- 1000ms - General use (default)
+- 500ms - Active demonstrations
 
 ### Preview
 
@@ -129,67 +129,25 @@ const stream = await navigator.mediaDevices.getDisplayMedia({
 
 ## Manual Attachments
 
-Send images programmatically:
+Send queued attachments to the server:
 
 ```typescript
-// From data URI
-client.sendAttachments([
-  {
-    type: 'image',
-    data: 'data:image/jpeg;base64,/9j/4AAQ...',
-    alt: 'Screenshot of dashboard'
-  }
-]);
-
-// From URL
-client.sendAttachments([
-  {
-    type: 'image',
-    data: 'https://example.com/image.jpg',
-    alt: 'Product image'
-  }
-]);
+// Attachments are automatically queued by shareVideo/shareScreen
+// Call sendAttachments() to flush the queue manually
+client.sendAttachments();
 ```
 
-### From Canvas
+Attachments are typically sent automatically when speech ends. Use `sendAttachments()` to force-send queued images.
+
+### From Canvas or File
+
+For custom image handling, use `shareVideo()` with a canvas stream or share a captured image via the video sharing mechanism:
 
 ```typescript
-function captureCanvas(canvas: HTMLCanvasElement) {
-  const dataUri = canvas.toDataURL('image/jpeg', 0.8);
-
-  client.sendAttachments([
-    {
-      type: 'image',
-      data: dataUri,
-      alt: 'Canvas capture'
-    }
-  ]);
-}
-```
-
-### From File Upload
-
-```typescript
-async function handleFileUpload(file: File) {
-  const dataUri = await fileToDataUri(file);
-
-  client.sendAttachments([
-    {
-      type: 'image',
-      data: dataUri,
-      alt: file.name
-    }
-  ]);
-}
-
-function fileToDataUri(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+// Create a canvas and capture it as a stream
+const canvas = document.getElementById('myCanvas') as HTMLCanvasElement;
+const stream = canvas.captureStream(1); // 1 FPS
+const controller = client.shareVideo(stream, 1000);
 ```
 
 ---

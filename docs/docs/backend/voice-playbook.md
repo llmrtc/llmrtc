@@ -59,42 +59,45 @@ tools.register(defineTool({
       accountId: { type: 'string' }
     },
     required: ['accountId']
-  },
-  execute: async ({ accountId }) => {
-    // Implementation
-    return { balance: 1500.00 };
   }
+}, async ({ accountId }) => {
+  // Implementation
+  return { balance: 1500.00 };
 }));
 
 // Define playbook
 const playbook: Playbook = {
-  name: 'support-bot',
+  id: 'support-bot',
   initialStage: 'greeting',
-  stages: {
-    greeting: {
-      prompt: 'Greet the customer and ask how you can help.',
-      transitions: [
-        { to: 'billing', when: 'user mentions billing or payment' },
-        { to: 'technical', when: 'user mentions technical issue' }
-      ]
+  stages: [
+    {
+      id: 'greeting',
+      name: 'Greeting',
+      systemPrompt: 'Greet the customer and ask how you can help.'
     },
-    billing: {
-      prompt: 'Help with billing inquiries. Use check_balance for account info.',
-      tools: ['check_balance'],
-      transitions: [
-        { to: 'farewell', when: 'issue resolved' }
-      ]
+    {
+      id: 'billing',
+      name: 'Billing Support',
+      systemPrompt: 'Help with billing inquiries. Use check_balance for account info.',
+      tools: [tools.getTool('check_balance').definition]
     },
-    technical: {
-      prompt: 'Help with technical issues.',
-      transitions: [
-        { to: 'farewell', when: 'issue resolved' }
-      ]
+    {
+      id: 'technical',
+      name: 'Technical Support',
+      systemPrompt: 'Help with technical issues.'
     },
-    farewell: {
-      prompt: 'Thank the customer and end the conversation.'
+    {
+      id: 'farewell',
+      name: 'Farewell',
+      systemPrompt: 'Thank the customer and end the conversation.'
     }
-  }
+  ],
+  transitions: [
+    { id: 't1', from: 'greeting', condition: { type: 'keyword', keywords: ['billing', 'payment', 'invoice'] }, action: { targetStage: 'billing' } },
+    { id: 't2', from: 'greeting', condition: { type: 'keyword', keywords: ['technical', 'bug', 'error'] }, action: { targetStage: 'technical' } },
+    { id: 't3', from: 'billing', condition: { type: 'llm_decision' }, action: { targetStage: 'farewell' } },
+    { id: 't4', from: 'technical', condition: { type: 'llm_decision' }, action: { targetStage: 'farewell' } }
+  ]
 };
 
 // Create server with playbook
@@ -114,27 +117,24 @@ await server.start();
 
 ---
 
-## Playbook Options
+## Playbook Options (Server Level)
+
+At the `LLMRTCServer` level, the following playbook options are supported:
 
 ```typescript
-interface PlaybookOptions {
+interface ServerPlaybookOptions {
   // Tool execution
   maxToolCallsPerTurn?: number;  // Default: 10
   phase1TimeoutMs?: number;      // Default: 60000 (60s)
-
-  // History
-  historyLimit?: number;         // Default: 50
-
-  // LLM behavior
-  llmRetries?: number;           // Default: 3
-
-  // Two-phase execution
-  twoPhaseExecution?: boolean;   // Default: true
 
   // Debugging
   debug?: boolean;               // Default: false
 }
 ```
+
+:::note Core SDK Options
+Additional options like `historyLimit` and `llmRetries` are available when using `PlaybookOrchestrator` directly via the core SDK. See [Core SDK Playbooks](../core-sdk/playbooks) for details.
+:::
 
 ---
 
@@ -169,14 +169,17 @@ This produces natural, concise responses even for complex tool workflows.
 
 ### Disabling Two-Phase
 
+To disable two-phase execution, set `twoPhaseExecution: false` on individual stages:
+
 ```typescript
-const server = new LLMRTCServer({
-  playbook,
-  toolRegistry: tools,
-  playbookOptions: {
+stages: [
+  {
+    id: 'simple-response',
+    name: 'Simple Response',
+    systemPrompt: '...',
     twoPhaseExecution: false  // Stream everything including tool reasoning
   }
-});
+]
 ```
 
 ---
@@ -190,15 +193,19 @@ Transitions can be triggered in multiple ways:
 The LLM decides to transition based on conversation context:
 
 ```typescript
-stages: {
-  greeting: {
-    prompt: 'Greet the user. When they explain their issue, move to the appropriate stage.',
-    transitions: [
-      { to: 'billing', when: 'user mentions billing, payment, or account' },
-      { to: 'technical', when: 'user mentions bugs, errors, or technical problems' }
-    ]
+// Stages array
+stages: [
+  {
+    id: 'greeting',
+    name: 'Greeting',
+    systemPrompt: 'Greet the user. When they explain their issue, use the playbook_transition tool to move to the appropriate stage.'
   }
-}
+],
+// Use llm_decision condition type - the LLM calls playbook_transition tool
+transitions: [
+  { id: 't1', from: 'greeting', condition: { type: 'llm_decision' }, action: { targetStage: 'billing' } },
+  { id: 't2', from: 'greeting', condition: { type: 'llm_decision' }, action: { targetStage: 'technical' } }
+]
 ```
 
 ### Tool-Triggered Transitions
@@ -208,14 +215,18 @@ Tools can return a `__transition` property:
 ```typescript
 const checkEligibility = defineTool({
   name: 'check_eligibility',
-  // ...
-  execute: async (args) => {
-    const eligible = await checkUserEligibility(args.userId);
-    return {
-      eligible,
-      __transition: eligible ? 'offer' : 'rejection'
-    };
+  description: 'Check user eligibility',
+  parameters: {
+    type: 'object',
+    properties: { userId: { type: 'string' } },
+    required: ['userId']
   }
+}, async (args) => {
+  const eligible = await checkUserEligibility(args.userId);
+  return {
+    eligible,
+    __transition: eligible ? 'offer' : 'rejection'
+  };
 });
 ```
 
@@ -227,8 +238,11 @@ Use hooks to force transitions:
 const server = new LLMRTCServer({
   playbook,
   hooks: {
-    onStageChange: (from, to, reason) => {
-      console.log(`Transition: ${from} → ${to} (${reason})`);
+    onStageEnter: (ctx, stageName) => {
+      console.log(`Entered stage: ${stageName}`);
+    },
+    onStageExit: (ctx, stageName) => {
+      console.log(`Exited stage: ${stageName}`);
     }
   }
 });
@@ -252,12 +266,12 @@ client.on('stageChange', ({ from, to, reason }) => {
 ### Tool Events
 
 ```typescript
-client.on('toolCallStart', ({ name, arguments: args }) => {
+client.on('toolCallStart', ({ name, callId, arguments: args }) => {
   showToolIndicator(name);
 });
 
-client.on('toolCallEnd', ({ name, result }) => {
-  hideToolIndicator(name);
+client.on('toolCallEnd', ({ callId, result, error, durationMs }) => {
+  hideToolIndicator();
 });
 ```
 
@@ -265,31 +279,11 @@ client.on('toolCallEnd', ({ name, result }) => {
 
 ## History Management
 
-Each stage can control history:
+History is managed at the orchestrator level. When using `PlaybookOrchestrator` directly (core SDK), you can configure `historyLimit` in the options. The orchestrator automatically trims older messages when the limit is exceeded.
 
-```typescript
-stages: {
-  triage: {
-    prompt: '...',
-    historyStrategy: 'full'  // Carry all history
-  },
-  resolution: {
-    prompt: '...',
-    historyStrategy: 'summary'  // Summarize then reset
-  },
-  farewell: {
-    prompt: '...',
-    historyStrategy: 'reset'  // Start fresh
-  }
-}
-```
-
-| Strategy | Behavior |
-|----------|----------|
-| `full` | Keep complete history (default) |
-| `reset` | Clear history on stage entry |
-| `summary` | LLM summarizes, then reset |
-| `lastN` | Keep only last N messages |
+:::note
+At the `LLMRTCServer` level, history management uses default settings. For custom history limits, use the core SDK directly.
+:::
 
 ---
 
@@ -302,32 +296,28 @@ Playbooks handle errors gracefully:
 ```typescript
 const riskyTool = defineTool({
   name: 'risky_operation',
-  execute: async (args) => {
-    try {
-      return await performOperation(args);
-    } catch (error) {
-      // Return error info instead of throwing
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+  description: 'Perform a risky operation',
+  parameters: { type: 'object', properties: {} }
+}, async (args) => {
+  try {
+    return await performOperation(args);
+  } catch (error) {
+    // Return error info instead of throwing
+    return {
+      success: false,
+      error: error.message
+    };
   }
 });
 ```
 
 ### LLM Retries
 
-The orchestrator retries on transient errors:
+The `PlaybookOrchestrator` includes built-in retry logic for transient errors:
+- Retryable errors: 429 (rate limit), 5xx, timeouts
+- Non-retryable: 4xx client errors (except 429)
 
-```typescript
-playbookOptions: {
-  llmRetries: 3  // Retry up to 3 times with exponential backoff
-}
-```
-
-Retryable errors: 429 (rate limit), 5xx, timeouts
-Non-retryable: 4xx client errors (except 429)
+When using the core SDK directly, configure retries via `llmRetries` option.
 
 ---
 
@@ -339,20 +329,21 @@ Track playbook execution with hooks:
 const server = new LLMRTCServer({
   playbook,
   hooks: {
-    onStageChange: (from, to, reason) => {
-      metrics.increment('stage_transitions', { from, to });
-    },
     onToolStart: (ctx, request) => {
       console.log(`Tool: ${request.name}`);
     },
     onToolEnd: (ctx, result, timing) => {
-      metrics.timing('tool_duration', timing.totalMs, {
-        tool: result.name
+      metrics.timing('tool_duration', timing.durationMs, {
+        tool: result.toolName
       });
     }
   }
 });
 ```
+
+:::note Playbook Hooks
+Playbook-specific hooks (`onStageEnter`, `onStageExit`, `onTransition`) are available when using `PlaybookOrchestrator` directly. See [Hooks & Metrics](../core-sdk/hooks-and-metrics) for the complete hook reference.
+:::
 
 ---
 

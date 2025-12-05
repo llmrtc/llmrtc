@@ -135,7 +135,7 @@ hooks: {
     console.log(`STT: ${timing.durationMs}ms`);
   },
   onLLMEnd: (ctx, result, timing) => {
-    console.log(`LLM: ${timing.durationMs}ms, TTFT: ${timing.ttftMs}ms`);
+    console.log(`LLM: ${timing.durationMs}ms`);
   },
   onTTSEnd: (ctx, timing) => {
     console.log(`TTS: ${timing.durationMs}ms`);
@@ -217,19 +217,23 @@ Arguments: {"city":"New York"}
    defineTool({
      name: 'get_weather',
      description: 'Get current weather',
-     parameters: z.object({
-       city: z.string().describe('City name'),
-       units: z.enum(['celsius', 'fahrenheit']).optional()
-     }),
-     execute: async ({ city, units = 'celsius' }) => {
-       // Handle optional parameters with defaults
+     parameters: {
+       type: 'object',
+       properties: {
+         city: { type: 'string', description: 'City name' },
+         units: { type: 'string', enum: ['celsius', 'fahrenheit'] }
+       },
+       required: ['city']
      }
+   }, async ({ city, units = 'celsius' }) => {
+     // Handle optional parameters with defaults
    });
    ```
 
 2. **Add error handling** in tool implementation:
    ```typescript
-   execute: async (args) => {
+   // In the handler function passed to defineTool:
+   async (args) => {
      try {
        const data = await fetchWeather(args.city);
        return { temperature: data.temp, condition: data.condition };
@@ -266,14 +270,7 @@ Max retries exceeded, connection failed
 ```
 
 **Solutions:**
-1. **Extend session TTL** for long-running applications:
-   ```typescript
-   const server = new LLMRTCServer({
-     sessionTTL: 60 * 60 * 1000  // 1 hour instead of 30 min
-   });
-   ```
-
-2. **Handle reconnection gracefully** on client:
+1. **Handle reconnection gracefully** on client:
    ```typescript
    client.on('stateChange', (state) => {
      if (state === 'failed') {
@@ -283,7 +280,7 @@ Max retries exceeded, connection failed
    });
    ```
 
-3. **Check heartbeat timeout** - Client should send pings:
+2. **Check heartbeat timeout** - Client should send pings:
    ```typescript
    // Server logs if no heartbeat received
    Heartbeat timeout for session abc123
@@ -304,12 +301,7 @@ Rate limit exceeded. Please retry after 60 seconds.
 ```
 
 **Solutions:**
-1. **Implement retry logic** with exponential backoff (built-in for LLM):
-   ```typescript
-   const server = new LLMRTCServer({
-     llmRetries: 3  // Default: 3 retries with backoff
-   });
-   ```
+1. **Implement retry logic** - The PlaybookOrchestrator includes built-in retry logic with exponential backoff
 
 2. **Reduce request rate** - Increase silence threshold, debounce inputs
 

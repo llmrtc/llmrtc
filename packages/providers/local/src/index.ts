@@ -28,10 +28,46 @@ export class OllamaLLMProvider implements LLMProvider {
   readonly name = 'ollama-llm';
   private readonly model: string;
   private readonly baseUrl: string;
+  private modelCapabilities: string[] | null = null;
 
   constructor(config: OllamaConfig = {}) {
     this.model = config.model ?? 'llama3.1';
     this.baseUrl = config.baseUrl ?? 'http://localhost:11434';
+  }
+
+  /**
+   * Check if the current model supports vision capabilities.
+   * Uses Ollama's /api/show endpoint which returns a capabilities array.
+   * Results are cached to avoid repeated API calls.
+   */
+  private async checkVisionSupport(): Promise<boolean> {
+    if (this.modelCapabilities === null) {
+      try {
+        const resp = await fetch(`${this.baseUrl}/api/show`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: this.model })
+        });
+        if (resp.ok) {
+          const data = (await resp.json()) as { capabilities?: string[] };
+          this.modelCapabilities = data.capabilities ?? [];
+        } else {
+          this.modelCapabilities = [];
+        }
+      } catch {
+        this.modelCapabilities = [];
+      }
+    }
+    return this.modelCapabilities.includes('vision');
+  }
+
+  /**
+   * Normalize image data - extract base64 from data URI if present.
+   * Ollama expects raw base64, not data URIs.
+   */
+  private normalizeImageData(data: string): string {
+    const match = data.match(/^data:[^;]+;base64,(.+)$/);
+    return match ? match[1] : data;
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {

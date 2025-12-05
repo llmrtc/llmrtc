@@ -24,13 +24,15 @@ A **stage** is a named state with its own configuration:
 
 ```typescript
 interface Stage {
-  id: string;                    // Unique identifier
-  name: string;                  // Human-readable name
-  systemPrompt?: string;         // Stage-specific system prompt
+  id: string;                    // Unique identifier (required)
+  name: string;                  // Human-readable name (required)
+  systemPrompt: string;          // Stage-specific system prompt (required)
   tools?: ToolDefinition[];      // Tools available in this stage
-  llmConfig?: LLMConfig;         // Temperature, maxTokens, etc.
+  llmConfig?: StageLLMConfig;    // Temperature, maxTokens, etc.
   twoPhaseExecution?: boolean;   // Enable/disable two-phase (default: true)
-  toolChoice?: 'auto' | 'none' | 'required';
+  toolChoice?: ToolChoice;       // 'auto' | 'none' | 'required' | { type: 'tool', toolName: string }
+  maxTurns?: number;             // Max turns before forcing transition
+  timeoutMs?: number;            // Stage timeout in milliseconds
 }
 ```
 
@@ -40,20 +42,30 @@ A **transition** moves the conversation from one stage to another based on condi
 
 ```typescript
 interface Transition {
-  from: string | string[];       // Source stage(s), or '*' for any
-  to: string;                    // Target stage
-  trigger: TransitionTrigger;    // What causes the transition
+  id: string;                    // Unique identifier (required)
+  from: string | '*';            // Source stage, or '*' for any
+  condition: TransitionCondition; // What causes the transition
+  action: TransitionAction;       // What to do when triggered
   priority?: number;             // Higher priority evaluated first
+  description?: string;          // Human-readable description
 }
 
-// Trigger types
-type TransitionTrigger =
-  | { type: 'keyword'; patterns: string[] }           // Match keywords in response
+interface TransitionAction {
+  targetStage: string;           // Stage to transition to
+  transitionMessage?: string;    // Optional message to inject
+  clearHistory?: boolean;        // Clear history on transition
+  data?: Record<string, unknown>; // Data to pass to target stage
+}
+
+// Condition types
+type TransitionCondition =
+  | { type: 'keyword'; keywords: string[] }           // Match keywords in response
   | { type: 'tool_call'; toolName: string }           // When a specific tool is called
+  | { type: 'intent'; intent: string; confidence?: number } // Intent classification
   | { type: 'llm_decision' }                          // LLM uses playbook_transition tool
-  | { type: 'explicit'; targetStage: string }         // Programmatic transition
-  | { type: 'timeout'; afterMs: number }              // Time-based transition
-  | { type: 'turn_count'; count: number };            // After N turns in stage
+  | { type: 'max_turns'; count: number }              // After N turns in stage
+  | { type: 'timeout'; durationMs: number }           // Time-based transition
+  | { type: 'custom'; evaluate: (ctx) => boolean };   // Custom evaluation function
 ```
 
 ---
@@ -126,37 +138,40 @@ When disabled, the LLM's first response (including any tool work) streams direct
 
 ---
 
-## LLM Retry Logic
+## PlaybookOrchestrator Options (Core SDK)
+
+When using `PlaybookOrchestrator` directly from the core SDK, the following options are available:
+
+```typescript
+interface PlaybookOrchestratorOptions {
+  maxToolCallsPerTurn?: number;  // Default: 10
+  phase1TimeoutMs?: number;      // Default: 60000 (1 minute)
+  llmRetries?: number;           // Default: 3
+  historyLimit?: number;         // Default: 50 messages
+  debug?: boolean;               // Default: false
+}
+```
+
+### LLM Retry Logic
 
 The orchestrator includes smart retry logic with exponential backoff:
 
-```typescript
-interface PlaybookOrchestratorOptions {
-  llmRetries?: number;  // Default: 3
-}
-```
+- **Retries on:** rate limits (429), server errors (5xx), timeouts
+- **No retry on:** client errors (400, 401, 403, 404)
+- **Backoff:** 1s → 2s → 4s (exponential)
 
-**Retry behavior:**
-- Retries on: rate limits (429), server errors (5xx), timeouts
-- No retry on: client errors (400, 401, 403, 404)
-- Backoff: 1s → 2s → 4s (exponential)
-
----
-
-## History Management
+### History Management
 
 Conversation history is automatically trimmed to prevent context overflow while preserving tool call/result pairs (required by OpenAI API):
-
-```typescript
-interface PlaybookOrchestratorOptions {
-  historyLimit?: number;  // Default: 50 messages
-}
-```
 
 The trimming algorithm:
 1. When history exceeds limit, find oldest safe trim point
 2. Never split tool call from its result (would cause API errors)
 3. Remove complete message groups from the beginning
+
+:::note Server-Level Options
+When using `LLMRTCServer`, only `maxToolCallsPerTurn`, `phase1TimeoutMs`, and `debug` are configurable via `playbookOptions`. Use the core SDK directly for access to `llmRetries` and `historyLimit`.
+:::
 
 ---
 

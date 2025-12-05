@@ -72,8 +72,8 @@ If not specified, providers are auto-detected based on available API keys.
 | `OLLAMA_MODEL` | `llama3` | Ollama model name |
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio server URL |
 | `LMSTUDIO_MODEL` | (auto) | LM Studio model name |
-| `FASTER_WHISPER_URL` | `http://localhost:8000` | Faster-Whisper server URL |
-| `PIPER_URL` | `http://localhost:5000` | Piper TTS server URL |
+| `FASTER_WHISPER_URL` | `http://localhost:9000` | Faster-Whisper server URL |
+| `PIPER_URL` | `http://localhost:5002` | Piper TTS server URL |
 
 ---
 
@@ -104,8 +104,8 @@ npx llmrtc-backend
 export LOCAL_ONLY=true
 export OLLAMA_BASE_URL=http://localhost:11434
 export OLLAMA_MODEL=llama3
-export FASTER_WHISPER_URL=http://localhost:8000
-export PIPER_URL=http://localhost:5000
+export FASTER_WHISPER_URL=http://localhost:9000
+export PIPER_URL=http://localhost:5002
 npx llmrtc-backend
 ```
 

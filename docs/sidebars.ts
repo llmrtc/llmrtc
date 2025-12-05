@@ -17,6 +17,15 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Tutorials',
+      items: [
+        'tutorials/build-voice-assistant',
+        'tutorials/add-vision',
+        'tutorials/voice-with-tools'
+      ]
+    },
+    {
+      type: 'category',
       label: 'Concepts',
       items: [
         'concepts/architecture',

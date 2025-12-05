@@ -344,18 +344,6 @@ mics.forEach(mic => {
 
 ---
 
-## Raw Audio
-
-For advanced use cases, send raw audio data:
-
-```typescript
-// Send raw audio buffer (must be WAV or PCM format)
-const audioBuffer = new ArrayBuffer(/* audio data */);
-client.sendAudio(audioBuffer);
-```
-
-This bypasses WebRTC and sends audio over the data channel. Use only when WebRTC audio isn't available.
-
 ---
 
 ## Related Documentation

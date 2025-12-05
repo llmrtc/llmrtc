@@ -40,7 +40,7 @@ Before starting, ensure you have:
 ```bash
 # Verify backend is running
 curl http://localhost:8787/health
-# Should return: {"status":"ok"}
+# Should return: {"ok":true}
 ```
 
 ---

@@ -132,12 +132,12 @@ Respond in 1-2 sentences when possible.`,
 });
 
 // Log events
-server.on('connection', ({ sessionId }) => {
-  console.log(`Client connected: ${sessionId}`);
+server.on('connection', ({ id }) => {
+  console.log(`Client connected: ${id}`);
 });
 
-server.on('disconnect', ({ sessionId }) => {
-  console.log(`Client disconnected: ${sessionId}`);
+server.on('disconnect', ({ id }) => {
+  console.log(`Client disconnected: ${id}`);
 });
 
 server.on('error', (error) => {
@@ -180,7 +180,7 @@ curl http://localhost:8787/health
 Response:
 
 ```json
-{"status":"ok"}
+{"ok":true}
 ```
 
 ### WebSocket Connection Test
@@ -245,7 +245,7 @@ const server = new LLMRTCServer({
   host: '127.0.0.1',
 
   // CORS for browser connections
-  corsOrigins: ['http://localhost:5173']
+  cors: { origin: ['http://localhost:5173'] }
 });
 ```
 
@@ -255,30 +255,29 @@ Monitor server activity:
 
 ```javascript
 // Client connects
-server.on('connection', ({ sessionId, connectionId }) => {
-  console.log(`New connection: ${sessionId}`);
+server.on('connection', ({ id }) => {
+  console.log(`New connection: ${id}`);
 });
 
 // Client disconnects
-server.on('disconnect', ({ sessionId, timing }) => {
-  console.log(`Disconnected: ${sessionId}, duration: ${timing.durationMs}ms`);
+server.on('disconnect', ({ id }) => {
+  console.log(`Disconnected: ${id}`);
 });
 
-// Speech detected
-server.on('speechStart', ({ sessionId }) => {
-  console.log(`User speaking: ${sessionId}`);
-});
-
-// Speech ended, processing
-server.on('speechEnd', ({ sessionId, audioDurationMs }) => {
-  console.log(`Processing ${audioDurationMs}ms of audio`);
+// Server listening
+server.on('listening', ({ host, port }) => {
+  console.log(`Server listening on ${host}:${port}`);
 });
 
 // Error occurred
-server.on('error', (error, context) => {
-  console.error(`Error in ${context}:`, error);
+server.on('error', (error) => {
+  console.error('Server error:', error);
 });
 ```
+
+:::tip
+For speech events like `speechStart` and `speechEnd`, use the hooks system instead of EventEmitter events. See [Observability and Hooks](../backend/observability-and-hooks) for details.
+:::
 
 ---
 
@@ -408,9 +407,8 @@ Another process is using port 8787:
 # Find the process
 lsof -i :8787
 
-# Kill it or use a different port
-node server.js --port 9000
-# or set PORT=9000 in your code
+# Kill it or change port in server.js
+# Update the port option in LLMRTCServer config
 ```
 
 ### "FFmpeg not found"

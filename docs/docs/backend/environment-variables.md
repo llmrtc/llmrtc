@@ -3,7 +3,7 @@ title: Environment Variables
 ---
 
 Provider selection
-- `LLM_PROVIDER` = openai | anthropic | google | bedrock | openrouter | lmstudio | ollama (default)
+- `LLM_PROVIDER` = openai | anthropic | google | bedrock | openrouter | lmstudio | ollama
 - `TTS_PROVIDER` = elevenlabs | openai | piper
 - `STT_PROVIDER` = openai | faster-whisper
 - `LOCAL_ONLY` = true to force local providers

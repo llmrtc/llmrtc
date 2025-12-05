@@ -77,24 +77,24 @@ const server = new LLMRTCServer({ providers });
 const app = server.getApp();
 
 // Middleware to verify JWT
-app.use('*', async (c, next) => {
+app.use((req, res, next) => {
   // Skip health check
-  if (c.req.path === '/health') {
+  if (req.path === '/health') {
     return next();
   }
 
-  const authHeader = c.req.header('Authorization');
+  const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing token' }, 401);
+    return res.status(401).json({ error: 'Missing token' });
   }
 
   const token = authHeader.substring(7);
   try {
     const payload = verify(token, process.env.JWT_SECRET!);
-    c.set('user', payload);
-    await next();
+    req.user = payload;
+    next();
   } catch {
-    return c.json({ error: 'Invalid token' }, 401);
+    return res.status(401).json({ error: 'Invalid token' });
   }
 });
 ```
@@ -111,11 +111,11 @@ WebSocket connections need special handling:
 // Client sends auth message immediately after connect
 
 // Option 3: Pre-authenticated ticket
-app.post('/api/tickets', async (c) => {
-  const user = c.get('user');
+app.post('/api/tickets', async (req, res) => {
+  const user = req.user;
   const ticket = crypto.randomUUID();
   await redis.setex(`ticket:${ticket}`, 30, JSON.stringify(user));
-  return c.json({ ticket });
+  res.json({ ticket });
 });
 
 // Client connects with ticket, server validates on connect
@@ -226,8 +226,8 @@ import { RateLimiter } from 'limiter';
 
 const userLimiters = new Map<string, RateLimiter>();
 
-app.use('*', async (c, next) => {
-  const userId = c.get('user')?.id;
+app.use(async (req, res, next) => {
+  const userId = req.user?.id;
   if (!userId) return next();
 
   let limiter = userLimiters.get(userId);
@@ -240,10 +240,10 @@ app.use('*', async (c, next) => {
   }
 
   if (await limiter.removeTokens(1) < 0) {
-    return c.json({ error: 'Rate limit exceeded' }, 429);
+    return res.status(429).json({ error: 'Rate limit exceeded' });
   }
 
-  await next();
+  next();
 });
 ```
 
@@ -278,18 +278,22 @@ server.on('connection', ({ id }) => {
 Transcripts may contain personally identifiable information:
 
 ```typescript
-server.hooks = {
-  onSTTEnd: (ctx, result) => {
-    // Log transcript without PII
-    const sanitized = redactPII(result.text);
-    logger.info({ sessionId: ctx.sessionId, transcript: sanitized });
+// Pass hooks via constructor
+const server = new LLMRTCServer({
+  providers,
+  hooks: {
+    onSTTEnd: async (ctx, result) => {
+      // Log transcript without PII
+      const sanitized = redactPII(result.text);
+      logger.info({ sessionId: ctx.sessionId, transcript: sanitized });
 
-    // Store securely if needed
-    if (shouldStore()) {
-      await encryptAndStore(ctx.sessionId, result.text);
+      // Store securely if needed
+      if (shouldStore()) {
+        await encryptAndStore(ctx.sessionId, result.text);
+      }
     }
   }
-};
+});
 ```
 
 ### Data Retention
@@ -339,11 +343,19 @@ const BookingSchema = z.object({
 
 const bookingTool = defineTool({
   name: 'book_table',
-  parameters: { /* JSON Schema */ },
-  execute: async (args) => {
-    const validated = BookingSchema.parse(args);
-    return await bookTable(validated);
+  description: 'Book a table at a restaurant',
+  parameters: {
+    type: 'object',
+    properties: {
+      date: { type: 'string', description: 'Booking date (YYYY-MM-DD)' },
+      time: { type: 'string', description: 'Booking time (HH:MM)' },
+      partySize: { type: 'number', description: 'Number of guests' }
+    },
+    required: ['date', 'time', 'partySize']
   }
+}, async (args) => {
+  const validated = BookingSchema.parse(args);
+  return await bookTable(validated);
 });
 ```
 

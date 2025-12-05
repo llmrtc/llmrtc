@@ -82,7 +82,7 @@ sequenceDiagram
     end
 ```
 
-Sessions have a **time-to-live (TTL)**. If a disconnected user doesn't reconnect within this window, the session expires and history is lost.
+Sessions expire if a disconnected user doesn't reconnect within a reasonable window.
 
 ---
 

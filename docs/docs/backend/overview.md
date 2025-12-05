@@ -229,7 +229,7 @@ The backend requires:
 
 | Dependency | Purpose | Required |
 |------------|---------|----------|
-| Node.js 18+ | Runtime | Yes |
+| Node.js 20+ | Runtime | Yes |
 | FFmpeg | Streaming TTS audio processing | For streaming TTS |
 | Provider API keys | STT/LLM/TTS services | Yes (unless local) |
 

@@ -170,8 +170,8 @@ The client emits events for UI integration:
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `stageChange` | `{ from, to, reason }` | Stage transition |
-| `toolCallStart` | `{ name, arguments }` | Tool execution started |
-| `toolCallEnd` | `{ name, result }` | Tool execution completed |
+| `toolCallStart` | `{ name, callId, arguments }` | Tool execution started |
+| `toolCallEnd` | `{ callId, result, error, durationMs }` | Tool execution completed |
 
 ---
 
@@ -216,22 +216,15 @@ The client **does not auto-play TTS audio**. You must handle the `ttsTrack` or `
 
 | Method | Description |
 |--------|-------------|
-| `shareAudio(stream)` | Share microphone audio |
-| `sendAudio(arrayBuffer)` | Send raw audio data |
+| `shareAudio(stream)` | Share microphone audio, returns controller |
 
 ### Video & Vision
 
 | Method | Description |
 |--------|-------------|
-| `shareVideo(stream, fps?)` | Share camera with frame capture |
-| `shareScreen(stream, fps?)` | Share screen with frame capture |
-| `sendAttachments(attachments)` | Send images manually |
-
-### Text
-
-| Method | Description |
-|--------|-------------|
-| `sendText(text)` | Send text message (skip STT) |
+| `shareVideo(stream, intervalMs?)` | Share camera with frame capture (intervalMs between frames) |
+| `shareScreen(stream, intervalMs?)` | Share screen with frame capture (intervalMs between frames) |
+| `sendAttachments()` | Send queued attachments to server |
 
 ---
 

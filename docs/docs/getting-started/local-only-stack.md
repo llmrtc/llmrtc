@@ -104,14 +104,14 @@ curl http://localhost:11434/api/tags
 ```bash
 docker run -d \
   --name faster-whisper \
-  -p 8000:8000 \
+  -p 9000:8000 \
   fedirz/faster-whisper-server:latest-cpu
 
 # Or with GPU (NVIDIA)
 docker run -d \
   --gpus all \
   --name faster-whisper \
-  -p 8000:8000 \
+  -p 9000:8000 \
   fedirz/faster-whisper-server:latest-cuda
 ```
 
@@ -122,14 +122,14 @@ docker run -d \
 pip install faster-whisper-server
 
 # Run
-faster-whisper-server --host 0.0.0.0 --port 8000
+faster-whisper-server --host 0.0.0.0 --port 9000
 ```
 
 ### Verify
 
 ```bash
-curl http://localhost:8000/health
-# Should return: {"status":"ok"}
+curl http://localhost:9000/health
+# Should return: {"ok":true}
 ```
 
 ---
@@ -143,7 +143,7 @@ curl http://localhost:8000/health
 ```bash
 docker run -d \
   --name piper \
-  -p 5000:5000 \
+  -p 5002:5000 \
   rhasspy/piper:latest
 ```
 
@@ -161,7 +161,7 @@ wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/mediu
 
 # Run HTTP server (requires piper-http-server)
 pip install piper-http-server
-piper-http-server --port 5000 --model en_US-amy-medium.onnx
+piper-http-server --port 5002 --model en_US-amy-medium.onnx
 ```
 
 ### Available Voices
@@ -180,7 +180,7 @@ Browse all voices at [rhasspy.github.io/piper-samples](https://rhasspy.github.io
 
 ```bash
 # Test TTS endpoint
-curl -X POST http://localhost:5000/synthesize \
+curl -X POST http://localhost:5002/synthesize \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world"}' \
   --output test.wav
@@ -206,16 +206,16 @@ import {
 
 // Create local providers
 const llmProvider = new OllamaLLMProvider({
-  baseUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
+  baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
   model: 'llama3.2'
 });
 
 const sttProvider = new FasterWhisperProvider({
-  baseUrl: process.env.FASTER_WHISPER_URL || 'http://localhost:8000'
+  baseUrl: process.env.FASTER_WHISPER_URL || 'http://localhost:9000'
 });
 
 const ttsProvider = new PiperTTSProvider({
-  baseUrl: process.env.PIPER_URL || 'http://localhost:5000',
+  baseUrl: process.env.PIPER_URL || 'http://localhost:5002',
   voice: 'en_US-amy-medium'
 });
 
@@ -232,8 +232,8 @@ Keep responses concise and conversational.`,
   port: 8787
 });
 
-server.on('connection', ({ sessionId }) => {
-  console.log(`Connected: ${sessionId}`);
+server.on('connection', ({ id }) => {
+  console.log(`Connected: ${id}`);
 });
 
 server.on('error', (error) => {
@@ -249,9 +249,9 @@ Create `.env`:
 
 ```bash
 # .env
-OLLAMA_URL=http://localhost:11434
-FASTER_WHISPER_URL=http://localhost:8000
-PIPER_URL=http://localhost:5000
+OLLAMA_BASE_URL=http://localhost:11434
+FASTER_WHISPER_URL=http://localhost:9000
+PIPER_URL=http://localhost:5002
 ```
 
 ---
@@ -268,11 +268,11 @@ ollama serve
 
 # Terminal 2: Faster-Whisper
 docker start faster-whisper
-# or: faster-whisper-server --host 0.0.0.0 --port 8000
+# or: faster-whisper-server --host 0.0.0.0 --port 9000
 
 # Terminal 3: Piper
 docker start piper
-# or: piper-http-server --port 5000 --model en_US-amy-medium.onnx
+# or: piper-http-server --port 5002 --model en_US-amy-medium.onnx
 
 # Terminal 4: LLMRTC Server
 node server.js
@@ -285,10 +285,10 @@ node server.js
 curl http://localhost:11434/api/tags
 
 # Check Faster-Whisper
-curl http://localhost:8000/health
+curl http://localhost:9000/health
 
 # Check Piper
-curl http://localhost:5000/health
+curl http://localhost:5002/health
 
 # Check LLMRTC
 curl http://localhost:8787/health
@@ -322,13 +322,13 @@ services:
   faster-whisper:
     image: fedirz/faster-whisper-server:latest-cpu
     ports:
-      - "8000:8000"
+      - "9000:8000"
     # Use latest-cuda for GPU
 
   piper:
     image: rhasspy/piper:latest
     ports:
-      - "5000:5000"
+      - "5002:5000"
 
 volumes:
   ollama_data:
@@ -363,7 +363,7 @@ Update server:
 import {
   LLMRTCServer,
   OllamaLLMProvider,
-  OllamaVisionProvider,
+  LlavaVisionProvider,
   FasterWhisperProvider,
   PiperTTSProvider
 } from '@metered/llmrtc-backend';
@@ -375,12 +375,12 @@ const server = new LLMRTCServer({
       model: 'llama3.2'
     }),
     stt: new FasterWhisperProvider({
-      baseUrl: 'http://localhost:8000'
+      baseUrl: 'http://localhost:9000'
     }),
     tts: new PiperTTSProvider({
-      baseUrl: 'http://localhost:5000'
+      baseUrl: 'http://localhost:5002'
     }),
-    vision: new OllamaVisionProvider({
+    vision: new LlavaVisionProvider({
       baseUrl: 'http://localhost:11434',
       model: 'llava'
     })
@@ -419,7 +419,7 @@ const llmProvider = new OllamaLLMProvider({
 
 ```javascript
 const sttProvider = new FasterWhisperProvider({
-  baseUrl: 'http://localhost:8000',
+  baseUrl: 'http://localhost:9000',
   model: 'base',  // tiny, base, small, medium, large-v3
   language: 'en'  // Force language for faster processing
 });
@@ -468,20 +468,20 @@ docker logs faster-whisper
 docker restart faster-whisper
 
 # Try CPU-only if GPU issues
-docker run -d -p 8000:8000 fedirz/faster-whisper-server:latest-cpu
+docker run -d -p 9000:8000 fedirz/faster-whisper-server:latest-cpu
 ```
 
 ### Piper No Audio
 
 ```bash
 # Test directly
-curl -X POST http://localhost:5000/synthesize \
+curl -X POST http://localhost:5002/synthesize \
   -H "Content-Type: application/json" \
   -d '{"text": "Test"}' \
   --output test.wav
 
 # Check voice model is loaded
-curl http://localhost:5000/voices
+curl http://localhost:5002/voices
 ```
 
 ### High Latency

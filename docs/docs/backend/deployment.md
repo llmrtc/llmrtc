@@ -49,7 +49,7 @@ flowchart TB
 | CPU | 2 cores | 4+ cores |
 | Memory | 2 GB | 4+ GB |
 | Storage | 10 GB | 20+ GB SSD |
-| Node.js | 18.x | 20.x LTS |
+| Node.js | 20.x | 20.x LTS |
 | FFmpeg | Required for streaming TTS | Latest stable |
 
 ### Network Requirements

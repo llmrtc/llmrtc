@@ -223,7 +223,6 @@ const console = new ConsoleMetrics();
 
 // In-memory storage (for testing)
 const memory = new InMemoryMetrics();
-console.log(memory.getMetrics());  // Returns all recorded metrics
 ```
 
 ### Prometheus Example
@@ -278,12 +277,12 @@ class PrometheusMetrics implements MetricsAdapter {
 | `llmrtc.tts.duration_ms` | timing | TTS synthesis time |
 | `llmrtc.turn.duration_ms` | timing | Complete turn time (STT+LLM+TTS) |
 | `llmrtc.session.duration_ms` | timing | Session lifetime |
-| `llmrtc.connections` | gauge | Active connection count |
+| `llmrtc.connections.active` | gauge | Active connection count |
 | `llmrtc.errors` | counter | Error count (tagged by component) |
 | `llmrtc.tool.duration_ms` | timing | Tool execution time |
 | `llmrtc.tool.calls` | counter | Tool call count |
-| `llmrtc.stage.duration_ms` | timing | Time in playbook stage |
-| `llmrtc.stage.transitions` | counter | Stage transition count |
+| `llmrtc.playbook.stage.duration_ms` | timing | Time in playbook stage |
+| `llmrtc.playbook.transitions` | counter | Stage transition count |
 
 ---
 

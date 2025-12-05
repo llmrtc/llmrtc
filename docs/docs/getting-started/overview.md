@@ -162,9 +162,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 ELEVENLABS_API_KEY=...
 
 # Local providers (defaults shown)
-OLLAMA_HOST=http://localhost:11434
-FASTER_WHISPER_URL=http://localhost:8000
-PIPER_URL=http://localhost:5000
+OLLAMA_BASE_URL=http://localhost:11434
+FASTER_WHISPER_URL=http://localhost:9000
+PIPER_URL=http://localhost:5002
 ```
 
 ### Default Ports
@@ -173,8 +173,8 @@ PIPER_URL=http://localhost:5000
 |---------|--------------|
 | LLMRTC Backend | 8787 |
 | Ollama | 11434 |
-| Faster-Whisper | 8000 |
-| Piper | 5000 |
+| Faster-Whisper | 9000 |
+| Piper | 5002 |
 
 ---
 
@@ -197,7 +197,7 @@ Features: Audio visualization, transcript display, tool calling UI
 ```bash
 cd examples/minimal
 npm install
-npm start
+npm run dev
 ```
 
 A bare-bones implementation showing the essential code.

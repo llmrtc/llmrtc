@@ -38,34 +38,26 @@ When using playbooks for multi-stage voice agents with tools:
 | `toolRegistry` | `ToolRegistry` | `undefined` | Registry with tools (required with playbook) |
 | `playbookOptions` | `object` | see below | Playbook orchestrator options |
 
-### Playbook Orchestrator Options
+### Playbook Orchestrator Options (Server Level)
+
+At the server level, only the following options are supported:
 
 ```typescript
-interface PlaybookOrchestratorOptions {
+interface ServerPlaybookOptions {
   /** Maximum tool calls per turn in Phase 1 */
   maxToolCallsPerTurn?: number;  // Default: 10
 
   /** Timeout for Phase 1 tool loop (ms) */
   phase1TimeoutMs?: number;  // Default: 60000 (1 minute)
 
-  /** Number of LLM retry attempts on failure */
-  llmRetries?: number;  // Default: 3
-
-  /** Maximum conversation history messages */
-  historyLimit?: number;  // Default: 50
-
   /** Enable debug logging */
   debug?: boolean;  // Default: false
 }
 ```
 
-**LLM Retry Logic:**
-
-The orchestrator includes smart retry with exponential backoff:
-
-- **Retries on:** Rate limits (429), server errors (5xx), timeouts
-- **No retry on:** Client errors (400, 401, 403, 404)
-- **Backoff:** 1s → 2s → 4s (exponential)
+:::note Core SDK Options
+Additional options like `historyLimit` and `llmRetries` are available when using `PlaybookOrchestrator` directly via the core SDK. See [Core SDK Playbooks](../playbooks/overview) for details.
+:::
 
 ---
 
@@ -185,8 +177,7 @@ const server = new LLMRTCServer({
   playbookOptions: {
     maxToolCallsPerTurn: 10,
     phase1TimeoutMs: 60000,
-    llmRetries: 3,
-    historyLimit: 50
+    debug: false
   },
 
   // ICE servers

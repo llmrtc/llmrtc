@@ -190,10 +190,10 @@ import {
   LLMRTCWebClient,
   type ConnectionState,
   type ClientError,
-  type LLMRTCWebClientConfig
+  type WebClientConfig
 } from '@metered/llmrtc-web-client';
 
-const config: LLMRTCWebClientConfig = {
+const config: WebClientConfig = {
   signallingUrl: 'wss://your-server.com',
   reconnection: {
     enabled: true,

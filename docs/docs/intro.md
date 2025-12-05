@@ -179,7 +179,7 @@ client.on('llmChunk', (chunk) => console.log('Assistant:', chunk));
 
 await client.start();
 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-client.shareAudio(stream);
+await client.shareAudio(stream);
 ```
 
 ---

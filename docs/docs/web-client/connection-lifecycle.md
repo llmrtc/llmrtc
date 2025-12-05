@@ -226,26 +226,18 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
 
 ### Queue Input During Reconnection
 
-Don't drop user input during reconnection:
+Don't drop user interactions during reconnection:
 
 ```typescript
-const pendingMessages: string[] = [];
-
 client.on('stateChange', (state) => {
-  if (state === 'connected' && pendingMessages.length > 0) {
-    // Send queued messages
-    pendingMessages.forEach(msg => client.sendText(msg));
-    pendingMessages.length = 0;
+  if (state === 'connected') {
+    // Ready for interaction
+    enableMicrophone();
+  } else if (state === 'reconnecting') {
+    // Disable input during reconnection
+    disableMicrophone();
   }
 });
-
-function sendMessage(text: string) {
-  if (client.state === 'connected') {
-    client.sendText(text);
-  } else {
-    pendingMessages.push(text);
-  }
-}
 ```
 
 ### Persist Session for Page Refresh
@@ -258,12 +250,9 @@ client.on('stateChange', (state) => {
   }
 });
 
-// On page load
-const savedSessionId = localStorage.getItem('sessionId');
-if (savedSessionId) {
-  // Server will attempt to restore session
-  client.start({ sessionId: savedSessionId });
-}
+// On page load - session restoration happens automatically
+// The client will attempt to reconnect with the previous session
+await client.start();
 ```
 
 ---

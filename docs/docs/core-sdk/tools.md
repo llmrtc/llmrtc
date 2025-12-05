@@ -70,8 +70,8 @@ registry.register(
   )
 );
 
-// Register multiple tools
-registry.registerAll([weatherTool, calendarTool, emailTool]);
+// Get a registered tool
+const tool = registry.getTool('lookupWeather');
 
 // Get definitions for LLM
 const definitions = registry.getDefinitions();

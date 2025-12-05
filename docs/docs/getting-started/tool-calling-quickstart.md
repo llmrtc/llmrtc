@@ -199,7 +199,7 @@ const server = new LLMRTCServer({
     stt: new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY }),
     tts: new OpenAITTSProvider({ apiKey: process.env.OPENAI_API_KEY })
   },
-  tools: registry,
+  toolRegistry: registry,
   systemPrompt: `You are a helpful voice assistant with access to tools.
 Use the get_weather tool when asked about weather.
 Use the get_time tool when asked about time in different locations.
@@ -207,8 +207,8 @@ Always use tools when you have relevant ones available.`,
   port: 8787
 });
 
-server.on('connection', ({ sessionId }) => {
-  console.log(`Connected: ${sessionId}`);
+server.on('connection', ({ id }) => {
+  console.log(`Connected: ${id}`);
 });
 
 await server.start();
@@ -426,13 +426,13 @@ registry.register(defineTool({
 Update your web client to display tool activity:
 
 ```typescript
-client.on('toolCallStart', ({ name, args }) => {
-  console.log(`Calling tool: ${name}`);
+client.on('toolCallStart', ({ name, callId, arguments: args }) => {
+  console.log(`Calling tool: ${name} (${callId})`);
   showToolIndicator(name);
 });
 
-client.on('toolCallEnd', ({ name, result }) => {
-  console.log(`Tool result:`, result);
+client.on('toolCallEnd', ({ callId, result, error, durationMs }) => {
+  console.log(`Tool completed in ${durationMs}ms:`, result ?? error);
   hideToolIndicator();
 });
 ```

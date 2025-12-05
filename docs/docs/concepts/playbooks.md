@@ -52,10 +52,10 @@ Each stage can have:
 
 | Component | Purpose |
 |-----------|---------|
-| `prompt` | System instructions for this phase |
-| `tools` | Tools available in this stage |
-| `transitions` | Rules for moving to other stages |
-| `historyStrategy` | How to handle conversation history |
+| `systemPrompt` | System instructions for this phase |
+| `tools` | Tools available in this stage (ToolDefinition[]) |
+
+Transitions are defined globally on the playbook, not per-stage.
 
 Stages are defined in a playbook configuration and managed by the PlaybookOrchestrator.
 
@@ -125,27 +125,9 @@ This separation keeps responses concise while allowing complex tool workflows.
 
 ---
 
-## Stage History
+## Conversation History
 
-Each stage can control how conversation history is handled:
-
-```mermaid
-flowchart LR
-    subgraph "History Strategies"
-        FULL[full: Keep all history]
-        RESET[reset: Clear history]
-        SUMMARY[summary: Summarize and reset]
-    end
-```
-
-| Strategy | Behavior |
-|----------|----------|
-| `full` | Carry forward complete history |
-| `reset` | Start fresh in new stage |
-| `summary` | LLM summarizes, then reset |
-| `lastN` | Keep only last N messages |
-
-History management prevents context drift and controls token usage as conversations progress.
+Playbooks manage history at the orchestrator level using the `historyLimit` option. Older messages are automatically trimmed when the limit is exceeded. This prevents context drift and controls token usage as conversations progress.
 
 ---
 

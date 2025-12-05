@@ -182,19 +182,35 @@ export class InMemoryMetrics implements MetricsAdapter { ... }
 
 // Metric names
 export const MetricNames = {
+  // Speech-to-text
   STT_DURATION: 'llmrtc.stt.duration_ms',
+  // LLM
   LLM_TTFT: 'llmrtc.llm.ttft_ms',
   LLM_DURATION: 'llmrtc.llm.duration_ms',
   LLM_TOKENS: 'llmrtc.llm.tokens',
+  // Text-to-speech
   TTS_DURATION: 'llmrtc.tts.duration_ms',
+  // Turn
   TURN_DURATION: 'llmrtc.turn.duration_ms',
+  // Session
   SESSION_DURATION: 'llmrtc.session.duration_ms',
-  CONNECTIONS: 'llmrtc.connections',
+  ACTIVE_SESSIONS: 'llmrtc.sessions.active',
+  SESSION_TURNS: 'llmrtc.session.turns',
+  // Errors
   ERRORS: 'llmrtc.errors',
+  // Connections
+  CONNECTIONS: 'llmrtc.connections.active',
+  RECONNECTIONS: 'llmrtc.reconnections',
+  // Tools
   TOOL_DURATION: 'llmrtc.tool.duration_ms',
   TOOL_CALLS: 'llmrtc.tool.calls',
-  STAGE_DURATION: 'llmrtc.stage.duration_ms',
-  STAGE_TRANSITIONS: 'llmrtc.stage.transitions'
+  TOOL_ERRORS: 'llmrtc.tool.errors',
+  // Playbook
+  STAGE_DURATION: 'llmrtc.playbook.stage.duration_ms',
+  STAGE_TRANSITIONS: 'llmrtc.playbook.transitions',
+  STAGE_TURNS: 'llmrtc.playbook.stage.turns',
+  CURRENT_STAGE: 'llmrtc.playbook.stage.current',
+  PLAYBOOK_COMPLETIONS: 'llmrtc.playbook.completions'
 };
 ```
 

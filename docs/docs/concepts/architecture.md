@@ -274,7 +274,7 @@ flowchart TD
     CHECK -->|Auto| ENV{Check env vars}
     ENV -->|OPENAI_API_KEY| OAI[OpenAI]
     ENV -->|ANTHROPIC_API_KEY| ANTH[Anthropic]
-    ENV -->|GOOGLE_AI_API_KEY| GEM[Gemini]
+    ENV -->|GOOGLE_API_KEY| GEM[Gemini]
     ENV -->|ELEVENLABS_API_KEY| ELEV[ElevenLabs]
 ```
 

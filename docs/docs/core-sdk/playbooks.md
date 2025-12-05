@@ -24,27 +24,31 @@ export const supportPlaybook: Playbook = {
   globalSystemPrompt: 'You are a concise support agent.',
 
   stages: [
-    { id: 'greeting', systemPrompt: 'Greet and ask the issue.' },
-    { id: 'triage', systemPrompt: 'Clarify the issue, collect order id.', tools: [lookupOrder.definition] },
-    { id: 'resolution', systemPrompt: 'Resolve or escalate.' },
-    { id: 'farewell', systemPrompt: 'Close politely.' }
+    { id: 'greeting', name: 'Greeting', systemPrompt: 'Greet and ask the issue.' },
+    { id: 'triage', name: 'Triage', systemPrompt: 'Clarify the issue, collect order id.', tools: [lookupOrder.definition] },
+    { id: 'resolution', name: 'Resolution', systemPrompt: 'Resolve or escalate.' },
+    { id: 'farewell', name: 'Farewell', systemPrompt: 'Close politely.' }
   ],
 
   transitions: [
     { id: 'start-triage', from: 'greeting', condition: { type: 'keyword', keywords: ['order', 'refund', 'broken'] }, action: { targetStage: 'triage' } },
-    { id: 'resolved', from: 'triage', condition: { type: 'tool_result', toolName: 'lookup_order', check: (r) => r.success }, action: { targetStage: 'resolution' } },
+    { id: 'resolved', from: 'triage', condition: { type: 'tool_call', toolName: 'lookup_order' }, action: { targetStage: 'resolution' } },
     { id: 'wrapup', from: '*', condition: { type: 'llm_decision' }, action: { targetStage: 'farewell' } }
   ]
 };
 ```
 
-### Transition types (built in)
-- `keyword` – match keywords in assistant text.
-- `tool_call` / `tool_result` – fire when a specific tool is invoked or succeeds.
-- `llm_decision` – LLM calls the built-in `playbook_transition` tool to request a move.
-- `max_turns` / `timeout` – safety valves for stuck stages.
-- `intent` – intent classification based transitions.
-- `custom` – user-supplied function.
+### Transition Condition Types
+
+| Type | Description |
+|------|-------------|
+| `keyword` | Match keywords in assistant text |
+| `tool_call` | Fire when a specific tool is invoked |
+| `llm_decision` | LLM calls the built-in `playbook_transition` tool |
+| `intent` | Intent classification based transitions |
+| `max_turns` | Transition after N turns in stage |
+| `timeout` | Transition after time in stage exceeds duration |
+| `custom` | User-supplied evaluate function |
 
 ### Validation
 Use `validatePlaybook(playbook)` to catch missing stages, bad IDs, or invalid transitions at startup.

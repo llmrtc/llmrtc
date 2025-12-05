@@ -235,7 +235,7 @@ function PushToTalkButton({ client }: { client: LLMRTCWebClient }) {
       });
     }
 
-    controllerRef.current = client.shareAudio(streamRef.current);
+    controllerRef.current = await client.shareAudio(streamRef.current);
     setIsPressed(true);
   };
 

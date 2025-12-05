@@ -87,8 +87,7 @@ interface LLMRTCServerConfig {
 |--------|-------------|
 | `start()` | Start the server, returns Promise |
 | `stop()` | Stop the server gracefully |
-| `getApp()` | Get the underlying Hono app for custom routes |
-| `broadcast(message)` | Send message to all connected clients |
+| `getApp()` | Get the underlying Express app for custom routes |
 
 ### Events
 
@@ -120,23 +119,23 @@ Speech events (`speechStart`, `speechEnd`) are **hooks**, not EventEmitter event
 
 ## Custom Routes
 
-Access the Hono app to add custom HTTP endpoints:
+Access the Express app to add custom HTTP endpoints:
 
 ```typescript
 const server = new LLMRTCServer({ /* config */ });
 const app = server.getApp();
 
 // Add REST endpoints
-app.get('/api/sessions', (c) => {
+app.get('/api/sessions', (req, res) => {
   // Return session data
-  return c.json({ sessions: [] });
+  res.json({ sessions: [] });
 });
 
-app.post('/api/sessions/:id/message', async (c) => {
-  const { id } = c.req.param();
-  const { text } = await c.req.json();
+app.post('/api/sessions/:id/message', async (req, res) => {
+  const { id } = req.params;
+  const { text } = req.body;
   // Inject text message into session
-  return c.json({ ok: true });
+  res.json({ ok: true });
 });
 
 await server.start();
@@ -158,19 +157,19 @@ const server = new LLMRTCServer({ /* config */ });
 const app = server.getApp();
 
 // Auth middleware for all routes
-app.use('*', async (c, next) => {
-  const token = c.req.header('Authorization')?.replace('Bearer ', '');
+app.use(async (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
 
   if (!token) {
-    return c.json({ error: 'Unauthorized' }, 401);
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
     const user = await verifyJWT(token);
-    c.set('user', user);
-    await next();
+    req.user = user;
+    next();
   } catch {
-    return c.json({ error: 'Invalid token' }, 401);
+    return res.status(401).json({ error: 'Invalid token' });
   }
 });
 
@@ -186,10 +185,10 @@ For WebSocket connections, validate in the upgrade handler or use a pre-auth flo
 // Client: ws://localhost:8787?token=eyJ...
 
 // Option 2: Pre-auth endpoint
-app.post('/api/auth/ws-ticket', async (c) => {
-  const user = c.get('user');
+app.post('/api/auth/ws-ticket', async (req, res) => {
+  const user = req.user;
   const ticket = await createOneTimeTicket(user.id);
-  return c.json({ ticket });
+  res.json({ ticket });
 });
 
 // Client connects with ticket, server validates on first message
@@ -241,10 +240,10 @@ const server = new LLMRTCServer({
       model: 'llama3'
     }),
     stt: new FasterWhisperProvider({
-      baseUrl: 'http://localhost:8000'
+      baseUrl: 'http://localhost:9000'
     }),
     tts: new PiperTTSProvider({
-      baseUrl: 'http://localhost:5000'
+      baseUrl: 'http://localhost:5002'
     })
   }
 });
@@ -278,7 +277,7 @@ const server = new LLMRTCServer({
     onDisconnect: (sessionId, timing) => {
       analytics.track('session_end', {
         sessionId,
-        duration: timing.totalMs
+        duration: timing.durationMs
       });
     }
   }

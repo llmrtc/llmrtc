@@ -14,8 +14,8 @@ Run
 ```bash
 LOCAL_ONLY=true \
 OLLAMA_BASE_URL=http://localhost:11434 \
-FASTER_WHISPER_URL=http://localhost:8000 \
-PIPER_URL=http://localhost:5000 \
+FASTER_WHISPER_URL=http://localhost:9000 \
+PIPER_URL=http://localhost:5002 \
 npm run dev
 ```
 
