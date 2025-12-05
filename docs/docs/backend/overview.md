@@ -183,7 +183,7 @@ const server = new LLMRTCServer({
       console.log(`Session ${sessionId} connected`);
     },
     onDisconnect: (sessionId, timing) => {
-      console.log(`Session ${sessionId} ended after ${timing.totalMs}ms`);
+      console.log(`Session ${sessionId} ended after ${timing.durationMs}ms`);
     },
     onSpeechStart: (sessionId, timestamp) => {
       console.log(`User started speaking in ${sessionId}`);
