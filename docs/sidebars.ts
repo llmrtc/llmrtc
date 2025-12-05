@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Concepts',
       items: [
+        'concepts/architecture',
         'concepts/conversations-and-sessions',
         'concepts/orchestrator',
         'concepts/providers',

@@ -74,11 +74,109 @@ for await (const event of orchestrator.streamTurn('Book a table for 2')) {
 }
 ```
 
-## 4. Hooks and metrics
+## 4. History Management
 
-Playbooks integrate with `PlaybookHooks` (stage enter/exit, transitions, completion) and metrics (`llmrtc.playbook.*`). See **Core SDK → Hooks & Metrics** for details.
+The orchestrator automatically manages conversation history to prevent context overflow while preserving message integrity.
 
-## 5. When to use PlaybookOrchestrator vs ConversationOrchestrator
+### Configuration
+
+```typescript
+const orchestrator = new PlaybookOrchestrator(llm, playbook, tools, {
+  historyLimit: 50  // Default: 50 messages
+});
+```
+
+### Smart History Trimming
+
+When history exceeds the limit, the orchestrator uses a smart trimming algorithm:
+
+1. **Find safe trim point** - Scan from oldest messages forward
+2. **Preserve tool pairs** - Never split assistant tool calls from their tool results
+3. **Remove complete groups** - Only trim at message boundaries
+
+This is critical for OpenAI API compatibility, which requires tool result messages to immediately follow their corresponding assistant message with `toolCalls`.
+
+```mermaid
+flowchart LR
+    subgraph Before["Before Trimming (52 messages, limit 50)"]
+        M1[user] --> M2[assistant<br/>+toolCalls]
+        M2 --> M3[tool result]
+        M3 --> M4[tool result]
+        M4 --> M5[assistant]
+        M5 --> M6[user]
+        M6 --> MORE[... 46 more]
+    end
+
+    subgraph After["After Trimming (50 messages)"]
+        A5[assistant] --> A6[user]
+        A6 --> AMORE[... 46 more]
+    end
+
+    Before -->|"Trim 4 (not 2)"| After
+```
+
+**Why not trim at message 2?** Trimming between the assistant with `toolCalls` and its tool results would cause OpenAI API errors. The algorithm skips forward to find the next safe boundary.
+
+### Clearing History
+
+Reset conversation history manually:
+
+```typescript
+orchestrator.clearHistory();  // Removes all messages
+```
+
+### Getting Current History
+
+Access the current conversation:
+
+```typescript
+const messages = orchestrator.getHistory();  // Returns Message[]
+```
+
+---
+
+## 5. Hooks and Metrics
+
+Subscribe to orchestrator events for observability:
+
+```typescript
+const orchestrator = new PlaybookOrchestrator(llm, playbook, tools);
+
+orchestrator.on((event) => {
+  switch (event.type) {
+    case 'phase1_start':
+      console.log('Tool loop starting');
+      break;
+    case 'tool_call_start':
+      console.log('Calling:', event.call.name);
+      break;
+    case 'tool_call_complete':
+      console.log('Result:', event.result);
+      break;
+    case 'phase1_complete':
+      console.log('Tools done, count:', event.toolCallCount);
+      break;
+    case 'phase2_start':
+      console.log('Generating response');
+      break;
+    case 'phase2_complete':
+      console.log('Response:', event.response);
+      break;
+    case 'transition_triggered':
+      console.log('Transitioning:', event.transition);
+      break;
+    case 'stage_entered':
+      console.log('Now in stage:', event.stage.id);
+      break;
+  }
+});
+```
+
+See [Hooks & Metrics](../core-sdk/hooks-and-metrics) for complete hook and metrics reference.
+
+---
+
+## 6. When to Use PlaybookOrchestrator vs ConversationOrchestrator
 
 - Use **ConversationOrchestrator** for simple, single-prompt assistants where tools are optional but you don’t need stages.
 - Use **PlaybookOrchestrator** when you want:

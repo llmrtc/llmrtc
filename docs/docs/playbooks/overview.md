@@ -4,19 +4,207 @@ title: Playbooks Overview
 
 Playbooks are structured conversation flows made of **stages** and **transitions**. They sit on top of an LLM + tools and let you build agents that move through named phases instead of a single amorphous chat.
 
+## When to Use Playbooks
+
 Use a playbook when:
-- You have a clear multi-step flow (greeting → auth → triage → resolution → farewell).
-- Different stages need different tools, prompts, or models.
-- You want observability into which stage a user is in and how they move.
+- You have a clear multi-step flow (greeting → auth → triage → resolution → farewell)
+- Different stages need different tools, prompts, or models
+- You want observability into which stage a user is in and how they move
+- You need to coordinate multiple tools before responding to the user
 
-Core ideas
-- **Stage**: a named state with its own system prompt, tools, and LLM config.
-- **Transition**: a rule that moves you from one stage to another based on conditions (keywords, tool results, intent, timeouts, or an explicit LLM decision).
-- **Two-phase turns**: Phase 1 runs the tool loop; Phase 2 generates the final user-facing response.
+For simple agents with no structured flow, use `ConversationOrchestrator` instead.
 
-Playbooks are implemented in `@metered/llmrtc-core` via the `Playbook` type, `PlaybookEngine`, and `PlaybookOrchestrator`. For voice agents, `VoicePlaybookOrchestrator` in `@metered/llmrtc-backend` adds STT/TTS and streams events to the client.
+---
 
-Next:
-- [Defining playbooks](defining-playbooks)
-- [Text agents with PlaybookOrchestrator](text-agents)
-- [Voice agents with playbooks + tools](voice-agents-with-tools)
+## Core Concepts
+
+### Stages
+
+A **stage** is a named state with its own configuration:
+
+```typescript
+interface Stage {
+  id: string;                    // Unique identifier
+  name: string;                  // Human-readable name
+  systemPrompt?: string;         // Stage-specific system prompt
+  tools?: ToolDefinition[];      // Tools available in this stage
+  llmConfig?: LLMConfig;         // Temperature, maxTokens, etc.
+  twoPhaseExecution?: boolean;   // Enable/disable two-phase (default: true)
+  toolChoice?: 'auto' | 'none' | 'required';
+}
+```
+
+### Transitions
+
+A **transition** moves the conversation from one stage to another based on conditions:
+
+```typescript
+interface Transition {
+  from: string | string[];       // Source stage(s), or '*' for any
+  to: string;                    // Target stage
+  trigger: TransitionTrigger;    // What causes the transition
+  priority?: number;             // Higher priority evaluated first
+}
+
+// Trigger types
+type TransitionTrigger =
+  | { type: 'keyword'; patterns: string[] }           // Match keywords in response
+  | { type: 'tool_call'; toolName: string }           // When a specific tool is called
+  | { type: 'llm_decision' }                          // LLM uses playbook_transition tool
+  | { type: 'explicit'; targetStage: string }         // Programmatic transition
+  | { type: 'timeout'; afterMs: number }              // Time-based transition
+  | { type: 'turn_count'; count: number };            // After N turns in stage
+```
+
+---
+
+## Two-Phase Execution Model
+
+The playbook orchestrator uses a **two-phase turn execution model** that separates tool work from user response generation. This is critical for voice agents where you want tools to execute silently before speaking.
+
+```mermaid
+flowchart TD
+    START[User Message] --> P1[Phase 1: Tool Loop]
+
+    subgraph Phase1["Phase 1 (Silent)"]
+        P1 --> LLM1[LLM Call]
+        LLM1 --> CHECK{Tool calls?}
+        CHECK -->|Yes| EXEC[Execute Tools]
+        EXEC --> COUNT{Max calls<br/>reached?}
+        COUNT -->|No| LLM1
+        COUNT -->|Yes| P2
+        CHECK -->|No| P2
+    end
+
+    subgraph Phase2["Phase 2 (Streaming)"]
+        P2[Phase 2: Final Response] --> LLM2[LLM Call]
+        LLM2 --> TTS[TTS Synthesis]
+    end
+
+    TTS --> END[Audio to User]
+```
+
+### Phase 1: Tool Loop
+
+In Phase 1, the LLM can call tools repeatedly until it has gathered all necessary information:
+
+1. LLM receives user message + conversation history + available tools
+2. If LLM requests tool calls → execute them → feed results back to LLM
+3. Repeat until LLM stops requesting tools or limits are reached
+4. **Silent execution** - no audio/response sent to user during this phase
+
+**Configuration options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `maxToolCallsPerTurn` | 10 | Maximum tool calls before forcing Phase 2 |
+| `phase1TimeoutMs` | 60000 | Timeout for entire Phase 1 (ms) |
+
+### Phase 2: Final Response
+
+In Phase 2, the LLM generates the user-facing response:
+
+1. LLM receives updated history including all tool results
+2. Generates final response (streaming enabled)
+3. Response is sent to TTS for voice synthesis
+4. **Streaming output** - audio/text delivered to user in real-time
+
+### Disabling Two-Phase Execution
+
+For stages that don't need the separation (e.g., simple greeting), disable two-phase mode:
+
+```typescript
+const greetingStage: Stage = {
+  id: 'greeting',
+  name: 'Greeting',
+  systemPrompt: 'Greet the user warmly.',
+  twoPhaseExecution: false  // LLM responds directly, no separate phases
+};
+```
+
+When disabled, the LLM's first response (including any tool work) streams directly to the user.
+
+---
+
+## LLM Retry Logic
+
+The orchestrator includes smart retry logic with exponential backoff:
+
+```typescript
+interface PlaybookOrchestratorOptions {
+  llmRetries?: number;  // Default: 3
+}
+```
+
+**Retry behavior:**
+- Retries on: rate limits (429), server errors (5xx), timeouts
+- No retry on: client errors (400, 401, 403, 404)
+- Backoff: 1s → 2s → 4s (exponential)
+
+---
+
+## History Management
+
+Conversation history is automatically trimmed to prevent context overflow while preserving tool call/result pairs (required by OpenAI API):
+
+```typescript
+interface PlaybookOrchestratorOptions {
+  historyLimit?: number;  // Default: 50 messages
+}
+```
+
+The trimming algorithm:
+1. When history exceeds limit, find oldest safe trim point
+2. Never split tool call from its result (would cause API errors)
+3. Remove complete message groups from the beginning
+
+---
+
+## Implementation Classes
+
+Playbooks are implemented via three main classes:
+
+| Class | Package | Purpose |
+|-------|---------|---------|
+| `PlaybookEngine` | `@metered/llmrtc-core` | Stage/transition state machine |
+| `PlaybookOrchestrator` | `@metered/llmrtc-core` | Two-phase execution, tool loop |
+| `VoicePlaybookOrchestrator` | `@metered/llmrtc-backend` | Adds STT/TTS, streams events |
+
+---
+
+## Events
+
+The orchestrator emits events throughout execution:
+
+```typescript
+type OrchestratorEvent =
+  | { type: 'phase1_start' }
+  | { type: 'tool_call_start'; call: ToolCallRequest }
+  | { type: 'tool_call_complete'; call: ToolCallRequest; result: ToolCallResult }
+  | { type: 'phase1_complete'; toolCallCount: number }
+  | { type: 'phase2_start' }
+  | { type: 'phase2_complete'; response: string }
+  | { type: 'transition_triggered'; transition: Transition }
+  | { type: 'stage_entered'; stage: Stage }
+  | { type: 'stage_exited'; stage: Stage };
+```
+
+Subscribe to events:
+
+```typescript
+const orchestrator = new PlaybookOrchestrator(llm, playbook, tools);
+
+const unsubscribe = orchestrator.on((event) => {
+  if (event.type === 'tool_call_start') {
+    console.log(`Calling tool: ${event.call.name}`);
+  }
+});
+```
+
+---
+
+## Next Steps
+
+- [Defining Playbooks](defining-playbooks) - Stage and transition configuration
+- [Text Agents](text-agents) - Using PlaybookOrchestrator directly
+- [Voice Agents with Tools](voice-agents-with-tools) - Full voice pipeline integration

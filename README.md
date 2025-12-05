@@ -423,8 +423,9 @@ const client = new LLMRTCWebClient({
   reconnection: {
     enabled: true,
     maxRetries: 5,
-    baseDelay: 1000,
-    maxDelay: 30000
+    baseDelayMs: 1000,
+    maxDelayMs: 30000,
+    jitterFactor: 0.3
   }
 });
 

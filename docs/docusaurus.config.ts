@@ -8,10 +8,9 @@ const config: Config = {
   baseUrl: '/',
   onBrokenLinks: 'throw',
   markdown: {
-    hooks: {
-      onBrokenMarkdownLinks: 'warn'
-    }
+    mermaid: true,
   },
+  themes: ['@docusaurus/theme-mermaid'],
   favicon: 'img/logo.svg',
   organizationName: 'metered',
   projectName: 'llmrtc',

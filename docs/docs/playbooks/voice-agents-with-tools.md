@@ -2,13 +2,57 @@
 title: Voice Agents with Playbooks & Tools
 ---
 
-This section shows how to combine **playbooks**, **tools**, and the **voice pipeline** to build multi-stage voice agents.
+This guide shows how to combine **playbooks**, **tools**, and the **voice pipeline** to build multi-stage voice agents that can use tools silently before responding.
 
-High-level pieces:
-- `Playbook` + `PlaybookOrchestrator` – stage logic and tool loop.
-- `VoicePlaybookOrchestrator` – adds STT/TTS and yields tool/stage events.
-- `LLMRTCServer` – hosts the orchestrator and handles WebRTC.
-- `LLMRTCWebClient` – connects from the browser and listens to events.
+## Architecture Overview
+
+```mermaid
+sequenceDiagram
+    participant User as User (Browser)
+    participant WC as Web Client
+    participant SRV as LLMRTCServer
+    participant VAD as VAD
+    participant STT as STT Provider
+    participant ORCH as VoicePlaybookOrchestrator
+    participant LLM as LLM Provider
+    participant TTS as TTS Provider
+
+    User->>WC: Speaks
+    WC->>SRV: Audio (WebRTC)
+    SRV->>VAD: Audio frames
+    VAD-->>SRV: speech_end
+    SRV->>STT: Transcribe audio
+    STT-->>SRV: Text transcript
+    SRV->>WC: transcript event
+
+    Note over ORCH: Phase 1: Tool Loop (Silent)
+    SRV->>ORCH: Execute turn
+    ORCH->>LLM: User message + tools
+    LLM-->>ORCH: Tool calls
+    ORCH->>ORCH: Execute tools
+    SRV->>WC: tool-call-start
+    SRV->>WC: tool-call-end
+    ORCH->>LLM: Tool results
+
+    Note over ORCH: Phase 2: Response (Streaming)
+    LLM-->>ORCH: Response chunks
+    ORCH->>TTS: Text chunks
+    TTS-->>SRV: Audio chunks
+    SRV->>WC: Audio (WebRTC)
+    SRV->>WC: tts-complete
+
+    WC->>User: Plays audio
+```
+
+## Components
+
+| Component | Package | Role |
+|-----------|---------|------|
+| `Playbook` | `@metered/llmrtc-core` | Defines stages, transitions, and tools |
+| `PlaybookOrchestrator` | `@metered/llmrtc-core` | Two-phase execution engine |
+| `VoicePlaybookOrchestrator` | `@metered/llmrtc-backend` | Adds STT/TTS, emits events |
+| `LLMRTCServer` | `@metered/llmrtc-backend` | WebSocket/WebRTC server |
+| `LLMRTCWebClient` | `@metered/llmrtc-web-client` | Browser client |
 
 ## 1. Define tools and playbook
 
