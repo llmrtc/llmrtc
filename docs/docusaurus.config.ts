@@ -7,6 +7,13 @@ const config: Config = {
   url: 'https://metered.ai',
   baseUrl: '/',
   onBrokenLinks: 'throw',
+  scripts: [
+    {
+      src: 'https://data.nextpath.co/script.js',
+      defer: true,
+      'data-website-id': '99f14850-1e2f-4cf8-a650-0bc9d6417e9c',
+    },
+  ],
   markdown: {
     mermaid: true,
   },

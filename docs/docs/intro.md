@@ -55,10 +55,16 @@ Switch between OpenAI, Anthropic, Google Gemini, AWS Bedrock, or local models wi
 Define tools with JSON Schema. The model calls them, you execute them, and the conversation continues seamlessly.
 
 ### Playbooks
-Build multi-stage conversations with per-stage prompts, tools, and transitions. Perfect for support bots, booking flows, and guided workflows.
+Build multi-stage conversations with per-stage prompts, tools, and automatic transitions. Two-phase execution separates tool work from responses. Six transition types (tool calls, intents, keywords, LLM decision, timeouts, custom) give precise control over conversation flow.
 
 ### Streaming Pipeline
-Responses start playing before generation completes. STT → LLM → TTS streams end-to-end for the lowest possible latency.
+Responses start playing before generation completes. Sentence-boundary detection ensures TTS starts at natural pause points, reducing perceived latency. STT → LLM → TTS streams end-to-end.
+
+### Hooks & Observability
+20+ hook points for logging, debugging, and custom behavior. Built-in metrics track TTFT, token counts, and durations. Plug into your existing monitoring stack.
+
+### Session Resilience
+Automatic reconnection with exponential backoff. Conversation history survives network interruptions. Graceful degradation when providers fail.
 
 ---
 
@@ -143,6 +149,15 @@ Combine voice with vision for screen-aware assistants. Users can share their scr
 
 ### On-Device AI
 Run entirely locally with Ollama, Faster-Whisper, and Piper. No cloud dependencies, no API costs, full privacy.
+
+---
+
+## Developer Experience
+
+- **TypeScript-First**: Full type safety with IntelliSense support across all APIs
+- **Tool Validation**: JSON Schema validation catches malformed LLM arguments before execution
+- **Smart Error Handling**: Automatic retry with error classification (retryable vs non-retryable)
+- **Comprehensive Types**: Every provider, hook, and event is fully typed
 
 ---
 
