@@ -1,0 +1,31 @@
+llmrtc.org {
+    redir https://www.llmrtc.org{uri} permanent
+}
+
+www.llmrtc.org {
+    root * /srv
+    file_server
+    encode gzip
+
+    # Handle SPA routing - serve index.html for non-existent paths
+    try_files {path} /index.html
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Cache static assets
+    @static {
+        path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2
+    }
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    # Don't cache HTML
+    @html {
+        path *.html
+    }
+    header @html Cache-Control "no-cache, no-store, must-revalidate"
+}
