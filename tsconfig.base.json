@@ -21,11 +21,11 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@metered/llmrtc-core": ["packages/core/src/index.ts"],
-      "@metered/llmrtc-provider-openai": ["packages/providers/openai/src/index.ts"],
-      "@metered/llmrtc-provider-elevenlabs": ["packages/providers/elevenlabs/src/index.ts"],
-      "@metered/llmrtc-provider-local": ["packages/providers/local/src/index.ts"],
-      "@metered/llmrtc-web-client": ["packages/web-client/src/index.ts"]
+      "@llmrtc/llmrtc-core": ["packages/core/src/index.ts"],
+      "@llmrtc/llmrtc-web-client": ["packages/web-client/src/index.ts"],
+      "@llmrtc/llmrtc-provider-openai": ["packages/providers/openai/src/index.ts"],
+      "@llmrtc/llmrtc-provider-elevenlabs": ["packages/providers/elevenlabs/src/index.ts"],
+      "@llmrtc/llmrtc-provider-local": ["packages/providers/local/src/index.ts"]
     }
   }
 }

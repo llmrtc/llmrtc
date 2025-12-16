@@ -1,5 +1,5 @@
 {
-  "name": "@metered/llmrtc-example-support-bot",
+  "name": "@llmrtc/llmrtc-example-support-bot",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "dev:client": "vite client"
   },
   "dependencies": {
-    "@metered/llmrtc-backend": "file:../../packages/backend",
-    "@metered/llmrtc-core": "file:../../packages/core",
-    "@metered/llmrtc-web-client": "file:../../packages/web-client",
+    "@llmrtc/llmrtc-backend": "file:../../packages/backend",
+    "@llmrtc/llmrtc-core": "file:../../packages/core",
+    "@llmrtc/llmrtc-web-client": "file:../../packages/web-client",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {

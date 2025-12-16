@@ -1,16 +1,30 @@
 {
-  "name": "@metered/llmrtc-provider-openai",
+  "name": "@llmrtc/llmrtc-provider-openai",
   "version": "0.0.1",
-  "description": "OpenAI/compatible LLM + Whisper adapters for @metered/LLMRTC",
+  "description": "OpenAI/compatible LLM + Whisper adapters for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/openai"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../../core",
+    "@llmrtc/llmrtc-core": "file:../../core",
     "openai": "^4.72.0",
     "zod": "^3.23.8"
   }

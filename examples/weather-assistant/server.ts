@@ -15,14 +15,14 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 import {
   ToolRegistry,
   defineTool,
   Playbook,
   Stage
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 // =============================================================================
 // Weather Tools

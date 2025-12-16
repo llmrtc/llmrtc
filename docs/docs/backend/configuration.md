@@ -105,7 +105,7 @@ const server = new LLMRTCServer({
 | `metrics` | `MetricsAdapter` | Metrics adapter (Prometheus, DataDog, etc.) |
 
 ```typescript
-import { createTimingHooks, ConsoleMetrics } from '@metered/llmrtc-core';
+import { createTimingHooks, ConsoleMetrics } from '@llmrtc/llmrtc-core';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },
@@ -152,7 +152,7 @@ import {
   ElevenLabsTTSProvider,
   ToolRegistry,
   createTimingHooks
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   // Required

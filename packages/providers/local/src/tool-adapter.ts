@@ -4,7 +4,7 @@
  * Ollama supports tool calling with a format similar to OpenAI.
  */
 
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@metered/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to Ollama format

@@ -17,7 +17,7 @@ Use these for coarse-grained connection logs or integration with your app’s ow
 The backend re-exports `createLoggingHooks`, `createErrorOnlyHooks`, `createVerboseHooks`, and `createTimingHooks`.
 
 ```ts
-import { LLMRTCServer, createLoggingHooks } from '@metered/llmrtc-backend';
+import { LLMRTCServer, createLoggingHooks } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },
@@ -40,7 +40,7 @@ Metrics are emitted via a `MetricsAdapter` (see Core SDK → Hooks & Metrics). T
 - `InMemoryMetrics` – useful in tests.
 
 ```ts
-import { LLMRTCServer, ConsoleMetrics } from '@metered/llmrtc-backend';
+import { LLMRTCServer, ConsoleMetrics } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },

@@ -61,7 +61,7 @@ voice-assistant/
     "dev": "concurrently \"tsx watch server.ts\" \"npm run dev --prefix client\""
   },
   "dependencies": {
-    "@metered/llmrtc-backend": "^0.1.0",
+    "@llmrtc/llmrtc-backend": "^0.1.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
@@ -107,7 +107,7 @@ import {
   AnthropicLLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 if (!process.env.OPENAI_API_KEY) {
   console.error('Error: OPENAI_API_KEY is required');
@@ -201,7 +201,7 @@ import {
   OpenAITTSProvider,
   defineTool,        // ADD
   ToolRegistry       // ADD
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // ... environment validation ...
 
@@ -272,7 +272,7 @@ A **Playbook** defines stages of conversation. For this tutorial, we'll use a si
 Add this after your tool definition:
 
 ```typescript
-import type { Playbook, Stage } from '@metered/llmrtc-backend';
+import type { Playbook, Stage } from '@llmrtc/llmrtc-backend';
 
 // Define a single stage
 const assistantStage: Stage = {
@@ -363,8 +363,8 @@ import {
   OpenAITTSProvider,
   defineTool,
   ToolRegistry
-} from '@metered/llmrtc-backend';
-import type { Playbook, Stage } from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
+import type { Playbook, Stage } from '@llmrtc/llmrtc-backend';
 
 // Validate environment
 if (!process.env.OPENAI_API_KEY) {

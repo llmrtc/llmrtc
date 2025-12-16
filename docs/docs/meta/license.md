@@ -2,4 +2,4 @@
 title: License
 ---
 
-The SDK is released under the MIT License. See the root `LICENSE` file of the repository for full terms.
+The SDK is released under the Apache License 2.0. See the root `LICENSE` file of the repository for full terms.

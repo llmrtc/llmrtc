@@ -22,7 +22,7 @@ import {
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider,
   createLoggingHooks
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // =============================================================================
 // Sentence Chunker Implementations

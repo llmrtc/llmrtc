@@ -71,7 +71,7 @@ curl http://localhost:11434/api/tags
 ## Provider Configuration
 
 ```ts
-import { OllamaLLMProvider } from '@metered/llmrtc-provider-local';
+import { OllamaLLMProvider } from '@llmrtc/llmrtc-provider-local';
 
 const llm = new OllamaLLMProvider({
   model: 'llama3.2'
@@ -138,7 +138,7 @@ ollama pull llama3.2-vision
 ### Usage Example
 
 ```ts
-import { OllamaLLMProvider } from '@metered/llmrtc-provider-local';
+import { OllamaLLMProvider } from '@llmrtc/llmrtc-provider-local';
 
 const llm = new OllamaLLMProvider({
   model: 'gemma3'  // or 'llava', 'llama3.2-vision'

@@ -70,7 +70,7 @@ LLMRTC doesn't include authentication—implement it in your application:
 ### JWT Authentication
 
 ```typescript
-import { LLMRTCServer } from '@metered/llmrtc-backend';
+import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
 import { verify } from 'jsonwebtoken';
 
 const server = new LLMRTCServer({ providers });

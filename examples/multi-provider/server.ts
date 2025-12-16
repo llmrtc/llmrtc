@@ -29,7 +29,7 @@ import {
   type LLMProvider,
   type STTProvider,
   type TTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // =============================================================================
 // Provider Factories

@@ -151,7 +151,7 @@ import {
   createErrorOnlyHooks,
   createVerboseHooks,
   createTimingHooks
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 // Basic logging with custom logger
 const hooks = createLoggingHooks(myLogger);
@@ -213,7 +213,7 @@ interface MetricsAdapter {
 ### Built-in Adapters
 
 ```typescript
-import { NoopMetrics, ConsoleMetrics, InMemoryMetrics } from '@metered/llmrtc-core';
+import { NoopMetrics, ConsoleMetrics, InMemoryMetrics } from '@llmrtc/llmrtc-core';
 
 // No-op (default, does nothing)
 const noop = new NoopMetrics();
@@ -294,7 +294,7 @@ import {
   createTimingHooks,
   type OrchestratorHooks,
   type ServerHooks
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // Combine hooks
 const hooks: OrchestratorHooks & ServerHooks = {

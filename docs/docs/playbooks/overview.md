@@ -181,9 +181,9 @@ Playbooks are implemented via three main classes:
 
 | Class | Package | Purpose |
 |-------|---------|---------|
-| `PlaybookEngine` | `@metered/llmrtc-core` | Stage/transition state machine |
-| `PlaybookOrchestrator` | `@metered/llmrtc-core` | Two-phase execution, tool loop |
-| `VoicePlaybookOrchestrator` | `@metered/llmrtc-backend` | Adds STT/TTS, streams events |
+| `PlaybookEngine` | `@llmrtc/llmrtc-core` | Stage/transition state machine |
+| `PlaybookOrchestrator` | `@llmrtc/llmrtc-core` | Two-phase execution, tool loop |
+| `VoicePlaybookOrchestrator` | `@llmrtc/llmrtc-backend` | Adds STT/TTS, streams events |
 
 ---
 

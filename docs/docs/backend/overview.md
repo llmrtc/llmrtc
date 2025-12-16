@@ -2,7 +2,7 @@
 title: Backend Overview
 ---
 
-The **backend package** (`@metered/llmrtc-backend`) is a Node.js server that handles WebRTC signaling, audio processing, provider orchestration, and session management for real-time voice AI applications.
+The **backend package** (`@llmrtc/llmrtc-backend`) is a Node.js server that handles WebRTC signaling, audio processing, provider orchestration, and session management for real-time voice AI applications.
 
 ---
 
@@ -90,7 +90,7 @@ See [CLI Mode](cli) for details.
 Embed the server in your Node.js application:
 
 ```typescript
-import { LLMRTCServer } from '@metered/llmrtc-backend';
+import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },

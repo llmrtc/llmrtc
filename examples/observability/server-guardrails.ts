@@ -29,7 +29,7 @@ import {
   type ErrorContext,
   type STTResult,
   type LLMResult
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // =============================================================================
 // Content Validation Functions

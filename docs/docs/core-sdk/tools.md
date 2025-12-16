@@ -11,7 +11,7 @@ LLMRTC provides a complete tool system for defining, registering, and executing 
 Define tools with JSON Schema for consistent cross-provider compatibility:
 
 ```typescript
-import { ToolDefinition } from '@metered/llmrtc-core';
+import { ToolDefinition } from '@llmrtc/llmrtc-core';
 
 const weatherTool: ToolDefinition = {
   name: 'lookupWeather',
@@ -49,7 +49,7 @@ const weatherTool: ToolDefinition = {
 Use `ToolRegistry` and `defineTool` for type-safe registration:
 
 ```typescript
-import { ToolRegistry, defineTool } from '@metered/llmrtc-core';
+import { ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
 
 // Create registry
 const registry = new ToolRegistry();
@@ -84,7 +84,7 @@ const definitions = registry.getDefinitions();
 `ToolExecutor` handles tool execution with timeout, concurrency, and validation:
 
 ```typescript
-import { ToolExecutor } from '@metered/llmrtc-core';
+import { ToolExecutor } from '@llmrtc/llmrtc-core';
 
 const executor = new ToolExecutor(registry, {
   // Execution settings
@@ -202,7 +202,7 @@ console.log('Final answer:', result.fullText);
 Validate tool arguments manually:
 
 ```typescript
-import { validateToolArguments } from '@metered/llmrtc-core';
+import { validateToolArguments } from '@llmrtc/llmrtc-core';
 
 const validation = validateToolArguments(weatherTool, {
   city: 'Tokyo',

@@ -12,8 +12,8 @@ import {
   ToolRegistry,
   defineTool,
   type Playbook
-} from '@metered/llmrtc-core';
-import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+} from '@llmrtc/llmrtc-core';
+import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 const llm = new OpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,

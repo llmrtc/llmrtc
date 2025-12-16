@@ -13,12 +13,12 @@ LLMRTC consists of three packages:
 ```mermaid
 flowchart TD
     subgraph "Your Application"
-        BACKEND["@metered/llmrtc-backend<br/>(Node.js server)"]
-        WEB["@metered/llmrtc-web-client<br/>(Browser SDK)"]
+        BACKEND["@llmrtc/llmrtc-backend<br/>(Node.js server)"]
+        WEB["@llmrtc/llmrtc-web-client<br/>(Browser SDK)"]
     end
 
     subgraph "Shared"
-        CORE["@metered/llmrtc-core<br/>(Types & utilities)"]
+        CORE["@llmrtc/llmrtc-core<br/>(Types & utilities)"]
     end
 
     BACKEND --> CORE
@@ -27,9 +27,9 @@ flowchart TD
 
 | Package | Description | Use When |
 |---------|-------------|----------|
-| `@metered/llmrtc-backend` | Node.js server with all providers | Building the voice server |
-| `@metered/llmrtc-web-client` | Browser SDK for audio/video | Building the client UI |
-| `@metered/llmrtc-core` | Shared types and orchestrators | Building custom integrations |
+| `@llmrtc/llmrtc-backend` | Node.js server with all providers | Building the voice server |
+| `@llmrtc/llmrtc-web-client` | Browser SDK for audio/video | Building the client UI |
+| `@llmrtc/llmrtc-core` | Shared types and orchestrators | Building custom integrations |
 
 ---
 
@@ -38,19 +38,19 @@ flowchart TD
 ### npm
 
 ```bash
-npm install @metered/llmrtc-backend
+npm install @llmrtc/llmrtc-backend
 ```
 
 ### yarn
 
 ```bash
-yarn add @metered/llmrtc-backend
+yarn add @llmrtc/llmrtc-backend
 ```
 
 ### pnpm
 
 ```bash
-pnpm add @metered/llmrtc-backend
+pnpm add @llmrtc/llmrtc-backend
 ```
 
 The backend package includes:
@@ -66,19 +66,19 @@ The backend package includes:
 ### npm
 
 ```bash
-npm install @metered/llmrtc-web-client
+npm install @llmrtc/llmrtc-web-client
 ```
 
 ### yarn
 
 ```bash
-yarn add @metered/llmrtc-web-client
+yarn add @llmrtc/llmrtc-web-client
 ```
 
 ### pnpm
 
 ```bash
-pnpm add @metered/llmrtc-web-client
+pnpm add @llmrtc/llmrtc-web-client
 ```
 
 The web client includes:
@@ -179,7 +179,7 @@ npm init -y
 npm pkg set type=module
 
 # Install packages
-npm install @metered/llmrtc-backend
+npm install @llmrtc/llmrtc-backend
 ```
 
 ### TypeScript Project
@@ -187,7 +187,7 @@ npm install @metered/llmrtc-backend
 For TypeScript projects:
 
 ```bash
-npm install @metered/llmrtc-backend typescript @types/node
+npm install @llmrtc/llmrtc-backend typescript @types/node
 npx tsc --init
 ```
 
@@ -253,7 +253,7 @@ config();
 Create `test-backend.ts`:
 
 ```typescript
-import { LLMRTCServer, OpenAILLMProvider } from '@metered/llmrtc-backend';
+import { LLMRTCServer, OpenAILLMProvider } from '@llmrtc/llmrtc-backend';
 
 console.log('LLMRTCServer imported successfully');
 console.log('OpenAILLMProvider imported successfully');
@@ -289,7 +289,7 @@ Create a simple HTML file:
 </head>
 <body>
   <script type="module">
-    import { LLMRTCWebClient } from 'https://esm.sh/@metered/llmrtc-web-client';
+    import { LLMRTCWebClient } from 'https://esm.sh/@llmrtc/llmrtc-web-client';
 
     console.log('LLMRTCWebClient imported successfully');
 

@@ -26,7 +26,7 @@ import {
   createLoggingHooks,
   MetricNames,
   type MetricsAdapter
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // =============================================================================
 // Custom Prometheus-style Metrics Adapter

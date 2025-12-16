@@ -1,16 +1,30 @@
 {
-  "name": "@metered/llmrtc-provider-elevenlabs",
+  "name": "@llmrtc/llmrtc-provider-elevenlabs",
   "version": "0.0.1",
-  "description": "ElevenLabs TTS adapter for @metered/LLMRTC",
+  "description": "ElevenLabs TTS adapter for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/elevenlabs"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../../core",
+    "@llmrtc/llmrtc-core": "file:../../core",
     "zod": "^3.23.8",
     "node-fetch": "^3.3.2"
   }

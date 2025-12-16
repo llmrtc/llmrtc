@@ -9,25 +9,25 @@ import type {
   STTProvider,
   TTSProvider,
   VisionProvider
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-provider-openai';
-import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
+} from '@llmrtc/llmrtc-provider-openai';
+import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 import {
   LlavaVisionProvider,
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-provider-local';
-import { AnthropicLLMProvider } from '@metered/llmrtc-provider-anthropic';
-import { GeminiLLMProvider } from '@metered/llmrtc-provider-google';
-import { BedrockLLMProvider } from '@metered/llmrtc-provider-bedrock';
-import { OpenRouterLLMProvider } from '@metered/llmrtc-provider-openrouter';
-import { LMStudioLLMProvider } from '@metered/llmrtc-provider-lmstudio';
+} from '@llmrtc/llmrtc-provider-local';
+import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
+import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
+import { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
+import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
+import { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 /**
  * Create all providers from environment variables

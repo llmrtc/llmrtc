@@ -1,7 +1,9 @@
 {
-  "name": "@metered/llmrtc-core",
+  "name": "@llmrtc/llmrtc-core",
   "version": "0.0.1",
-  "description": "Core contracts and orchestrators for @metered/LLMRTC",
+  "description": "Core contracts and orchestrators for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,6 +12,18 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -b",

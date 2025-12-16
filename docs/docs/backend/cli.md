@@ -10,7 +10,7 @@ CLI mode lets you run the LLMRTC backend directly from the command line with env
 
 ```bash
 # Install the package
-npm install @metered/llmrtc-backend
+npm install @llmrtc/llmrtc-backend
 
 # Set required environment variables
 export OPENAI_API_KEY=sk-...
@@ -214,7 +214,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN npm install @metered/llmrtc-backend
+RUN npm install @llmrtc/llmrtc-backend
 
 EXPOSE 8787
 CMD ["npx", "llmrtc-backend"]

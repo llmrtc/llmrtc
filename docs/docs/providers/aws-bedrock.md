@@ -8,7 +8,7 @@ Supported
 
 Setup
 ```ts
-import { BedrockLLMProvider } from '@metered/llmrtc-provider-bedrock';
+import { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 
 const llm = new BedrockLLMProvider({
   region: 'us-east-1',

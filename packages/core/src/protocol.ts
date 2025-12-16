@@ -1,5 +1,5 @@
 /**
- * @metered/llmrtc Wire Protocol v1
+ * @llmrtc/llmrtc Wire Protocol v1
  *
  * This file defines all JSON message types exchanged between
  * the web-client and backend over WebSocket and WebRTC data channel.

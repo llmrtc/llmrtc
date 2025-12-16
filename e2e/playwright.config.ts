@@ -28,7 +28,7 @@ const serverEnv = {
 };
 
 /**
- * Playwright E2E Test Configuration for @metered/llmrtc
+ * Playwright E2E Test Configuration for @llmrtc/llmrtc
  *
  * Fully self-contained: starts both backend and frontend servers.
  * Uses Chrome fake media flags to inject pre-recorded audio/video

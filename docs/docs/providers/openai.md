@@ -9,7 +9,7 @@ Supported
 
 Setup
 ```ts
-import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@metered/llmrtc-provider-openai';
+import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@llmrtc/llmrtc-provider-openai';
 
 const llm = new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o-mini' });
 const stt = new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'whisper-1' });

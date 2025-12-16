@@ -1,9 +1,9 @@
 {
-  "name": "@metered/llmrtc",
+  "name": "@llmrtc/llmrtc",
   "version": "0.0.1",
   "private": true,
-  "description": "@metered/LLMRTC monorepo: realtime LLM + voice + vision SDK",
-  "license": "MIT",
+  "description": "@llmrtc/LLMRTC monorepo: realtime LLM + voice + vision SDK",
+  "license": "Apache-2.0",
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -37,10 +37,15 @@
     "sdk",
     "typescript"
   ],
-  "author": "Metered.ca",
+  "homepage": "https://www.llmrtc.org",
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "author": "LLMRTC <contact@llmrtc.org>",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/llmrtc/llmrtc.git"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

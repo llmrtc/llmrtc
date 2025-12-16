@@ -8,7 +8,7 @@ Supported
 
 Setup
 ```ts
-import { AnthropicLLMProvider } from '@metered/llmrtc-provider-anthropic';
+import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: process.env.ANTHROPIC_API_KEY,

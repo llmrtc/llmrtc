@@ -1,9 +1,9 @@
-# Developer Guide – @metered/LLMRTC
+# Developer Guide – @llmrtc/LLMRTC
 
 ## What this project is
 A monorepo (JS/TS) for a realtime multimodal SDK that streams voice + optional camera/screen frames to an LLM and streams TTS back over WebRTC. It includes:
-- Browser client SDK (`@metered/llmrtc-web-client`)
-- Node backend/signalling service (`@metered/llmrtc-backend`)
+- Browser client SDK (`@llmrtc/llmrtc-web-client`)
+- Node backend/signalling service (`@llmrtc/llmrtc-backend`)
 - Core contracts/orchestrator
 - Provider adapters (LLM/STT/TTS/Vision) for OpenAI, ElevenLabs, Anthropic, Google, AWS Bedrock, OpenRouter, and local models
 - Vite demo app
@@ -57,7 +57,7 @@ The backend supports two usage modes:
 
 ### LLMRTCServer Class
 ```typescript
-import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, ElevenLabsTTSProvider } from '@metered/llmrtc-backend';
+import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, ElevenLabsTTSProvider } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {

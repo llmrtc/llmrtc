@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { TTSConfig, TTSProvider, TTSResult } from '@metered/llmrtc-core';
+import { TTSConfig, TTSProvider, TTSResult } from '@llmrtc/llmrtc-core';
 
 export interface ElevenLabsConfig {
   apiKey: string;

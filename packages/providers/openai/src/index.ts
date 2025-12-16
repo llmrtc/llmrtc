@@ -15,7 +15,7 @@ import {
   TTSProvider,
   TTSConfig,
   TTSResult
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 import {
   mapToolsToOpenAI,
   mapToolChoiceToOpenAI,

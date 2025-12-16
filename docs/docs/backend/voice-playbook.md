@@ -44,8 +44,8 @@ import {
   LLMRTCServer,
   ToolRegistry,
   defineTool
-} from '@metered/llmrtc-backend';
-import type { Playbook } from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-backend';
+import type { Playbook } from '@llmrtc/llmrtc-core';
 
 // Define tools
 const tools = new ToolRegistry();

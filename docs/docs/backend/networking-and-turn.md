@@ -71,7 +71,7 @@ METERED_REGION=us_east         # Optional: us_east, europe, asia, etc.
 
 **Library Mode:**
 ```typescript
-import { LLMRTCServer } from '@metered/llmrtc-backend';
+import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },

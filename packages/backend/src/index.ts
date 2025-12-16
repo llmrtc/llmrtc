@@ -1,5 +1,5 @@
 /**
- * @metered/llmrtc-backend
+ * @llmrtc/llmrtc-backend
  *
  * Real-time voice + vision conversation server.
  * Can be used as a CLI tool or imported as a library.
@@ -8,7 +8,7 @@
  *   npx llmrtc-backend
  *
  * Library Usage:
- *   import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, ElevenLabsTTSProvider } from '@metered/llmrtc-backend';
+ *   import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, ElevenLabsTTSProvider } from '@llmrtc/llmrtc-backend';
  *
  *   const server = new LLMRTCServer({
  *     providers: {
@@ -53,25 +53,25 @@ export {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-provider-openai';
+} from '@llmrtc/llmrtc-provider-openai';
 
 // Anthropic provider
-export { AnthropicLLMProvider } from '@metered/llmrtc-provider-anthropic';
+export { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 // Google provider
-export { GeminiLLMProvider } from '@metered/llmrtc-provider-google';
+export { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 
 // AWS Bedrock provider
-export { BedrockLLMProvider } from '@metered/llmrtc-provider-bedrock';
+export { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 
 // OpenRouter provider
-export { OpenRouterLLMProvider } from '@metered/llmrtc-provider-openrouter';
+export { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 // LM Studio provider
-export { LMStudioLLMProvider } from '@metered/llmrtc-provider-lmstudio';
+export { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 // ElevenLabs provider
-export { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
+export { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 
 // Local providers (Ollama, Faster-Whisper, Piper, Llava)
 export {
@@ -79,7 +79,7 @@ export {
   FasterWhisperProvider,
   PiperTTSProvider,
   LlavaVisionProvider
-} from '@metered/llmrtc-provider-local';
+} from '@llmrtc/llmrtc-provider-local';
 
 // =============================================================================
 // Re-export core types
@@ -107,10 +107,10 @@ export type {
   ToolDefinition,
   ToolCallRequest,
   ToolCallResult
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 // Re-export ToolRegistry class for playbook mode
-export { ToolRegistry, defineTool } from '@metered/llmrtc-core';
+export { ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
 
 // =============================================================================
 // Re-export hooks, metrics, and logging utilities
@@ -128,7 +128,7 @@ export {
   NoopMetrics,
   ConsoleMetrics,
   InMemoryMetrics
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 export type {
   // Hook types
@@ -146,7 +146,7 @@ export type {
   // Metrics types
   MetricsAdapter,
   MetricName
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 // =============================================================================
 // Re-export utilities for advanced use

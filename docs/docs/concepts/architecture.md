@@ -11,9 +11,9 @@ LLMRTC is a modular SDK for building real-time voice and text AI applications. T
 ```mermaid
 graph TB
     subgraph Packages
-        CORE["@metered/llmrtc-core"]
-        BACKEND["@metered/llmrtc-backend"]
-        WEBCLIENT["@metered/llmrtc-web-client"]
+        CORE["@llmrtc/llmrtc-core"]
+        BACKEND["@llmrtc/llmrtc-backend"]
+        WEBCLIENT["@llmrtc/llmrtc-web-client"]
         PROVIDERS["Provider Packages"]
     end
 
@@ -22,19 +22,19 @@ graph TB
     PROVIDERS --> CORE
 
     subgraph "Provider Packages"
-        OAI["@metered/llmrtc-provider-openai"]
-        ANTH["@metered/llmrtc-provider-anthropic"]
-        GEM["@metered/llmrtc-provider-gemini"]
-        ELEV["@metered/llmrtc-provider-elevenlabs"]
+        OAI["@llmrtc/llmrtc-provider-openai"]
+        ANTH["@llmrtc/llmrtc-provider-anthropic"]
+        GEM["@llmrtc/llmrtc-provider-google"]
+        ELEV["@llmrtc/llmrtc-provider-elevenlabs"]
     end
 ```
 
 | Package | Purpose |
 |---------|---------|
-| `@metered/llmrtc-core` | Types, orchestrators, tools, protocol, hooks |
-| `@metered/llmrtc-backend` | Server, WebRTC, VAD, session management |
-| `@metered/llmrtc-web-client` | Browser client, audio capture, events |
-| `@metered/llmrtc-provider-*` | LLM, STT, TTS provider implementations |
+| `@llmrtc/llmrtc-core` | Types, orchestrators, tools, protocol, hooks |
+| `@llmrtc/llmrtc-backend` | Server, WebRTC, VAD, session management |
+| `@llmrtc/llmrtc-web-client` | Browser client, audio capture, events |
+| `@llmrtc/llmrtc-provider-*` | LLM, STT, TTS provider implementations |
 
 ---
 

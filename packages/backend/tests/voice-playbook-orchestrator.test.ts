@@ -11,8 +11,8 @@ import type {
   Playbook,
   OrchestratorHooks,
   MetricsAdapter
-} from '@metered/llmrtc-core';
-import { ToolRegistry } from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
+import { ToolRegistry } from '@llmrtc/llmrtc-core';
 
 // =============================================================================
 // Mock Providers

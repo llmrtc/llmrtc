@@ -12,7 +12,7 @@ import type {
   ContentBlock,
   ToolResultContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@metered/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to Bedrock format

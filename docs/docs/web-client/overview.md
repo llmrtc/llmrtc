@@ -2,7 +2,7 @@
 title: Web Client Overview
 ---
 
-The **web client** (`@metered/llmrtc-web-client`) is a browser library that handles WebRTC signaling, audio/video capture, and event emission for voice AI applications.
+The **web client** (`@llmrtc/llmrtc-web-client`) is a browser library that handles WebRTC signaling, audio/video capture, and event emission for voice AI applications.
 
 ---
 
@@ -62,7 +62,7 @@ flowchart TB
 ## Basic Usage
 
 ```typescript
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 // Create client
 const client = new LLMRTCWebClient({
@@ -234,7 +234,7 @@ The client **does not auto-play TTS audio**. You must handle the `ttsTrack` or `
 
 ```typescript
 import { useEffect, useState, useRef } from 'react';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 function useVoiceClient(url: string) {
   const clientRef = useRef<LLMRTCWebClient | null>(null);
@@ -261,7 +261,7 @@ function useVoiceClient(url: string) {
 
 ```typescript
 import { ref, onMounted, onUnmounted } from 'vue';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 export function useVoiceClient(url: string) {
   const client = ref<LLMRTCWebClient | null>(null);

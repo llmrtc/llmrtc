@@ -1,16 +1,30 @@
 {
-  "name": "@metered/llmrtc-provider-google",
+  "name": "@llmrtc/llmrtc-provider-google",
   "version": "0.0.1",
-  "description": "Google Gemini LLM adapter for @metered/LLMRTC",
+  "description": "Google Gemini LLM adapter for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/google"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../../core",
+    "@llmrtc/llmrtc-core": "file:../../core",
     "@google/genai": "^1.30.0"
   }
 }

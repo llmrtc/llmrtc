@@ -77,7 +77,7 @@ You **must obtain our written permission** before you:
 
 To request permission, contact:
 
-- compliance@metered.ca
+- contact@llmrtc.org
 
 ---
 

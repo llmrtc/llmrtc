@@ -1,6 +1,6 @@
 # Observability Examples
 
-These examples demonstrate the hooks and metrics system in `@metered/llmrtc-backend`. Each example is a complete, runnable server showcasing different observability features.
+These examples demonstrate the hooks and metrics system in `@llmrtc/llmrtc-backend`. Each example is a complete, runnable server showcasing different observability features.
 
 ## Examples
 
@@ -49,7 +49,7 @@ Then open http://localhost:5173 in your browser.
 Shows how to add structured logging with timing information:
 
 ```typescript
-import { createLoggingHooks } from '@metered/llmrtc-backend';
+import { createLoggingHooks } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },
@@ -75,7 +75,7 @@ const server = new LLMRTCServer({
 Shows how to build a custom metrics adapter for Prometheus/DataDog:
 
 ```typescript
-import { MetricsAdapter, MetricNames } from '@metered/llmrtc-backend';
+import { MetricsAdapter, MetricNames } from '@llmrtc/llmrtc-backend';
 
 class PrometheusMetrics implements MetricsAdapter {
   private timings: Map<string, number[]> = new Map();

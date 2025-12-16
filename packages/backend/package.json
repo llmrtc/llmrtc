@@ -1,7 +1,9 @@
 {
-  "name": "@metered/llmrtc-backend",
+  "name": "@llmrtc/llmrtc-backend",
   "version": "0.0.1",
-  "description": "Node backend + signalling server for @metered/LLMRTC",
+  "description": "Node backend + signalling server for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,6 +12,18 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/backend"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "llmrtc-backend": "dist/cli.js"
@@ -20,15 +34,15 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../core",
-    "@metered/llmrtc-provider-anthropic": "file:../providers/anthropic",
-    "@metered/llmrtc-provider-bedrock": "file:../providers/bedrock",
-    "@metered/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
-    "@metered/llmrtc-provider-google": "file:../providers/google",
-    "@metered/llmrtc-provider-lmstudio": "file:../providers/lmstudio",
-    "@metered/llmrtc-provider-local": "file:../providers/local",
-    "@metered/llmrtc-provider-openai": "file:../providers/openai",
-    "@metered/llmrtc-provider-openrouter": "file:../providers/openrouter",
+    "@llmrtc/llmrtc-core": "file:../core",
+    "@llmrtc/llmrtc-provider-anthropic": "file:../providers/anthropic",
+    "@llmrtc/llmrtc-provider-bedrock": "file:../providers/bedrock",
+    "@llmrtc/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
+    "@llmrtc/llmrtc-provider-google": "file:../providers/google",
+    "@llmrtc/llmrtc-provider-lmstudio": "file:../providers/lmstudio",
+    "@llmrtc/llmrtc-provider-local": "file:../providers/local",
+    "@llmrtc/llmrtc-provider-openai": "file:../providers/openai",
+    "@llmrtc/llmrtc-provider-openrouter": "file:../providers/openrouter",
     "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

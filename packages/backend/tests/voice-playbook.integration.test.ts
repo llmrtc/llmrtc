@@ -23,7 +23,7 @@ import {
   type STTProvider,
   type TTSProvider,
   type Playbook
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 // =============================================================================
 // Mock STT Provider (simulates transcribed audio)
@@ -68,7 +68,7 @@ function createMockTTSProvider(): TTSProvider & { spokenTexts: string[] } {
 // Tool Definitions (shared between playbook and registry)
 // =============================================================================
 
-import type { ToolDefinition } from '@metered/llmrtc-core';
+import type { ToolDefinition } from '@llmrtc/llmrtc-core';
 
 const CHECK_AVAILABILITY_TOOL: ToolDefinition = {
   name: 'check_availability',
@@ -298,7 +298,7 @@ describe.skipIf(SKIP_OPENAI)('VoicePlaybookOrchestrator + OpenAI Integration', (
   let llmProvider: LLMProvider;
 
   beforeAll(async () => {
-    const { OpenAILLMProvider } = await import('@metered/llmrtc-provider-openai');
+    const { OpenAILLMProvider } = await import('@llmrtc/llmrtc-provider-openai');
     llmProvider = new OpenAILLMProvider({
       apiKey: process.env.OPENAI_API_KEY!,
       model: 'gpt-4o-mini'
@@ -398,7 +398,7 @@ describe.skipIf(SKIP_ANTHROPIC)('VoicePlaybookOrchestrator + Anthropic Integrati
   let llmProvider: LLMProvider;
 
   beforeAll(async () => {
-    const { AnthropicLLMProvider } = await import('@metered/llmrtc-provider-anthropic');
+    const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
     llmProvider = new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY!,
       model: 'claude-sonnet-4-5-20250929'
@@ -467,7 +467,7 @@ describe.skipIf(SKIP_BEDROCK)('VoicePlaybookOrchestrator + Bedrock Integration',
   let llmProvider: LLMProvider;
 
   beforeAll(async () => {
-    const { BedrockLLMProvider } = await import('@metered/llmrtc-provider-bedrock');
+    const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
     llmProvider = new BedrockLLMProvider({
       region: process.env.AWS_REGION || 'us-east-1',
       model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
@@ -533,19 +533,19 @@ describe.skipIf(SKIP_ALL)('VoicePlaybookOrchestrator Edge Cases', () => {
 
   beforeAll(async () => {
     if (process.env.OPENAI_API_KEY) {
-      const { OpenAILLMProvider } = await import('@metered/llmrtc-provider-openai');
+      const { OpenAILLMProvider } = await import('@llmrtc/llmrtc-provider-openai');
       llmProvider = new OpenAILLMProvider({
         apiKey: process.env.OPENAI_API_KEY,
         model: 'gpt-4o-mini'
       });
     } else if (process.env.ANTHROPIC_API_KEY) {
-      const { AnthropicLLMProvider } = await import('@metered/llmrtc-provider-anthropic');
+      const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
       llmProvider = new AnthropicLLMProvider({
         apiKey: process.env.ANTHROPIC_API_KEY,
         model: 'claude-sonnet-4-5-20250929'
       });
     } else {
-      const { BedrockLLMProvider } = await import('@metered/llmrtc-provider-bedrock');
+      const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
       llmProvider = new BedrockLLMProvider({
         region: process.env.AWS_REGION || 'us-east-1',
         model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'

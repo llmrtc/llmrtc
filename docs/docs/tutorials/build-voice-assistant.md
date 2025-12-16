@@ -127,7 +127,7 @@ Create `package.json` in the root directory:
     "dev": "concurrently \"tsx watch server.ts\" \"npm run dev --prefix client\""
   },
   "dependencies": {
-    "@metered/llmrtc-backend": "^0.1.0",
+    "@llmrtc/llmrtc-backend": "^0.1.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
@@ -139,7 +139,7 @@ Create `package.json` in the root directory:
 ```
 
 **What each dependency does:**
-- `@metered/llmrtc-backend` - The LLMRTC server with all providers
+- `@llmrtc/llmrtc-backend` - The LLMRTC server with all providers
 - `dotenv` - Loads environment variables from `.env`
 - `tsx` - Runs TypeScript directly without compilation
 - `concurrently` - Runs server and client simultaneously
@@ -209,7 +209,7 @@ Create `client/package.json`:
     "preview": "vite preview"
   },
   "dependencies": {
-    "@metered/llmrtc-web-client": "^0.1.0",
+    "@llmrtc/llmrtc-web-client": "^0.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -304,7 +304,7 @@ import {
   AnthropicLLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // Validate required environment variables
 if (!process.env.OPENAI_API_KEY) {
@@ -425,7 +425,7 @@ Create `client/src/App.tsx`:
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 // Status states for the conversation
 type Status = 'disconnected' | 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking';

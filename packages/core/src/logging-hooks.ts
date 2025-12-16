@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { LLMRTCServer, createLoggingHooks } from '@metered/llmrtc-backend';
+ * import { LLMRTCServer, createLoggingHooks } from '@llmrtc/llmrtc-backend';
  *
  * const server = new LLMRTCServer({
  *   providers: { llm, stt, tts },

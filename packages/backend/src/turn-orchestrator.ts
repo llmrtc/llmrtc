@@ -5,7 +5,7 @@
  * Both ConversationOrchestrator and VoicePlaybookOrchestrator implement this interface.
  */
 
-import type { VisionAttachment, OrchestratorYield } from '@metered/llmrtc-core';
+import type { VisionAttachment, OrchestratorYield } from '@llmrtc/llmrtc-core';
 
 /**
  * Tool call event emitted during Phase 1 (playbook mode only)

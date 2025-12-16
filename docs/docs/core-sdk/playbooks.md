@@ -16,7 +16,7 @@ Patterns
 ### Example (condensed)
 
 ```ts
-import { Playbook } from '@metered/llmrtc-core';
+import { Playbook } from '@llmrtc/llmrtc-core';
 
 export const supportPlaybook: Playbook = {
   id: 'support',

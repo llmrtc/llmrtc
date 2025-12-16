@@ -322,7 +322,7 @@ Rate limit exceeded. Please retry after 60 seconds.
 Enable verbose hooks for debugging:
 
 ```typescript
-import { createVerboseHooks } from '@metered/llmrtc-core';
+import { createVerboseHooks } from '@llmrtc/llmrtc-core';
 
 const server = new LLMRTCServer({
   hooks: createVerboseHooks()

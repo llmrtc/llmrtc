@@ -9,17 +9,17 @@ Guide for installing and setting up the LLMRTC web client in your frontend appli
 ## Package Installation
 
 ```bash
-npm install @metered/llmrtc-web-client
+npm install @llmrtc/llmrtc-web-client
 ```
 
 Or with other package managers:
 
 ```bash
 # Yarn
-yarn add @metered/llmrtc-web-client
+yarn add @llmrtc/llmrtc-web-client
 
 # pnpm
-pnpm add @metered/llmrtc-web-client
+pnpm add @llmrtc/llmrtc-web-client
 ```
 
 ---
@@ -30,7 +30,7 @@ The package ships as ESM (ECMAScript Modules) and works in modern browsers and b
 
 ```typescript
 // ESM import
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 ```
 
 ---
@@ -50,7 +50,7 @@ export default defineConfig({
 
 ```typescript
 // src/client.ts
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({
   signallingUrl: import.meta.env.VITE_SIGNAL_URL
@@ -73,14 +73,14 @@ For Next.js, guard browser-only APIs in components:
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { LLMRTCWebClient as ClientType } from '@metered/llmrtc-web-client';
+import type { LLMRTCWebClient as ClientType } from '@llmrtc/llmrtc-web-client';
 
 export function VoiceClient() {
   const [client, setClient] = useState<ClientType | null>(null);
 
   useEffect(() => {
     // Dynamic import to avoid SSR issues
-    import('@metered/llmrtc-web-client').then(({ LLMRTCWebClient }) => {
+    import('@llmrtc/llmrtc-web-client').then(({ LLMRTCWebClient }) => {
       const instance = new LLMRTCWebClient({
         signallingUrl: process.env.NEXT_PUBLIC_SIGNAL_URL!
       });
@@ -107,7 +107,7 @@ NEXT_PUBLIC_SIGNAL_URL=wss://your-server.com
 
 ```typescript
 // src/client.ts
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({
   signallingUrl: process.env.REACT_APP_SIGNAL_URL!
@@ -126,7 +126,7 @@ REACT_APP_SIGNAL_URL=wss://your-server.com
 ```typescript
 // src/composables/useVoiceClient.ts
 import { ref, onMounted, onUnmounted } from 'vue';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 export function useVoiceClient() {
   const client = ref<LLMRTCWebClient | null>(null);
@@ -156,7 +156,7 @@ export function useVoiceClient() {
 <!-- VoiceClient.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+  import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
   let client: LLMRTCWebClient;
   let state = 'disconnected';
@@ -191,7 +191,7 @@ import {
   type ConnectionState,
   type ClientError,
   type WebClientConfig
-} from '@metered/llmrtc-web-client';
+} from '@llmrtc/llmrtc-web-client';
 
 const config: WebClientConfig = {
   signallingUrl: 'wss://your-server.com',
@@ -220,7 +220,7 @@ For simple prototypes, use a CDN:
 
 ```html
 <script type="module">
-  import { LLMRTCWebClient } from 'https://esm.sh/@metered/llmrtc-web-client';
+  import { LLMRTCWebClient } from 'https://esm.sh/@llmrtc/llmrtc-web-client';
 
   const client = new LLMRTCWebClient({
     signallingUrl: 'wss://your-server.com'
@@ -297,7 +297,7 @@ export default defineConfig({
 Verify installation works:
 
 ```typescript
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({
   signallingUrl: 'wss://your-server.com'

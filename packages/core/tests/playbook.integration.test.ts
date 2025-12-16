@@ -203,7 +203,7 @@ describe.skipIf(SKIP_OPENAI)('PlaybookOrchestrator + OpenAI Integration', () => 
 
   beforeAll(async () => {
     // Dynamic import to avoid loading when skipped
-    const { OpenAILLMProvider } = await import('@metered/llmrtc-provider-openai');
+    const { OpenAILLMProvider } = await import('@llmrtc/llmrtc-provider-openai');
 
     llmProvider = new OpenAILLMProvider({
       apiKey: process.env.OPENAI_API_KEY!,
@@ -317,7 +317,7 @@ describe.skipIf(SKIP_ANTHROPIC)('PlaybookOrchestrator + Anthropic Integration', 
   let playbook: Playbook;
 
   beforeAll(async () => {
-    const { AnthropicLLMProvider } = await import('@metered/llmrtc-provider-anthropic');
+    const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
 
     llmProvider = new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -418,7 +418,7 @@ describe.skipIf(SKIP_BEDROCK)('PlaybookOrchestrator + Bedrock Integration', () =
   let playbook: Playbook;
 
   beforeAll(async () => {
-    const { BedrockLLMProvider } = await import('@metered/llmrtc-provider-bedrock');
+    const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
 
     llmProvider = new BedrockLLMProvider({
       region: process.env.AWS_REGION || 'us-east-1',
@@ -507,21 +507,21 @@ describe.skipIf(SKIP_ALL)('PlaybookOrchestrator Cross-Provider Tests', () => {
   beforeAll(async () => {
     // Use first available provider
     if (process.env.OPENAI_API_KEY) {
-      const { OpenAILLMProvider } = await import('@metered/llmrtc-provider-openai');
+      const { OpenAILLMProvider } = await import('@llmrtc/llmrtc-provider-openai');
       llmProvider = new OpenAILLMProvider({
         apiKey: process.env.OPENAI_API_KEY,
         model: 'gpt-4o-mini'
       });
       providerName = 'OpenAI';
     } else if (process.env.ANTHROPIC_API_KEY) {
-      const { AnthropicLLMProvider } = await import('@metered/llmrtc-provider-anthropic');
+      const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
       llmProvider = new AnthropicLLMProvider({
         apiKey: process.env.ANTHROPIC_API_KEY,
         model: 'claude-sonnet-4-5-20250929'
       });
       providerName = 'Anthropic';
     } else {
-      const { BedrockLLMProvider } = await import('@metered/llmrtc-provider-bedrock');
+      const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
       llmProvider = new BedrockLLMProvider({
         region: process.env.AWS_REGION || 'us-east-1',
         model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'

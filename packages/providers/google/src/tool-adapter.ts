@@ -6,7 +6,7 @@
  */
 
 import type { Tool as GeminiTool, FunctionDeclaration, Part } from '@google/genai';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@metered/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to Gemini format

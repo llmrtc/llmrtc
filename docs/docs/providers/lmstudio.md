@@ -6,7 +6,7 @@ Use LMStudio as a local LLM inference server.
 
 Setup
 ```ts
-import { LMStudioLLMProvider } from '@metered/llmrtc-provider-lmstudio';
+import { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 const llm = new LMStudioLLMProvider({
   baseUrl: 'http://localhost:1234/v1',

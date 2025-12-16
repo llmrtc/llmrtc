@@ -1,4 +1,4 @@
-# E2E Test Suite for @metered/llmrtc
+# E2E Test Suite for @llmrtc/llmrtc
 
 Comprehensive end-to-end testing for the LLMRTC real-time voice and vision conversation system.
 
@@ -22,7 +22,7 @@ Comprehensive end-to-end testing for the LLMRTC real-time voice and vision conve
 
 ## Overview
 
-This E2E test suite validates the complete @metered/llmrtc system including:
+This E2E test suite validates the complete @llmrtc/llmrtc system including:
 
 - **WebRTC Connection** - WebSocket signaling and peer connection establishment
 - **Audio Flow** - Microphone → VAD → STT → LLM → TTS → Speaker
@@ -760,4 +760,4 @@ When adding new tests:
 
 ## License
 
-MIT - See project root LICENSE file.
+Apache 2.0 - See project root LICENSE file.

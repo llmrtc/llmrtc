@@ -202,7 +202,7 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // Create local providers
 const llmProvider = new OllamaLLMProvider({
@@ -372,7 +372,7 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -408,7 +408,7 @@ import {
   LlavaVisionProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { LLMRTCWebClient, FrameCaptureController, ConnectionState } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient, FrameCaptureController, ConnectionState } from '@llmrtc/llmrtc-web-client';
 
 const signallingDefault = import.meta.env.VITE_SIGNAL_URL || 'ws://localhost:8787';
 
@@ -251,7 +251,7 @@ function App() {
 
   return (
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', padding: '24px', maxWidth: 800, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: 8 }}>@metered/LLMRTC</h1>
+      <h1 style={{ marginBottom: 8 }}>@llmrtc/LLMRTC</h1>
       <p style={{ color: '#666', marginTop: 0, marginBottom: 24 }}>
         Real-time voice + vision conversation with LLM
       </p>

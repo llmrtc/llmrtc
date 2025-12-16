@@ -6,7 +6,7 @@ Multi-model gateway across providers with one API key.
 
 Setup
 ```ts
-import { OpenRouterLLMProvider } from '@metered/llmrtc-provider-openrouter';
+import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 const llm = new OpenRouterLLMProvider({
   apiKey: process.env.OPENROUTER_API_KEY,

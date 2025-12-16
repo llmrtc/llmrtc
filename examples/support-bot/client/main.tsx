@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 type Status = 'disconnected' | 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking';
 

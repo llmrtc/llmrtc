@@ -85,7 +85,7 @@ ffplay test.wav  # or: aplay test.wav
 ## Provider Configuration
 
 ```ts
-import { PiperTTSProvider } from '@metered/llmrtc-provider-local';
+import { PiperTTSProvider } from '@llmrtc/llmrtc-provider-local';
 
 const tts = new PiperTTSProvider({
   baseUrl: process.env.PIPER_URL || 'http://localhost:5002'

@@ -1,6 +1,6 @@
-# @metered/llmrtc Wire Protocol v1
+# @llmrtc/llmrtc Wire Protocol v1
 
-This document specifies the JSON message format exchanged between the `@metered/llmrtc-web-client` and `@metered/llmrtc-backend` over WebSocket and WebRTC data channel.
+This document specifies the JSON message format exchanged between the `@llmrtc/llmrtc-web-client` and `@llmrtc/llmrtc-backend` over WebSocket and WebRTC data channel.
 
 ## Protocol Version
 
@@ -9,7 +9,7 @@ This document specifies the JSON message format exchanged between the `@metered/
 The protocol version is exchanged during the connection handshake in the `ready` message. Clients should verify the server's protocol version and warn or fail if there's a mismatch.
 
 ```typescript
-import { PROTOCOL_VERSION } from '@metered/llmrtc-core';
+import { PROTOCOL_VERSION } from '@llmrtc/llmrtc-core';
 // PROTOCOL_VERSION = 1
 ```
 
@@ -475,7 +475,7 @@ Client                                    Server
 
 ## TypeScript Types
 
-All message types are exported from `@metered/llmrtc-core`:
+All message types are exported from `@llmrtc/llmrtc-core`:
 
 ```typescript
 import {
@@ -530,7 +530,7 @@ import {
   createToolCallStartMessage,
   createToolCallEndMessage,
   createStageChangeMessage
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 ```
 
 ---

@@ -48,11 +48,11 @@ sequenceDiagram
 
 | Component | Package | Role |
 |-----------|---------|------|
-| `Playbook` | `@metered/llmrtc-core` | Defines stages, transitions, and tools |
-| `PlaybookOrchestrator` | `@metered/llmrtc-core` | Two-phase execution engine |
-| `VoicePlaybookOrchestrator` | `@metered/llmrtc-backend` | Adds STT/TTS, emits events |
-| `LLMRTCServer` | `@metered/llmrtc-backend` | WebSocket/WebRTC server |
-| `LLMRTCWebClient` | `@metered/llmrtc-web-client` | Browser client |
+| `Playbook` | `@llmrtc/llmrtc-core` | Defines stages, transitions, and tools |
+| `PlaybookOrchestrator` | `@llmrtc/llmrtc-core` | Two-phase execution engine |
+| `VoicePlaybookOrchestrator` | `@llmrtc/llmrtc-backend` | Adds STT/TTS, emits events |
+| `LLMRTCServer` | `@llmrtc/llmrtc-backend` | WebSocket/WebRTC server |
+| `LLMRTCWebClient` | `@llmrtc/llmrtc-web-client` | Browser client |
 
 ## 1. Define tools and playbook
 
@@ -65,7 +65,7 @@ import {
   type Playbook,
   type Stage,
   type Transition
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const tools = new ToolRegistry();
 // tools.register(defineTool(...));
@@ -95,7 +95,7 @@ import {
   ElevenLabsTTSProvider,
   ToolRegistry,
   type Playbook
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const llm = new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY! });
 const stt = new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY! });
@@ -126,7 +126,7 @@ await server.start();
 The web client exposes events for tool calls and stage changes in addition to the usual transcript/LLM/TTS events.
 
 ```ts
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({ signallingUrl: 'ws://localhost:8787' });
 

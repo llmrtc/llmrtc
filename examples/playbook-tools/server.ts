@@ -28,9 +28,9 @@ import {
   OrchestratorHooks,
   ConsoleMetrics,
   MetricNames,
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
-import { OpenAILLMProvider } from '@metered/llmrtc-openai';
+import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 // =============================================================================
 // 1. Define Tools

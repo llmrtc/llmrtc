@@ -6,7 +6,7 @@
 
 import type { ChatCompletionTool, ChatCompletionToolChoiceOption } from 'openai/resources/chat/completions';
 import type { FunctionParameters } from 'openai/resources/shared';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@metered/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
 
 export function mapToolsToOpenAI(tools: ToolDefinition[]): ChatCompletionTool[] {
   return tools.map(tool => ({

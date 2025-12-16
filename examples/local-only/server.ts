@@ -18,7 +18,7 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // Check for local services
 async function checkService(name: string, url: string): Promise<boolean> {

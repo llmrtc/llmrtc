@@ -2,7 +2,7 @@
   <img src="logo.svg" alt="LLMRTC Logo" width="128" height="128">
 </p>
 
-<h1 align="center">@metered/llmrtc</h1>
+<h1 align="center">@llmrtc/llmrtc</h1>
 
 <p align="center">
   A TypeScript SDK for building real-time voice and vision AI applications.<br>
@@ -54,29 +54,29 @@
 
 | Package | Description |
 |---------|-------------|
-| `@metered/llmrtc-core` | Core types, interfaces, and orchestrator |
-| `@metered/llmrtc-web-client` | Browser client with WebRTC support |
-| `@metered/llmrtc-backend` | Node.js backend with signaling server |
+| `@llmrtc/llmrtc-core` | Core types, interfaces, and orchestrator |
+| `@llmrtc/llmrtc-web-client` | Browser client with WebRTC support |
+| `@llmrtc/llmrtc-backend` | Node.js backend with signaling server |
 
 ### LLM Providers
 
 | Package | Provider | Features |
 |---------|----------|----------|
-| `@metered/llmrtc-provider-openai` | OpenAI | GPT-4o, Whisper STT, TTS |
-| `@metered/llmrtc-provider-anthropic` | Anthropic | Claude 3.5 Sonnet/Opus, vision |
-| `@metered/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
-| `@metered/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
-| `@metered/llmrtc-provider-openrouter` | OpenRouter | Multi-model gateway |
-| `@metered/llmrtc-provider-lmstudio` | LMStudio | Local model inference |
-| `@metered/llmrtc-provider-local` | Local | Ollama, Faster Whisper, Piper TTS |
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-4o, Whisper STT, TTS |
+| `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude 3.5 Sonnet/Opus, vision |
+| `@llmrtc/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
+| `@llmrtc/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
+| `@llmrtc/llmrtc-provider-openrouter` | OpenRouter | Multi-model gateway |
+| `@llmrtc/llmrtc-provider-lmstudio` | LMStudio | Local model inference |
+| `@llmrtc/llmrtc-provider-local` | Local | Ollama, Faster Whisper, Piper TTS |
 
 ### TTS Providers
 
 | Package | Provider | Features |
 |---------|----------|----------|
-| `@metered/llmrtc-provider-openai` | OpenAI | tts-1, tts-1-hd, streaming |
-| `@metered/llmrtc-provider-elevenlabs` | ElevenLabs | High-quality voices, streaming |
-| `@metered/llmrtc-provider-local` | Piper | Offline TTS |
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | tts-1, tts-1-hd, streaming |
+| `@llmrtc/llmrtc-provider-elevenlabs` | ElevenLabs | High-quality voices, streaming |
+| `@llmrtc/llmrtc-provider-local` | Piper | Offline TTS |
 
 ---
 
@@ -97,7 +97,7 @@ The web client requires a browser with WebRTC support: **Chrome**, **Firefox**, 
 
 ### Native WebRTC Module (Backend)
 
-The backend package (`@metered/llmrtc-backend`) uses `@roamhq/wrtc` for server-side WebRTC. This is a native module that may require C/C++ build tools on platforms without prebuilt binaries.
+The backend package (`@llmrtc/llmrtc-backend`) uses `@roamhq/wrtc` for server-side WebRTC. This is a native module that may require C/C++ build tools on platforms without prebuilt binaries.
 
 ### FFmpeg (Streaming TTS)
 
@@ -120,7 +120,7 @@ After installing, verify dependencies are working:
 node --version
 
 # Verify backend package loads (native deps compiled correctly)
-node -e "import('@metered/llmrtc-backend').then(() => console.log('backend ok'))"
+node -e "import('@llmrtc/llmrtc-backend').then(() => console.log('backend ok'))"
 
 # Verify FFmpeg (required for streaming TTS)
 ffmpeg -version
@@ -211,14 +211,14 @@ const client = new LLMRTCWebClient({
 
 ```bash
 # Backend (includes all providers - no separate provider installs needed)
-npm install @metered/llmrtc-backend
+npm install @llmrtc/llmrtc-backend
 
 # Web client for browser apps
-npm install @metered/llmrtc-web-client
+npm install @llmrtc/llmrtc-web-client
 
 # Or install individual packages if needed
-npm install @metered/llmrtc-core
-npm install @metered/llmrtc-provider-openai @metered/llmrtc-provider-elevenlabs
+npm install @llmrtc/llmrtc-core
+npm install @llmrtc/llmrtc-provider-openai @llmrtc/llmrtc-provider-elevenlabs
 ```
 
 ### Backend Setup
@@ -226,13 +226,13 @@ npm install @metered/llmrtc-provider-openai @metered/llmrtc-provider-elevenlabs
 **Option 1: Library Mode (Recommended)**
 
 ```typescript
-// All providers are re-exported from @metered/llmrtc-backend
+// All providers are re-exported from @llmrtc/llmrtc-backend
 import {
   LLMRTCServer,
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -261,9 +261,9 @@ npx llmrtc-backend
 **Using the Orchestrator Directly (Advanced)**
 
 ```typescript
-import { ConversationOrchestrator } from '@metered/llmrtc-core';
-import { OpenAILLMProvider, OpenAIWhisperProvider } from '@metered/llmrtc-provider-openai';
-import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
+import { ConversationOrchestrator } from '@llmrtc/llmrtc-core';
+import { OpenAILLMProvider, OpenAIWhisperProvider } from '@llmrtc/llmrtc-provider-openai';
+import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 
 const orchestrator = new ConversationOrchestrator({
   systemPrompt: 'You are a helpful voice assistant.',
@@ -286,7 +286,7 @@ for await (const item of orchestrator.runTurnStream(audioBuffer)) {
 ### Frontend Setup
 
 ```typescript
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({
   signallingUrl: 'ws://localhost:8787',
@@ -490,7 +490,7 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-provider-openai';
+} from '@llmrtc/llmrtc-provider-openai';
 
 // LLM
 const llm = new OpenAILLMProvider({
@@ -523,7 +523,7 @@ for await (const chunk of tts.speakStream('Hello world')) {
 ### Anthropic Claude
 
 ```typescript
-import { AnthropicLLMProvider } from '@metered/llmrtc-provider-anthropic';
+import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: 'sk-ant-...',
@@ -547,7 +547,7 @@ const result = await llm.complete({
 ### Google Gemini
 
 ```typescript
-import { GeminiLLMProvider } from '@metered/llmrtc-provider-google';
+import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 
 const llm = new GeminiLLMProvider({
   apiKey: 'AIza...',
@@ -563,7 +563,7 @@ for await (const chunk of llm.stream({ messages })) {
 ### AWS Bedrock
 
 ```typescript
-import { BedrockLLMProvider } from '@metered/llmrtc-provider-bedrock';
+import { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 
 const llm = new BedrockLLMProvider({
   region: 'us-east-1',
@@ -580,7 +580,7 @@ const llm = new BedrockLLMProvider({
 ### OpenRouter
 
 ```typescript
-import { OpenRouterLLMProvider } from '@metered/llmrtc-provider-openrouter';
+import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 const llm = new OpenRouterLLMProvider({
   apiKey: 'sk-or-...',
@@ -593,7 +593,7 @@ const llm = new OpenRouterLLMProvider({
 ### LMStudio (Local)
 
 ```typescript
-import { LMStudioLLMProvider } from '@metered/llmrtc-provider-lmstudio';
+import { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 const llm = new LMStudioLLMProvider({
   baseUrl: 'http://localhost:1234/v1',
@@ -604,7 +604,7 @@ const llm = new LMStudioLLMProvider({
 ### ElevenLabs
 
 ```typescript
-import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
+import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 
 const tts = new ElevenLabsTTSProvider({
   apiKey: 'xi-...',
@@ -628,7 +628,7 @@ import {
   FasterWhisperProvider,
   PiperTTSProvider,
   LlavaVisionProvider
-} from '@metered/llmrtc-provider-local';
+} from '@llmrtc/llmrtc-provider-local';
 
 // Ollama LLM
 const llm = new OllamaLLMProvider({
@@ -664,7 +664,7 @@ The backend package can be used in two ways:
 
 ```bash
 # Install
-npm install @metered/llmrtc-backend
+npm install @llmrtc/llmrtc-backend
 
 # Configure with .env file
 echo "OPENAI_API_KEY=sk-..." > .env
@@ -677,13 +677,13 @@ npx llmrtc-backend
 ### Library Usage
 
 ```typescript
-// All providers are re-exported from @metered/llmrtc-backend
+// All providers are re-exported from @llmrtc/llmrtc-backend
 import {
   LLMRTCServer,
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -710,7 +710,7 @@ import {
   AnthropicLLMProvider,
   FasterWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -919,7 +919,7 @@ import {
   createLoggingHooks,
   ConsoleMetrics,
   InMemoryMetrics
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },
@@ -994,7 +994,7 @@ The SDK provides a provider-agnostic tool calling system that works across all L
 ### Defining Tools
 
 ```typescript
-import { ToolRegistry, defineTool, ToolDefinition } from '@metered/llmrtc-core';
+import { ToolRegistry, defineTool, ToolDefinition } from '@llmrtc/llmrtc-core';
 
 // Define a tool with JSON Schema parameters
 const getWeatherTool = defineTool(
@@ -1035,7 +1035,7 @@ const definitions = registry.getDefinitions();
 ### Using Tools with LLM Providers
 
 ```typescript
-import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 const llm = new OpenAILLMProvider({ apiKey: 'sk-...' });
 
@@ -1061,7 +1061,7 @@ if (result.stopReason === 'tool_use' && result.toolCalls) {
 The `ToolExecutor` handles execution of tool calls with support for parallel execution, timeouts, and abort signals:
 
 ```typescript
-import { ToolExecutor } from '@metered/llmrtc-core';
+import { ToolExecutor } from '@llmrtc/llmrtc-core';
 
 const executor = new ToolExecutor(registry, {
   timeout: 30000,           // Per-tool timeout (ms)
@@ -1085,8 +1085,8 @@ for (const toolResult of results) {
 ### Complete Tool Loop Example
 
 ```typescript
-import { ToolRegistry, ToolExecutor, defineTool } from '@metered/llmrtc-core';
-import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+import { ToolRegistry, ToolExecutor, defineTool } from '@llmrtc/llmrtc-core';
+import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 // Setup
 const registry = new ToolRegistry();
@@ -1162,7 +1162,7 @@ Playbooks define multi-stage conversation flows with automatic transitions betwe
 ### Defining a Playbook
 
 ```typescript
-import { Playbook, Stage, Transition } from '@metered/llmrtc-core';
+import { Playbook, Stage, Transition } from '@llmrtc/llmrtc-core';
 
 const playbook: Playbook = {
   id: 'customer-support',
@@ -1247,8 +1247,8 @@ const playbook: Playbook = {
 import {
   PlaybookOrchestrator,
   ToolRegistry
-} from '@metered/llmrtc-core';
-import { OpenAILLMProvider } from '@metered/llmrtc-provider-openai';
+} from '@llmrtc/llmrtc-core';
+import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 // Setup
 const llm = new OpenAILLMProvider({ apiKey: 'sk-...' });
@@ -1332,7 +1332,7 @@ User Input
 The `PlaybookEngine` manages playbook state and transitions:
 
 ```typescript
-import { PlaybookEngine } from '@metered/llmrtc-core';
+import { PlaybookEngine } from '@llmrtc/llmrtc-core';
 
 const engine = new PlaybookEngine(playbook);
 
@@ -1412,7 +1412,7 @@ When stages have `llm_decision` transitions, the `playbook_transition` tool is a
 For single-stage use cases:
 
 ```typescript
-import { createSimplePlaybook } from '@metered/llmrtc-core';
+import { createSimplePlaybook } from '@llmrtc/llmrtc-core';
 
 const playbook = createSimplePlaybook(
   'assistant',
@@ -1424,7 +1424,7 @@ const playbook = createSimplePlaybook(
 ### Playbook Validation
 
 ```typescript
-import { validatePlaybook } from '@metered/llmrtc-core';
+import { validatePlaybook } from '@llmrtc/llmrtc-core';
 
 const result = validatePlaybook(playbook);
 if (!result.valid) {
@@ -1436,7 +1436,7 @@ if (!result.valid) {
 ### Hooks for Playbooks
 
 ```typescript
-import { PlaybookHooks, PlaybookContext } from '@metered/llmrtc-core';
+import { PlaybookHooks, PlaybookContext } from '@llmrtc/llmrtc-core';
 
 const hooks: PlaybookHooks = {
   onStageEnter(ctx: PlaybookContext, stage, previousStage) {
@@ -1464,7 +1464,7 @@ const hooks: PlaybookHooks = {
 ### Metrics for Tools and Playbooks
 
 ```typescript
-import { MetricNames, ConsoleMetrics } from '@metered/llmrtc-core';
+import { MetricNames, ConsoleMetrics } from '@llmrtc/llmrtc-core';
 
 // Tool metrics
 MetricNames.TOOL_DURATION      // 'llmrtc.tool.duration_ms'
@@ -1570,3 +1570,8 @@ See [`NOTICE`](NOTICE) for required attribution notices.
 
 “Metered”, “LLMRTC”, and related marks are trademarks of Next Path Software Consulting Inc., dba Metered.
 The Apache 2.0 license does **not** grant rights to use trademarks. See [`TRADEMARKS.md`](TRADEMARKS.md).
+
+## Contact
+
+- Email: contact@llmrtc.org
+- Issues: https://github.com/llmrtc/llmrtc/issues

@@ -60,7 +60,7 @@ voice-assistant/
     "dev": "concurrently \"tsx watch server.ts\" \"npm run dev --prefix client\""
   },
   "dependencies": {
-    "@metered/llmrtc-backend": "^0.1.0",
+    "@llmrtc/llmrtc-backend": "^0.1.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
@@ -106,7 +106,7 @@ import {
   AnthropicLLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 if (!process.env.OPENAI_API_KEY) {
   console.error('Error: OPENAI_API_KEY is required');
@@ -157,7 +157,7 @@ await server.start();
     "build": "vite build"
   },
   "dependencies": {
-    "@metered/llmrtc-web-client": "^0.1.0",
+    "@llmrtc/llmrtc-web-client": "^0.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -265,8 +265,8 @@ At the top of the file, update the imports:
 
 ```typescript
 import { useState, useEffect, useRef } from 'react';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
-import type { FrameCaptureController } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
+import type { FrameCaptureController } from '@llmrtc/llmrtc-web-client';
 ```
 
 #### 2. Add State for Video Streams
@@ -460,8 +460,8 @@ Here's the complete updated `App.tsx` with vision support:
 
 ```tsx
 import { useState, useEffect, useRef } from 'react';
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
-import type { FrameCaptureController } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
+import type { FrameCaptureController } from '@llmrtc/llmrtc-web-client';
 
 type Status = 'disconnected' | 'connecting' | 'idle' | 'listening' | 'thinking' | 'speaking';
 

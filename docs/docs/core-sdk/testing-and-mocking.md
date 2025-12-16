@@ -2,7 +2,7 @@
 title: Testing & Mocking
 ---
 
-This section outlines patterns for testing providers, orchestrators, and clients grounded in the actual interfaces in `@metered/llmrtc-core`.
+This section outlines patterns for testing providers, orchestrators, and clients grounded in the actual interfaces in `@llmrtc/llmrtc-core`.
 
 ## Providers
 
@@ -20,11 +20,11 @@ expect(result.fullText).toContain('hello');
 ## Orchestrator
 
 - For `ConversationOrchestrator` and `PlaybookOrchestrator`, pass fake providers that return deterministic values.
-- Use `InMemoryMetrics` from `@metered/llmrtc-core` to assert that metrics (`MetricNames.*`) are emitted.
+- Use `InMemoryMetrics` from `@llmrtc/llmrtc-core` to assert that metrics (`MetricNames.*`) are emitted.
 - Use hooks (see Core SDK → Hooks & Metrics) to observe turn timings, errors, and tool usage.
 
 ```ts
-import { ConversationOrchestrator, InMemoryMetrics } from '@metered/llmrtc-core';
+import { ConversationOrchestrator, InMemoryMetrics } from '@llmrtc/llmrtc-core';
 
 const metrics = new InMemoryMetrics();
 const orchestrator = new ConversationOrchestrator({ providers: fakeProviders, metrics });

@@ -28,7 +28,7 @@ import {
   NoopMetrics,
   createTimingInfo,
   callHookSafe
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
   TurnOrchestratorYield,

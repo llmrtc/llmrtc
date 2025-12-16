@@ -29,7 +29,7 @@ import {
   type Playbook,
   ToolRegistry,
   type PlaybookOrchestratorOptions
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
   TurnOrchestratorYield,
@@ -322,7 +322,7 @@ export class LLMRTCServer {
     return new Promise((resolve) => {
       this.server!.listen(this.config.port, this.config.host, () => {
         console.log(
-          `@metered/LLMRTC server listening on ${this.config.host}:${this.config.port}`
+          `@llmrtc/LLMRTC server listening on ${this.config.host}:${this.config.port}`
         );
         this.logProviderConfig();
         this.emit('listening', { host: this.config.host, port: this.config.port });

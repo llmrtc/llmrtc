@@ -1,16 +1,30 @@
 {
-  "name": "@metered/llmrtc-provider-anthropic",
+  "name": "@llmrtc/llmrtc-provider-anthropic",
   "version": "0.0.1",
-  "description": "Anthropic Claude LLM adapter for @metered/LLMRTC",
+  "description": "Anthropic Claude LLM adapter for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/anthropic"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../../core",
+    "@llmrtc/llmrtc-core": "file:../../core",
     "@anthropic-ai/sdk": "^0.71.0"
   }
 }

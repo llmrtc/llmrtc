@@ -6,7 +6,7 @@ High-quality, low-latency TTS.
 
 Setup
 ```ts
-import { ElevenLabsTTSProvider } from '@metered/llmrtc-provider-elevenlabs';
+import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 
 const tts = new ElevenLabsTTSProvider({
   apiKey: process.env.ELEVENLABS_API_KEY,

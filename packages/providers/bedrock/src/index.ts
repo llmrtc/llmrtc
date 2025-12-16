@@ -14,7 +14,7 @@ import {
   LLMRequest,
   LLMResult,
   Message
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 import {
   mapToolsToBedrock,
   mapToolChoiceToBedrock,

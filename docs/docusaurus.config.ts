@@ -61,7 +61,7 @@ const config: Config = {
   },
   themes: ['@docusaurus/theme-mermaid'],
   favicon: 'img/favicon.svg',
-  organizationName: 'metered',
+  organizationName: 'llmrtc',
   projectName: 'llmrtc',
   i18n: {
     defaultLocale: 'en',
@@ -74,7 +74,7 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           routeBasePath: '/',
-          editUrl: 'https://github.com/metered/llmrtc/edit/main/docs/'
+          editUrl: 'https://github.com/llmrtc/llmrtc/edit/main/docs/'
         },
         blog: {
           showReadingTime: true,
@@ -100,7 +100,7 @@ const config: Config = {
         {to: '/providers/overview', label: 'Providers', position: 'left'},
         {to: '/protocol/overview', label: 'Protocol', position: 'left'},
         {to: '/operations/troubleshooting', label: 'Troubleshooting', position: 'left'},
-        {href: 'https://github.com/metered/llmrtc', label: 'GitHub', position: 'right'}
+        {href: 'https://github.com/llmrtc/llmrtc', label: 'GitHub', position: 'right'}
       ]
     },
     footer: {
@@ -125,8 +125,8 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            {label: 'GitHub', href: 'https://github.com/metered/llmrtc'},
-            {label: 'Issues', href: 'https://github.com/metered/llmrtc/issues'}
+            {label: 'GitHub', href: 'https://github.com/llmrtc/llmrtc'},
+            {label: 'Issues', href: 'https://github.com/llmrtc/llmrtc/issues'}
           ]
         }
       ],

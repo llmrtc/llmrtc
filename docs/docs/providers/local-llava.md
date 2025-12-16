@@ -70,7 +70,7 @@ curl http://localhost:11434/api/tags
 ### Default Local Setup
 
 ```ts
-import { LlavaVisionProvider } from '@metered/llmrtc-provider-local';
+import { LlavaVisionProvider } from '@llmrtc/llmrtc-provider-local';
 
 const vision = new LlavaVisionProvider({
   model: 'llava'

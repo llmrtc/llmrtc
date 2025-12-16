@@ -1,16 +1,30 @@
 {
-  "name": "@metered/llmrtc-provider-bedrock",
+  "name": "@llmrtc/llmrtc-provider-bedrock",
   "version": "0.0.1",
-  "description": "AWS Bedrock LLM adapter for @metered/LLMRTC",
+  "description": "AWS Bedrock LLM adapter for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/bedrock"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@metered/llmrtc-core": "file:../../core",
+    "@llmrtc/llmrtc-core": "file:../../core",
     "@aws-sdk/client-bedrock-runtime": "^3.899.0"
   }
 }

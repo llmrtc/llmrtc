@@ -51,7 +51,7 @@ Tools let your assistant:
 Create a tool using the `defineTool` helper:
 
 ```typescript
-import { defineTool } from '@metered/llmrtc-core';
+import { defineTool } from '@llmrtc/llmrtc-core';
 
 // Define the weather tool
 const getWeatherTool = defineTool({
@@ -103,7 +103,7 @@ const getWeatherTool = defineTool({
 Create a `ToolRegistry` and register your tools:
 
 ```typescript
-import { ToolRegistry, defineTool } from '@metered/llmrtc-core';
+import { ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
 
 // Create registry
 const registry = new ToolRegistry();
@@ -144,8 +144,8 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
-import { ToolRegistry, defineTool } from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-backend';
+import { ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
 
 // Create tool registry
 const registry = new ToolRegistry();
@@ -444,7 +444,7 @@ client.on('toolCallEnd', ({ callId, result, error, durationMs }) => {
 Configure the `ToolExecutor` for your needs:
 
 ```typescript
-import { ToolExecutor } from '@metered/llmrtc-core';
+import { ToolExecutor } from '@llmrtc/llmrtc-core';
 
 const executor = new ToolExecutor(registry, {
   // Maximum execution time per tool (ms)

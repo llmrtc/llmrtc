@@ -2,7 +2,7 @@
 title: Defining Playbooks
 ---
 
-Playbooks are plain TypeScript objects that match the `Playbook`, `Stage`, and `Transition` types in `@metered/llmrtc-core` (`packages/core/src/playbook.ts`).
+Playbooks are plain TypeScript objects that match the `Playbook`, `Stage`, and `Transition` types in `@llmrtc/llmrtc-core` (`packages/core/src/playbook.ts`).
 
 ## Stage
 
@@ -79,7 +79,7 @@ Key fields (see `Playbook` type):
 
 Example skeleton:
 ```ts
-import type { Playbook, Stage, Transition } from '@metered/llmrtc-core';
+import type { Playbook, Stage, Transition } from '@llmrtc/llmrtc-core';
 
 const stages: Stage[] = [greetingStage, authStage, triageStage, resolutionStage, farewellStage];
 const transitions: Transition[] = [toAuth, authToTriage, triageToResolution, resolutionToFarewell];
@@ -104,7 +104,7 @@ Use `validatePlaybook(playbook)` to catch common mistakes at startup:
 - Transitions that reference unknown stages.
 
 ```ts
-import { validatePlaybook } from '@metered/llmrtc-core';
+import { validatePlaybook } from '@llmrtc/llmrtc-core';
 
 const { valid, errors } = validatePlaybook(supportPlaybook);
 if (!valid) {

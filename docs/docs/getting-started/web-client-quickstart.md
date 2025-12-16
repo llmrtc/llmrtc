@@ -104,7 +104,7 @@ Create `index.html`:
   <button id="stopBtn" style="display: none;">Stop</button>
 
   <script type="module">
-    import { LLMRTCWebClient } from 'https://esm.sh/@metered/llmrtc-web-client';
+    import { LLMRTCWebClient } from 'https://esm.sh/@llmrtc/llmrtc-web-client';
 
     const status = document.getElementById('status');
     const transcript = document.getElementById('transcript');
@@ -213,7 +213,7 @@ For a more structured project.
 ```bash
 npm create vite@latest my-voice-client -- --template react-ts
 cd my-voice-client
-npm install @metered/llmrtc-web-client
+npm install @llmrtc/llmrtc-web-client
 ```
 
 ### Create Voice Component
@@ -222,7 +222,7 @@ Create `src/VoiceAssistant.tsx`:
 
 ```tsx
 import { useEffect, useState, useRef } from 'react';
-import { LLMRTCWebClient, ConnectionState } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient, ConnectionState } from '@llmrtc/llmrtc-web-client';
 
 interface Message {
   role: 'user' | 'assistant';

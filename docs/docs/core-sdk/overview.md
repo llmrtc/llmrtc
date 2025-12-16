@@ -2,23 +2,23 @@
 title: Core SDK Overview
 ---
 
-`@metered/llmrtc-core` is the foundational package for LLMRTC, providing types, orchestrators, protocol definitions, and utilities shared across backend and frontend.
+`@llmrtc/llmrtc-core` is the foundational package for LLMRTC, providing types, orchestrators, protocol definitions, and utilities shared across backend and frontend.
 
 ## Installation
 
 ```bash
-npm install @metered/llmrtc-core
+npm install @llmrtc/llmrtc-core
 ```
 
 ## When to Use Directly
 
-Use `@metered/llmrtc-core` directly when:
+Use `@llmrtc/llmrtc-core` directly when:
 - Building custom providers
 - Creating bespoke backends without the full server
 - Testing orchestration logic in isolation
 - Implementing text-only agents (no voice)
 
-For voice applications, use `@metered/llmrtc-backend` which re-exports core along with server functionality.
+For voice applications, use `@llmrtc/llmrtc-backend` which re-exports core along with server functionality.
 
 ---
 

@@ -15,7 +15,7 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {

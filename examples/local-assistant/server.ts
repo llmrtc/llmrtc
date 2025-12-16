@@ -21,14 +21,14 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 import {
   ToolRegistry,
   defineTool,
   Playbook,
   Stage
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 
 const execAsync = promisify(exec);
 

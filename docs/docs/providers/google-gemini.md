@@ -8,7 +8,7 @@ Supported
 
 Setup
 ```ts
-import { GeminiLLMProvider } from '@metered/llmrtc-provider-google';
+import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 
 const llm = new GeminiLLMProvider({
   apiKey: process.env.GOOGLE_API_KEY,

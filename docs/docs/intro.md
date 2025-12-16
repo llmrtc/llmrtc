@@ -106,9 +106,9 @@ flowchart TB
 
 | Package | Purpose |
 |---------|---------|
-| `@metered/llmrtc-core` | Types, orchestrators, tools, hooks—shared foundation |
-| `@metered/llmrtc-backend` | Node.js server with WebRTC, VAD, and all providers |
-| `@metered/llmrtc-web-client` | Browser SDK for audio/video capture and playback |
+| `@llmrtc/llmrtc-core` | Types, orchestrators, tools, hooks—shared foundation |
+| `@llmrtc/llmrtc-backend` | Node.js server with WebRTC, VAD, and all providers |
+| `@llmrtc/llmrtc-web-client` | Browser SDK for audio/video capture and playback |
 
 ---
 
@@ -186,7 +186,7 @@ See [Networking & TURN](backend/networking-and-turn) for detailed configuration 
 **Backend (Node.js):**
 
 ```typescript
-import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@metered/llmrtc-backend';
+import { LLMRTCServer, OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -203,7 +203,7 @@ await server.start();
 **Frontend (Browser):**
 
 ```typescript
-import { LLMRTCWebClient } from '@metered/llmrtc-web-client';
+import { LLMRTCWebClient } from '@llmrtc/llmrtc-web-client';
 
 const client = new LLMRTCWebClient({
   signallingUrl: 'ws://localhost:8787'
@@ -249,8 +249,9 @@ Ready to build? Follow our quickstart guides:
 
 ## Community
 
-- **GitHub**: [github.com/metered/llmrtc](https://github.com/metered/llmrtc)
-- **Issues**: [Report bugs and request features](https://github.com/metered/llmrtc/issues)
+- **GitHub**: [github.com/llmrtc/llmrtc](https://github.com/llmrtc/llmrtc)
+- **Issues**: [Report bugs and request features](https://github.com/llmrtc/llmrtc/issues)
+- **Email**: contact@llmrtc.org
 
 ---
 

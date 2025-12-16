@@ -6,12 +6,12 @@ import {
   ConnectionState,
   ReconnectionConfig
 } from './connection-state.js';
-import { PROTOCOL_VERSION } from '@metered/llmrtc-core';
+import { PROTOCOL_VERSION } from '@llmrtc/llmrtc-core';
 
 // Re-export for convenience
 export { ConnectionState } from './connection-state.js';
 export { NativePeer } from './native-peer.js';
-export { PROTOCOL_VERSION } from '@metered/llmrtc-core';
+export { PROTOCOL_VERSION } from '@llmrtc/llmrtc-core';
 
 export interface WebClientConfig {
   signallingUrl: string;

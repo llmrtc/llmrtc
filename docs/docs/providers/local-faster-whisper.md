@@ -66,7 +66,7 @@ curl http://localhost:8000/health
 ## Provider Configuration
 
 ```ts
-import { FasterWhisperProvider } from '@metered/llmrtc-provider-local';
+import { FasterWhisperProvider } from '@llmrtc/llmrtc-provider-local';
 
 const stt = new FasterWhisperProvider({
   baseUrl: process.env.FASTER_WHISPER_URL || 'http://localhost:8000'

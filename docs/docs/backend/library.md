@@ -9,8 +9,8 @@ Library mode lets you embed the LLMRTC server in your own Node.js application, g
 ## Basic Setup
 
 ```typescript
-import { LLMRTCServer } from '@metered/llmrtc-backend';
-import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@metered/llmrtc-backend';
+import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
+import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -150,7 +150,7 @@ The server doesn't include authentication—add it in your application:
 ### Middleware Approach
 
 ```typescript
-import { LLMRTCServer } from '@metered/llmrtc-backend';
+import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
 import { verifyJWT } from './auth';
 
 const server = new LLMRTCServer({ /* config */ });
@@ -205,7 +205,7 @@ import {
   AnthropicLLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -231,7 +231,7 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -252,7 +252,7 @@ const server = new LLMRTCServer({
 ### Auto-Detection
 
 ```typescript
-import { createProvidersFromEnv } from '@metered/llmrtc-backend';
+import { createProvidersFromEnv } from '@llmrtc/llmrtc-backend';
 
 // Automatically select providers based on available env vars
 const providers = createProvidersFromEnv();
@@ -265,7 +265,7 @@ const server = new LLMRTCServer({ providers });
 ## Hooks and Observability
 
 ```typescript
-import { createLoggingHooks } from '@metered/llmrtc-core';
+import { createLoggingHooks } from '@llmrtc/llmrtc-core';
 
 const server = new LLMRTCServer({
   providers,
@@ -291,7 +291,7 @@ See [Observability & Hooks](observability-and-hooks) for complete hook reference
 ## Metrics Integration
 
 ```typescript
-import { MetricsAdapter } from '@metered/llmrtc-core';
+import { MetricsAdapter } from '@llmrtc/llmrtc-core';
 import { PrometheusClient } from 'prom-client';
 
 class PrometheusMetrics implements MetricsAdapter {

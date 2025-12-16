@@ -12,7 +12,7 @@ import {
   VisionProvider,
   VisionRequest,
   VisionResult
-} from '@metered/llmrtc-core';
+} from '@llmrtc/llmrtc-core';
 import {
   mapToolsToOllama,
   parseToolCallsFromOllama,

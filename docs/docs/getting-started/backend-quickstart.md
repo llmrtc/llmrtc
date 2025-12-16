@@ -69,7 +69,7 @@ npm pkg set type=module
 Install dependencies:
 
 ```bash
-npm install @metered/llmrtc-backend dotenv
+npm install @llmrtc/llmrtc-backend dotenv
 ```
 
 ---
@@ -100,7 +100,7 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 // Create providers
 const llmProvider = new OpenAILLMProvider({
@@ -293,7 +293,7 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -313,7 +313,7 @@ import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
@@ -336,7 +336,7 @@ import {
   AnthropicLLMProvider,
   OpenAIWhisperProvider,
   OpenAITTSProvider
-} from '@metered/llmrtc-backend';
+} from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: {
