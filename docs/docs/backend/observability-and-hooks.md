@@ -87,4 +87,4 @@ const server = new LLMRTCServer({
 See also:
 - Core SDK → Hooks & Metrics
 - Recipes → Observability & Metrics
-- `examples/observability` for full servers with logging, metrics, guardrails, and custom sentence chunking.
+- [`examples/observability`](https://github.com/llmrtc/llmrtc/tree/main/examples/observability) for full servers with logging, metrics, guardrails, and custom sentence chunking.

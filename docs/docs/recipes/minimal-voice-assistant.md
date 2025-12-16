@@ -2,7 +2,7 @@
 title: Minimal Voice Assistant
 ---
 
-Based on `examples/minimal` (~80 LOC backend + frontend).
+Based on [`examples/minimal`](https://github.com/llmrtc/llmrtc/tree/main/examples/minimal) (~80 LOC backend + frontend).
 
 What it shows
 - Streaming STT, LLM, and TTS

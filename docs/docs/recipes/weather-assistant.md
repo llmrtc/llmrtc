@@ -2,7 +2,7 @@
 title: Weather Assistant
 ---
 
-Based on `examples/weather-assistant`.
+Based on [`examples/weather-assistant`](https://github.com/llmrtc/llmrtc/tree/main/examples/weather-assistant).
 
 Demonstrates
 - Tool calling to fetch live weather

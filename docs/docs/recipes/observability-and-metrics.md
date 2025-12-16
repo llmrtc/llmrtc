@@ -2,7 +2,7 @@
 title: Observability & Metrics
 ---
 
-Based on `examples/observability`.
+Based on [`examples/observability`](https://github.com/llmrtc/llmrtc/tree/main/examples/observability).
 
 Shows
 - Hooking into transcripts, tool calls, and provider durations

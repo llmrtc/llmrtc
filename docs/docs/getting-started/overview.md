@@ -184,6 +184,8 @@ After completing the quickstarts, try the included examples:
 
 ### Vite Demo (Full-Featured)
 
+Source: [`examples/vite-demo`](https://github.com/llmrtc/llmrtc/tree/main/examples/vite-demo)
+
 ```bash
 cd examples/vite-demo
 npm install
@@ -193,6 +195,8 @@ npm run dev
 Features: Audio visualization, transcript display, tool calling UI
 
 ### Minimal Example (80 Lines)
+
+Source: [`examples/minimal`](https://github.com/llmrtc/llmrtc/tree/main/examples/minimal)
 
 ```bash
 cd examples/minimal

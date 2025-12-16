@@ -2,7 +2,7 @@
 title: Support Bot
 ---
 
-Based on `examples/support-bot`.
+Based on [`examples/support-bot`](https://github.com/llmrtc/llmrtc/tree/main/examples/support-bot).
 
 What it does
 - Uses documents or FAQs as context

@@ -157,4 +157,4 @@ client.on('ttsTrack', (stream) => attachAudioStream(stream));
   - Drop-off by stage.
   - Which transitions fire most often.
 
-For concrete code, see the **Support Bot** and **Weather Assistant** examples in `examples/support-bot` and `examples/weather-assistant`.
+For concrete code, see the **Support Bot** and **Weather Assistant** examples in [`examples/support-bot`](https://github.com/llmrtc/llmrtc/tree/main/examples/support-bot) and [`examples/weather-assistant`](https://github.com/llmrtc/llmrtc/tree/main/examples/weather-assistant).

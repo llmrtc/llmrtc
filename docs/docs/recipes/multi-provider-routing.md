@@ -2,7 +2,7 @@
 title: Multi-provider Routing
 ---
 
-Based on `examples/multi-provider`.
+Based on [`examples/multi-provider`](https://github.com/llmrtc/llmrtc/tree/main/examples/multi-provider).
 
 Idea
 - Route requests to different LLMs based on task (cost/latency/quality).

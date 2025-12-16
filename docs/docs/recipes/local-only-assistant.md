@@ -2,7 +2,7 @@
 title: Local-only Assistant
 ---
 
-Based on `examples/local-only` and `examples/local-assistant`.
+Based on [`examples/local-only`](https://github.com/llmrtc/llmrtc/tree/main/examples/local-only) and [`examples/local-assistant`](https://github.com/llmrtc/llmrtc/tree/main/examples/local-assistant).
 
 Stack
 - Ollama (LLM)
