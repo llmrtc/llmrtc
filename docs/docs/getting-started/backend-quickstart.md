@@ -18,7 +18,7 @@ flowchart LR
 
     subgraph "Providers"
         STT[OpenAI Whisper]
-        LLM[OpenAI GPT-4o]
+        LLM[OpenAI GPT-5.2]
         TTS[OpenAI TTS]
     end
 
@@ -105,7 +105,7 @@ import {
 // Create providers
 const llmProvider = new OpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY,
-  model: 'gpt-4o'
+  model: 'gpt-5.2-chat-latest'
 });
 
 const sttProvider = new OpenAIWhisperProvider({
@@ -209,7 +209,7 @@ Each provider handles one AI capability:
 // LLM: Generates text responses
 const llmProvider = new OpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY,
-  model: 'gpt-4o'  // or 'gpt-4o-mini' for lower cost
+  model: 'gpt-5.2-chat-latest'  // or 'gpt-5.2' for harder tasks; 'gpt-5.1-mini' for lower cost
 });
 
 // STT: Converts speech to text

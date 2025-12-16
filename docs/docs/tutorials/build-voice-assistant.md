@@ -822,7 +822,7 @@ You should see output like:
 
 **Solutions:**
 1. Ensure `streamingTTS: true` is set in server.ts
-2. Use faster models (Claude 3.5 Sonnet, GPT-4o-mini)
+2. Use faster models (Claude Haiku 4.5 or Sonnet 4.5, GPT-5.1-mini or gpt-5.2-chat-latest)
 3. Keep system prompt concise
 4. Check your internet connection
 
@@ -859,7 +859,7 @@ Let your assistant see! Check out [Video and Vision](../web-client/video-and-vis
 
 Mix and match providers for your use case:
 - [ElevenLabs](../providers/elevenlabs) for better voice quality
-- [OpenAI GPT-4o](../providers/openai) for the LLM
+- [OpenAI (GPT-5.2)](../providers/openai) for the LLM
 - [Local providers](../providers/local-ollama) for privacy
 
 ---

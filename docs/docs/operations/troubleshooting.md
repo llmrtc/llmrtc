@@ -148,7 +148,7 @@ hooks: {
 | Component | Solution |
 |-----------|----------|
 | STT slow | Use `whisper-1` model, ensure audio is short |
-| LLM slow (high TTFT) | Use `gpt-4o-mini` or `gemini-flash`; reduce system prompt |
+| LLM slow (high TTFT) | Use `gpt-5.1-mini`, `gpt-5.2-chat-latest`, or `gemini-flash`; reduce system prompt |
 | LLM slow (streaming) | Enable streaming (default) |
 | TTS slow | Enable `streamingTTS: true`; use shorter responses |
 | Network | Deploy backend closer to users; use edge regions |

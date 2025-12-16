@@ -235,12 +235,12 @@ createRoot(document.getElementById('root')!).render(
 
 ## Backend Changes
 
-No backend changes are required for vision. Claude (and GPT-4o) natively support vision - they can process images directly without a separate vision provider.
+No backend changes are required for vision. Claude (and GPT-5.2) natively support vision - they can process images directly without a separate vision provider.
 
 The server automatically forwards image attachments from the client to the LLM.
 
 :::info Vision-Capable LLM Required
-This tutorial uses Claude (`claude-sonnet-4-20250514`), which supports vision natively. If you switch to a different LLM, ensure it supports image inputs. Most modern models (GPT-4o, Gemini Pro Vision) do.
+This tutorial uses Claude (`claude-sonnet-4-5-20250929`), which supports vision natively. If you switch to a different LLM, ensure it supports image inputs. Most modern models (GPT-5.2, Gemini 2.5) do.
 
 **Local Vision Options:**
 - Use `OllamaLLMProvider` with a vision model like `gemma3` or `llava` - vision support is auto-detected
@@ -880,7 +880,7 @@ if (frame) {
 **Problem:** AI responds but doesn't mention what it sees.
 
 **Solutions:**
-1. Verify your LLM supports vision (Claude, GPT-4o do)
+1. Verify your LLM supports vision (Claude, GPT-5.2 do)
 2. Make sure camera/screen is active before speaking
 3. Try being explicit: "Look at my camera and describe what you see"
 

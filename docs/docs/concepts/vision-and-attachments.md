@@ -153,9 +153,9 @@ Not all LLM providers support vision. Here's the compatibility:
 
 | Provider | Vision Support | Notes |
 |----------|---------------|-------|
-| OpenAI | ✅ | GPT-4o, GPT-4 Vision |
-| Anthropic | ✅ | Claude 3 family |
-| Google Gemini | ✅ | Gemini Pro Vision, Gemini 1.5 |
+| OpenAI | ✅ | GPT-5.2 (vision) |
+| Anthropic | ✅ | Claude 4.5 family |
+| Google Gemini | ✅ | Gemini 2.5 Pro/Flash (vision) |
 | AWS Bedrock | ⚠️ | Depends on underlying model |
 | OpenRouter | ⚠️ | Depends on routed model |
 | Ollama | ✅ | Gemma3, LLaVA, Llama3.2-vision (auto-detected) |

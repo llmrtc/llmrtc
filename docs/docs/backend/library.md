@@ -16,7 +16,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new OpenAILLMProvider({
       apiKey: process.env.OPENAI_API_KEY!,
-      model: 'gpt-4o'
+      model: 'gpt-5.2-chat-latest'
     }),
     stt: new OpenAIWhisperProvider({
       apiKey: process.env.OPENAI_API_KEY!

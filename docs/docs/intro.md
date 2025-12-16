@@ -118,8 +118,8 @@ flowchart TB
 
 | Provider | LLM | STT | TTS | Vision |
 |----------|-----|-----|-----|--------|
-| OpenAI | GPT-4o, GPT-4 | Whisper | TTS-1, TTS-1-HD | GPT-4o |
-| Anthropic | Claude 3.5, Claude 3 | - | - | Claude 3 |
+| OpenAI | GPT-5.2, GPT-5.1 | Whisper | TTS-1, TTS-1-HD | GPT-5.2 |
+| Anthropic | Claude 4.5 (Sonnet/Haiku/Opus) | - | - | Claude 4.5 |
 | Google Gemini | Gemini 1.5, Gemini Pro | - | - | Gemini Vision |
 | AWS Bedrock | Claude, Llama, etc. | - | - | varies |
 | OpenRouter | 100+ models | - | - | varies |

@@ -62,8 +62,8 @@
 
 | Package | Provider | Features |
 |---------|----------|----------|
-| `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-4o, Whisper STT, TTS |
-| `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude 3.5 Sonnet/Opus, vision |
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-5.2 / GPT-5.1, Whisper STT, TTS |
+| `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude 4.5 (Sonnet/Haiku/Opus), vision |
 | `@llmrtc/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
 | `@llmrtc/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
 | `@llmrtc/llmrtc-provider-openrouter` | OpenRouter | Multi-model gateway |
@@ -495,7 +495,7 @@ import {
 // LLM
 const llm = new OpenAILLMProvider({
   apiKey: 'sk-...',
-  model: 'gpt-4o-mini', // or 'gpt-4o', 'gpt-4-turbo'
+  model: 'gpt-5.2-chat-latest', // or 'gpt-5.2' (deeper reasoning), 'gpt-5.1-mini' (lower cost)
   baseURL: 'https://api.openai.com/v1' // optional
 });
 
@@ -527,7 +527,7 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: 'sk-ant-...',
-  model: 'claude-sonnet-4-5-20250929', // or claude-3-opus, claude-3-haiku
+  model: 'claude-sonnet-4-5-20250929', // or claude-opus-4-5-20251101, claude-haiku-4-5-20251001
   maxTokens: 4096
 });
 
@@ -572,7 +572,7 @@ const llm = new BedrockLLMProvider({
     accessKeyId: '...',
     secretAccessKey: '...'
   },
-  model: 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+  model: 'anthropic.claude-sonnet-4-5-20250929-v1:0'
   // Also supports: amazon.nova-*, meta.llama3-*, mistral.*
 });
 ```
@@ -584,7 +584,7 @@ import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 const llm = new OpenRouterLLMProvider({
   apiKey: 'sk-or-...',
-  model: 'anthropic/claude-3.5-sonnet', // provider/model format
+  model: 'anthropic/claude-sonnet-4.5', // provider/model format
   siteUrl: 'https://myapp.com', // optional, for rankings
   siteName: 'My App'
 });
@@ -774,11 +774,11 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
 
 # Model overrides (optional)
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-5.2-chat-latest
 ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 GOOGLE_MODEL=gemini-2.5-flash
-BEDROCK_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0
-OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+BEDROCK_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
 OPENAI_TTS_VOICE=nova
 
 # Server config

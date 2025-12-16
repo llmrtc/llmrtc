@@ -3,7 +3,7 @@ title: Anthropic
 ---
 
 Supported
-- LLM: Claude 3.5 Sonnet/Opus, Claude 3 Haiku; vision capable
+- LLM: `claude-sonnet-4-5`, `claude-opus-4-5`, `claude-haiku-4-5` (vision capable)
 - Streaming supported
 
 Setup
