@@ -1,6 +1,21 @@
-# @metered/llmrtc
+<p align="center">
+  <img src="logo.svg" alt="LLMRTC Logo" width="128" height="128">
+</p>
 
-A TypeScript SDK for building real-time voice and vision AI applications. Combines LLM, Speech-to-Text, Text-to-Speech, and vision capabilities over WebRTC for low-latency conversational AI.
+<h1 align="center">@metered/llmrtc</h1>
+
+<p align="center">
+  A TypeScript SDK for building real-time voice and vision AI applications.<br>
+  Combines LLM, Speech-to-Text, Text-to-Speech, and vision capabilities over WebRTC for low-latency conversational AI.
+</p>
+
+<p align="center">
+  <a href="https://www.llmrtc.org">Documentation</a> •
+  <a href="https://www.llmrtc.org/getting-started/overview">Getting Started</a> •
+  <a href="https://www.llmrtc.org/recipes/minimal-voice-assistant">Examples</a>
+</p>
+
+---
 
 ## Features
 
@@ -119,9 +134,11 @@ For reliable WebRTC connections behind NAT/firewalls, configure a TURN server. W
 
 ### Metered TURN (Recommended)
 
-[Metered](https://www.metered.ca/) provides a global TURN server network with a free tier.
+For production deployments, you need a TURN server to ensure reliable WebRTC connections behind NAT/firewalls.
 
-1. Sign up at [metered.ca](https://www.metered.ca/)
+The [OpenRelay Project](https://www.metered.ca/tools/openrelay/) by Metered provides a free global TURN server network with **20GB of monthly TURN usage at no cost** — sufficient for most use cases.
+
+1. Sign up at [metered.ca/tools/openrelay](https://www.metered.ca/tools/openrelay/)
 2. Create a TURN credential to get your API key
 3. Configure via environment variables or code
 
@@ -1543,4 +1560,13 @@ npx llmrtc-backend
 
 ## License
 
-MIT
+Licensed under the **Apache License, Version 2.0**. See [`LICENSE`](LICENSE).
+
+## Notice
+
+See [`NOTICE`](NOTICE) for required attribution notices.
+
+## Trademarks
+
+“Metered”, “LLMRTC”, and related marks are trademarks of Next Path Software Consulting Inc., dba Metered.
+The Apache 2.0 license does **not** grant rights to use trademarks. See [`TRADEMARKS.md`](TRADEMARKS.md).

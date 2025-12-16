@@ -1,0 +1,26 @@
+{
+  "name": "LLMRTC Documentation",
+  "short_name": "LLMRTC",
+  "description": "Real-time Voice & Vision AI over WebRTC",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050B2A",
+  "theme_color": "#18E0FF",
+  "icons": [
+    {
+      "src": "/img/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

@@ -161,6 +161,26 @@ Run entirely locally with Ollama, Faster-Whisper, and Piper. No cloud dependenci
 
 ---
 
+## Production Deployment
+
+For production use, WebRTC requires a TURN server to ensure reliable connections for users behind NAT/firewalls.
+
+**Recommended:** The [OpenRelay Project](https://www.metered.ca/tools/openrelay/) by Metered provides a free global TURN server network with **20GB of monthly TURN usage at no cost** — sufficient for most applications.
+
+```typescript
+const server = new LLMRTCServer({
+  providers: { llm, stt, tts },
+  metered: {
+    appName: 'your-app-name',
+    apiKey: 'your-api-key'
+  }
+});
+```
+
+See [Networking & TURN](backend/networking-and-turn) for detailed configuration options.
+
+---
+
 ## Quick Example
 
 **Backend (Node.js):**

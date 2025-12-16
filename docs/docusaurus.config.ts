@@ -4,7 +4,7 @@ import type {Config} from '@docusaurus/types';
 const config: Config = {
   title: 'LLMRTC Docs',
   tagline: 'Build real-time voice & vision AI with WebRTC + LLMs',
-  url: 'https://metered.ai',
+  url: 'https://www.llmrtc.org',
   baseUrl: '/',
   onBrokenLinks: 'throw',
   scripts: [
@@ -14,11 +14,53 @@ const config: Config = {
       'data-website-id': '99f14850-1e2f-4cf8-a650-0bc9d6417e9c',
     },
   ],
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        href: '/img/apple-touch-icon.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: '/img/favicon-32x32.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '16x16',
+        href: '/img/favicon-16x16.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'manifest',
+        href: '/manifest.json',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'theme-color',
+        content: '#18E0FF',
+      },
+    },
+  ],
   markdown: {
     mermaid: true,
   },
   themes: ['@docusaurus/theme-mermaid'],
-  favicon: 'img/logo.svg',
+  favicon: 'img/favicon.svg',
   organizationName: 'metered',
   projectName: 'llmrtc',
   i18n: {
@@ -45,7 +87,7 @@ const config: Config = {
     ]
   ],
   themeConfig: {
-    image: 'img/logo.svg',
+    image: 'img/og-image.png',
     navbar: {
       title: 'LLMRTC',
       logo: {

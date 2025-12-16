@@ -1,0 +1,64 @@
+<svg
+  width="256"
+  height="256"
+  viewBox="0 0 64 64"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+>
+  <title>LLMRTC</title>
+
+  <defs>
+    <linearGradient id="favicon-wave" x1="16" y1="32" x2="48" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18E0FF" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="favicon-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle for favicon visibility -->
+  <circle cx="32" cy="32" r="31" fill="url(#favicon-bg)" />
+
+  <!-- ORBIT / CAMERA RING -->
+  <circle
+    cx="32"
+    cy="32"
+    r="22"
+    fill="none"
+    stroke="#E2E8F0"
+    stroke-width="2.2"
+    stroke-linecap="round"
+  />
+
+  <!-- ORBITING NODES -->
+  <circle cx="32" cy="10" r="2.2" fill="#18E0FF" />
+  <circle cx="51" cy="43" r="2.2" fill="#8B5CF6" />
+  <circle cx="13" cy="43" r="2.2" fill="#18E0FF" />
+
+  <!-- INNER LENS HINT -->
+  <circle
+    cx="32"
+    cy="32"
+    r="10"
+    fill="none"
+    stroke="#E2E8F0"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-dasharray="4 3"
+  />
+
+  <!-- LOW-LATENCY WAVEFORM -->
+  <path
+    d="M 16 32 C 18 28, 20 28, 22 32 S 26 36, 28 32 S 32 28, 34 32 S 38 36, 40 32 S 44 28, 48 32"
+    fill="none"
+    stroke="url(#favicon-wave)"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- PING DOT -->
+  <circle cx="48" cy="32" r="1.4" fill="#18E0FF" />
+</svg>
