@@ -240,7 +240,7 @@ No backend changes are required for vision. Claude (and GPT-5.2) natively suppor
 The server automatically forwards image attachments from the client to the LLM.
 
 :::info Vision-Capable LLM Required
-This tutorial uses Claude (`claude-sonnet-4-5-20250929`), which supports vision natively. If you switch to a different LLM, ensure it supports image inputs. Most modern models (GPT-5.2, Gemini 2.5) do.
+This tutorial uses Claude (`claude-sonnet-4-5`), which supports vision natively. If you switch to a different LLM, ensure it supports image inputs. Most modern models (GPT-5.2, Gemini 2.5) do.
 
 **Local Vision Options:**
 - Use `OllamaLLMProvider` with a vision model like `gemma3` or `llava` - vision support is auto-detected

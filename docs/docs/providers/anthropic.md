@@ -12,7 +12,7 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: process.env.ANTHROPIC_API_KEY,
-  model: 'claude-sonnet-4-5-20250929'
+  model: 'claude-sonnet-4-5'
 });
 ```
 
