@@ -26,6 +26,18 @@ Capabilities (high level)
 
 `*` Streaming support depends on the specific model/server; see individual provider pages for details.
 
+## Vision
+
+LLMRTC supports vision in two ways:
+
+1. **Native vision LLMs** (recommended): Use a vision-capable LLM provider (OpenAI, Anthropic, Gemini) and send image attachments. The backend forwards attachments to the LLM automatically.
+2. **Dedicated vision providers**: If your chosen LLM is text-only, configure a separate `VisionProvider` (for example, LLaVA) to describe images before sending text to the LLM.
+
+See:
+- Concepts → Vision & Attachments
+- Local Providers → LLaVA
+- Local Providers → Ollama (multimodal)
+
 See also:
 - OpenAI, Anthropic, Gemini, Bedrock, OpenRouter, LMStudio pages under **Providers**.
 - Local provider pages (Ollama, Faster-Whisper, Piper, LLaVA) for offline stacks.
