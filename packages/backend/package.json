@@ -25,6 +25,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "llmrtc-backend": "dist/cli.js"
   },
@@ -51,7 +56,8 @@
     "fluent-ffmpeg": "^2.1.2",
     "uuid": "^9.0.1",
     "ws": "^8.16.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@roamhq/wrtc": "^0.9.1"
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.24",

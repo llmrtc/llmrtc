@@ -4,9 +4,14 @@
     { "path": "./packages/core" },
     { "path": "./packages/backend" },
     { "path": "./packages/web-client" },
-    { "path": "./packages/providers/openai" },
+    { "path": "./packages/providers/anthropic" },
+    { "path": "./packages/providers/bedrock" },
     { "path": "./packages/providers/elevenlabs" },
+    { "path": "./packages/providers/google" },
+    { "path": "./packages/providers/lmstudio" },
     { "path": "./packages/providers/local" },
+    { "path": "./packages/providers/openai" },
+    { "path": "./packages/providers/openrouter" },
     { "path": "./examples/vite-demo" }
   ]
 }

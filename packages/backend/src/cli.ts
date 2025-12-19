@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CLI entry point for the LLMRTC backend
- * Usage: npx llmrtc-backend
+ * Usage: npx llmrtc-backend [--port PORT] [--host HOST]
  */
 
 import { config } from 'dotenv';
@@ -42,9 +42,57 @@ loadEnv();
 import { LLMRTCServer } from './server.js';
 import { createProvidersFromEnv } from './providers.js';
 
-// Configuration from environment
-const port = process.env.PORT ? Number(process.env.PORT) : 8787;
-const host = process.env.HOST ?? '127.0.0.1';
+// Parse CLI arguments
+function parseArgs(): { port?: number; host?: string } {
+  const args = process.argv.slice(2);
+  const result: { port?: number; host?: string } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--port' || arg === '-p') {
+      const value = args[++i];
+      if (value) {
+        const parsed = Number(value);
+        if (!isNaN(parsed)) result.port = parsed;
+      }
+    } else if (arg.startsWith('--port=')) {
+      const parsed = Number(arg.slice(7));
+      if (!isNaN(parsed)) result.port = parsed;
+    } else if (arg === '--host' || arg === '-h') {
+      const value = args[++i];
+      if (value && !value.startsWith('-')) result.host = value;
+    } else if (arg.startsWith('--host=')) {
+      result.host = arg.slice(7);
+    } else if (arg === '--help') {
+      console.log(`
+Usage: llmrtc-backend [options]
+
+Options:
+  --port, -p <port>  Server port (default: 8787, env: PORT)
+  --host <host>      Server host (default: 127.0.0.1, env: HOST)
+  --help             Show this help message
+
+Environment variables:
+  PORT               Server port
+  HOST               Server host
+  OPENAI_API_KEY     OpenAI API key for LLM/STT/TTS
+  ANTHROPIC_API_KEY  Anthropic API key
+  ELEVENLABS_API_KEY ElevenLabs API key for TTS
+  SYSTEM_PROMPT      System prompt for AI assistant
+  STREAMING_TTS      Enable streaming TTS (default: true)
+`);
+      process.exit(0);
+    }
+  }
+
+  return result;
+}
+
+const cliArgs = parseArgs();
+
+// Configuration from CLI args, then environment, then defaults
+const port = cliArgs.port ?? (process.env.PORT ? Number(process.env.PORT) : 8787);
+const host = cliArgs.host ?? process.env.HOST ?? '127.0.0.1';
 const streamingTTS = process.env.STREAMING_TTS !== 'false';
 const systemPrompt = process.env.SYSTEM_PROMPT ?? 'You are a helpful realtime voice assistant.';
 
