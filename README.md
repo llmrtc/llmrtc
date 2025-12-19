@@ -1534,6 +1534,35 @@ npx llmrtc-backend
 | `npm run format` | Check Prettier formatting |
 | `npm test` | Run tests |
 
+### Releasing
+
+This project uses [Changesets](https://github.com/changesets/changesets) for version management.
+
+**Initial Release (v1.0.0):**
+
+```bash
+npm run build
+npm publish --workspaces --access public
+```
+
+**Subsequent Releases:**
+
+```bash
+# 1. Create a changeset describing your changes
+npx changeset
+
+# 2. Version packages (bumps versions based on changesets)
+npx changeset version
+
+# 3. Build and publish
+npm run release
+```
+
+**Changeset Types:**
+- `patch` - Bug fixes, documentation updates
+- `minor` - New features, non-breaking changes
+- `major` - Breaking changes
+
 ---
 
 ## Troubleshooting
