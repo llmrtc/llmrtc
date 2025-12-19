@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-backend",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Node backend + signalling server for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -31,18 +31,19 @@
   "scripts": {
     "dev": "node --loader ts-node/esm src/cli.ts",
     "build": "tsc -b",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "file:../core",
-    "@llmrtc/llmrtc-provider-anthropic": "file:../providers/anthropic",
-    "@llmrtc/llmrtc-provider-bedrock": "file:../providers/bedrock",
-    "@llmrtc/llmrtc-provider-elevenlabs": "file:../providers/elevenlabs",
-    "@llmrtc/llmrtc-provider-google": "file:../providers/google",
-    "@llmrtc/llmrtc-provider-lmstudio": "file:../providers/lmstudio",
-    "@llmrtc/llmrtc-provider-local": "file:../providers/local",
-    "@llmrtc/llmrtc-provider-openai": "file:../providers/openai",
-    "@llmrtc/llmrtc-provider-openrouter": "file:../providers/openrouter",
+    "@llmrtc/llmrtc-core": "^1.0.0",
+    "@llmrtc/llmrtc-provider-anthropic": "^1.0.0",
+    "@llmrtc/llmrtc-provider-bedrock": "^1.0.0",
+    "@llmrtc/llmrtc-provider-elevenlabs": "^1.0.0",
+    "@llmrtc/llmrtc-provider-google": "^1.0.0",
+    "@llmrtc/llmrtc-provider-lmstudio": "^1.0.0",
+    "@llmrtc/llmrtc-provider-local": "^1.0.0",
+    "@llmrtc/llmrtc-provider-openai": "^1.0.0",
+    "@llmrtc/llmrtc-provider-openrouter": "^1.0.0",
     "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

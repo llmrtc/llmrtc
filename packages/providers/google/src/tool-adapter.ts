@@ -16,7 +16,7 @@ export function mapToolsToGemini(tools: ToolDefinition[]): GeminiTool[] {
     functionDeclarations: tools.map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters as FunctionDeclaration['parameters'],
+      parameters: tool.parameters as unknown as FunctionDeclaration['parameters'],
     })),
   }];
 }
@@ -141,7 +141,7 @@ export function createFunctionResponsePart(
   return {
     functionResponse: {
       name,
-      response: response as object,
+      response: response as Record<string, unknown>,
     },
   };
 }

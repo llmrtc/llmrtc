@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type { Content, Part } from '@google/genai';
+import type { Content, Part, GenerateContentConfig } from '@google/genai';
 import {
   LLMChunk,
   LLMProvider,
@@ -66,7 +66,7 @@ export class GeminiLLMProvider implements LLMProvider {
             functionCallingConfig: mapToolChoiceToGemini(request.toolChoice, request.tools),
           },
         }),
-      }
+      } as GenerateContentConfig
     });
 
     const candidate = response.candidates?.[0];
@@ -97,7 +97,7 @@ export class GeminiLLMProvider implements LLMProvider {
             functionCallingConfig: mapToolChoiceToGemini(request.toolChoice, request.tools),
           },
         }),
-      }
+      } as GenerateContentConfig
     });
 
     // Accumulate function calls across streaming chunks

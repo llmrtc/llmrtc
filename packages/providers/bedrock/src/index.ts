@@ -204,7 +204,7 @@ function convertMessages(messages: Message[]): {
         role: 'user',
         content: [{
           toolResult: createToolResultBlock(msg.toolCallId ?? '', msg.content),
-        }],
+        } as ContentBlock],
       });
       continue;
     }
@@ -220,7 +220,8 @@ function convertMessages(messages: Message[]): {
           toolUse: {
             toolUseId: tc.callId,
             name: tc.name,
-            input: tc.arguments,
+            // Cast to match SDK type expectations (actual API accepts Record<string, unknown>)
+            input: tc.arguments as ContentBlock['toolUse'] extends { input?: infer T } ? T : never,
           },
         });
       }

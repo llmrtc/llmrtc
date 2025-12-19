@@ -56,7 +56,7 @@ export function parseToolCallsFromAnthropic(
     type: string;
     id?: string;
     name?: string;
-    input?: Record<string, unknown>;
+    input?: unknown;
   }>
 ): ToolCallRequest[] | undefined {
   if (!content) return undefined;
@@ -67,7 +67,7 @@ export function parseToolCallsFromAnthropic(
   return toolUseBlocks.map(block => ({
     callId: block.id ?? '',
     name: block.name ?? '',
-    arguments: block.input ?? {},
+    arguments: (block.input as Record<string, unknown>) ?? {},
   }));
 }
 

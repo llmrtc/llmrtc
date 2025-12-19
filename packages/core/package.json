@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-core",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Core contracts and orchestrators for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -27,7 +27,8 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {},
   "devDependencies": {}

@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "@llmrtc/LLMRTC monorepo: realtime LLM + voice + vision SDK",
   "license": "Apache-2.0",
@@ -19,7 +19,10 @@
     "dev": "npm -w examples/vite-demo run dev",
     "dev:backend": "npm -w packages/backend run dev",
     "build": "tsc -b",
-    "clean": "rimraf node_modules **/node_modules dist .turbo .parcel-cache .vite"
+    "clean": "rimraf node_modules **/node_modules dist .turbo .parcel-cache .vite",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
   },
   "workspaces": [
     "packages/*",
@@ -48,6 +51,7 @@
     "url": "git+https://github.com/llmrtc/llmrtc.git"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "@eslint/js": "^9.13.0",
     "@playwright/test": "^1.57.0",
     "@types/cors": "^2.8.17",

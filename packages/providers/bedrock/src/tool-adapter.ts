@@ -10,9 +10,14 @@ import type {
   ToolConfiguration,
   ToolChoice as BedrockToolChoice,
   ContentBlock,
-  ToolResultContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
 import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+
+// Define our own type that matches the runtime API (SDK types may vary across versions)
+interface ToolResultBlock {
+  toolUseId: string;
+  content: Array<{ text: string }>;
+}
 
 /**
  * Convert provider-agnostic tool definitions to Bedrock format
@@ -174,7 +179,7 @@ export function mapStopReasonFromBedrock(
 export function createToolResultBlock(
   toolUseId: string,
   content: string
-): ToolResultContentBlock {
+): ToolResultBlock {
   return {
     toolUseId,
     content: [{ text: content }],
