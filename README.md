@@ -2,10 +2,10 @@
   <img src="logo.svg" alt="LLMRTC Logo" width="128" height="128">
 </p>
 
-<h1 align="center">@llmrtc/llmrtc</h1>
+<h1 align="center">llmrtc - Build Multi-modal Voice & Vision AI Agents easily</h1>
 
 <p align="center">
-  A TypeScript SDK for building real-time voice and vision AI applications.<br>
+  An Open Source TypeScript SDK for building real-time voice and vision AI Agents.<br>
   Combines LLM, Speech-to-Text, Text-to-Speech, and vision capabilities over WebRTC for low-latency conversational AI.
 </p>
 
