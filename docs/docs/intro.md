@@ -1,7 +1,9 @@
 ---
-title: LLMRTC - OpenSource TypeScript SDK to build multi-modal real-time voice and vision AI agents
+title: LLMRTC - OpenSource TypeScript SDK to build real-time voice and vision AI agents
 slug: /
 ---
+
+# LLMRTC Docs
 
 **LLMRTC** is an Open Source TypeScript SDK for building real-time voice and vision AI agents. It combines WebRTC for low-latency audio/video streaming with LLMs, speech-to-text, and text-to-speech—all through a unified, provider-agnostic API.
 

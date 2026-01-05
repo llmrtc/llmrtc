@@ -2,7 +2,11 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    'intro',
+    {
+      type: 'doc',
+      label: 'LLMRTC',
+      id: 'intro'
+    },
     {
       type: 'category',
       label: 'Getting Started',
