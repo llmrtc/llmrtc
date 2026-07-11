@@ -8,6 +8,18 @@ import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+// Enforce the supported runtime floor before doing anything else: older
+// Node versions fail in confusing ways deep inside providers (e.g. fetch
+// body shape differences that silently disable streaming TTS).
+const nodeMajor = Number(process.versions.node.split('.')[0]);
+if (nodeMajor < 20 && process.env.LLMRTC_SKIP_NODE_CHECK !== '1') {
+  console.error(
+    `[cli] Node ${process.versions.node} is not supported - LLMRTC requires Node 20 or newer.\n` +
+    '[cli] Upgrade Node, or set LLMRTC_SKIP_NODE_CHECK=1 to proceed anyway (unsupported).'
+  );
+  process.exit(1);
+}
+
 // Get the directory of this file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
