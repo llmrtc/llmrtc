@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-provider-local",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Local adapters (Ollama, LM Studio, Faster-Whisper, Piper, LLaVA) for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -23,7 +23,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -31,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "^1.0.0",
+    "@llmrtc/llmrtc-core": "^1.1.0",
     "node-fetch": "^3.3.2",
     "form-data": "^4.0.0"
   },

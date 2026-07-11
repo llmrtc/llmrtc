@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Core contracts and orchestrators for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -31,7 +31,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -b",

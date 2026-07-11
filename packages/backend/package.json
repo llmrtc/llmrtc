@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Node backend + signalling server for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -31,7 +31,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "bin": {
     "llmrtc-backend": "dist/cli.js"
@@ -43,15 +44,15 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "^1.0.0",
-    "@llmrtc/llmrtc-provider-anthropic": "^1.0.0",
-    "@llmrtc/llmrtc-provider-bedrock": "^1.0.0",
-    "@llmrtc/llmrtc-provider-elevenlabs": "^1.0.0",
-    "@llmrtc/llmrtc-provider-google": "^1.0.0",
-    "@llmrtc/llmrtc-provider-lmstudio": "^1.0.0",
-    "@llmrtc/llmrtc-provider-local": "^1.0.0",
-    "@llmrtc/llmrtc-provider-openai": "^1.0.0",
-    "@llmrtc/llmrtc-provider-openrouter": "^1.0.0",
+    "@llmrtc/llmrtc-core": "^1.1.0",
+    "@llmrtc/llmrtc-provider-anthropic": "^1.1.0",
+    "@llmrtc/llmrtc-provider-bedrock": "^1.1.0",
+    "@llmrtc/llmrtc-provider-elevenlabs": "^1.1.0",
+    "@llmrtc/llmrtc-provider-google": "^1.1.0",
+    "@llmrtc/llmrtc-provider-lmstudio": "^1.1.0",
+    "@llmrtc/llmrtc-provider-local": "^1.1.0",
+    "@llmrtc/llmrtc-provider-openai": "^1.1.0",
+    "@llmrtc/llmrtc-provider-openrouter": "^1.1.0",
     "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

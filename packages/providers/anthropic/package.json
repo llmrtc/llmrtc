@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-provider-anthropic",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Anthropic Claude LLM adapter for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -23,7 +23,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -31,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "^1.0.0",
+    "@llmrtc/llmrtc-core": "^1.1.0",
     "@anthropic-ai/sdk": "^0.71.0"
   },
   "exports": {
