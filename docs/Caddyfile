@@ -7,8 +7,9 @@ www.llmrtc.org {
     file_server
     encode gzip
 
-    # Handle SPA routing - serve index.html for non-existent paths
-    try_files {path} /index.html
+    # Resolve directory routes to their index.html, then fall back to the
+    # site shell for genuinely unknown paths
+    try_files {path} {path}/ /index.html
 
     # Security headers
     header {
