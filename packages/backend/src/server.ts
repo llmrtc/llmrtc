@@ -547,7 +547,11 @@ export class LLMRTCServer {
     const fatal = (error: Error) => {
       if (closed) return;
       console.error('[server] Realtime relay fatal error:', error.message);
-      this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), ws, peer);
+      // Errors the orchestrator already reported to the client (e.g.
+      // BUDGET_EXCEEDED) must not produce a second, generic error
+      if (error.name !== 'ReportedRelayError') {
+        this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), ws, peer);
+      }
       ws.close();
     };
 
@@ -577,20 +581,24 @@ export class LLMRTCServer {
       this.emit('disconnect', { id: connId });
     });
 
+    // Built ONCE and shared by the initial connect and session renewal,
+    // so a renewed session can never drift from the original config
+    const sessionConfig: RealtimeSpeechConfig = {
+      instructions: rs.instructions ?? this.config.systemPrompt,
+      voice: rs.voice,
+      inputTranscription: rs.inputTranscription,
+      transcriptionModel: rs.transcriptionModel,
+      turnDetection: rs.turnDetection,
+      maxOutputTokens: rs.maxOutputTokens,
+      // Bounded provider-side context is the relay-mode default cost lever
+      contextManagement: rs.contextManagement ?? { strategy: 'truncate', retentionRatio: 0.8 },
+      tools: rs.tools ?? this.config.toolRegistry?.getDefinitions()
+    };
+
     // Eager provider connect, concurrent with ICE resolution, so the
     // ready message carries the true session mode (RFC 0001 3)
     const connectPromise = rs.provider
-      .connect({
-        instructions: rs.instructions ?? this.config.systemPrompt,
-        voice: rs.voice,
-        inputTranscription: rs.inputTranscription,
-        transcriptionModel: rs.transcriptionModel,
-        turnDetection: rs.turnDetection,
-        maxOutputTokens: rs.maxOutputTokens,
-        // Bounded provider-side context is the relay-mode default cost lever
-        contextManagement: rs.contextManagement ?? { strategy: 'truncate', retentionRatio: 0.8 }
-        // tools deliberately omitted: tool bridging lands in M2
-      })
+      .connect(sessionConfig)
       .then((session) => ({ ok: true as const, session }))
       .catch((error: unknown) => ({
         ok: false as const,
@@ -614,6 +622,7 @@ export class LLMRTCServer {
               peer = this.createPeer(ws, await this.resolveIceServers());
               if (peer) {
                 this.setupRelayPeerHandlers(peer, connected.session, {
+                  sessionConfig,
                   setRelay: (r) => {
                     relay = r;
                   },
@@ -687,6 +696,7 @@ export class LLMRTCServer {
     peer: NativePeerServer,
     session: RealtimeSpeechSession,
     ctx: {
+      sessionConfig: RealtimeSpeechConfig;
       setRelay: (r: RealtimeRelayOrchestrator) => void;
       setAudioProcessor: (ap: AudioProcessor) => void;
       ws: WebSocket;
@@ -716,6 +726,7 @@ export class LLMRTCServer {
         console.error('[server] Relay playback error:', err.message)
       );
 
+      const rs = this.config.realtimeSpeech!;
       const relay = new RealtimeRelayOrchestrator({
         session,
         playback,
@@ -723,7 +734,11 @@ export class LLMRTCServer {
           send: (message) => this.sendBoth(message, ctx.ws, peer),
           onFatal: ctx.fatal
         },
-        metrics: this.metrics
+        metrics: this.metrics,
+        toolRegistry: this.config.toolRegistry,
+        provider: rs.provider,
+        sessionConfig: ctx.sessionConfig,
+        budget: rs.budget
       });
       ctx.setRelay(relay);
 

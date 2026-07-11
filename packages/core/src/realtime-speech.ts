@@ -72,8 +72,13 @@ export type RealtimeSpeechEvent =
   | { type: 'tool-call-cancelled'; callIds: string[] }
   /** Provider-driven barge-in (Gemini). */
   | { type: 'interrupted' }
-  /** Session nearing its lifetime cap: Gemini goAway, OpenAI expires_at timer. */
-  | { type: 'session-expiring'; inMs?: number }
+  /**
+   * Session nearing its lifetime cap. renewable: true means the adapter
+   * has no internal recovery (OpenAI expires_at) and the orchestrator
+   * should renew by reseeding; adapters that recover internally (Gemini
+   * resumption) emit it as informational only.
+   */
+  | { type: 'session-expiring'; inMs?: number; renewable?: boolean }
   | { type: 'error'; error: Error; recoverable: boolean };
 
 export interface RealtimeSpeechSession {

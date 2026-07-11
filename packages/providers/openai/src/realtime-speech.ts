@@ -167,7 +167,7 @@ class OpenAIRealtimeSpeechSession implements RealtimeSpeechSession {
           // expires_at is unix seconds; warn ahead of the 60-minute cap
           const inMs = expiresAt * 1000 - Date.now() - this.expiryLeadMs;
           this.expiryTimer = setTimeout(() => {
-            this.queue.push({ type: 'session-expiring', inMs: this.expiryLeadMs });
+            this.queue.push({ type: 'session-expiring', inMs: this.expiryLeadMs, renewable: true });
           }, Math.max(0, inMs));
           this.expiryTimer.unref?.();
         }

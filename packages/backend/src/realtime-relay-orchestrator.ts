@@ -16,9 +16,14 @@ import {
   Message,
   MetricsAdapter,
   NoopMetrics,
+  RealtimeSpeechConfig,
   RealtimeSpeechEvent,
+  RealtimeSpeechProvider,
   RealtimeSpeechSession,
-  ServerMessage
+  ServerMessage,
+  ToolExecutor,
+  ToolRegistry,
+  createErrorMessage
 } from '@llmrtc/llmrtc-core';
 import { RealtimePlayback } from './realtime-playback.js';
 
@@ -35,13 +40,31 @@ export interface RealtimeRelayOptions {
   callbacks: RealtimeRelayCallbacks;
   metrics?: MetricsAdapter;
   logger?: Pick<Console, 'warn' | 'error' | 'debug'>;
+  /** Tool bridging (M2): provider tool-calls run through this registry. */
+  toolRegistry?: ToolRegistry;
+  /** Session renewal (M2): used to reconnect when the provider session expires. */
+  provider?: RealtimeSpeechProvider;
+  /** The config the session was connected with (renewal reuses it). */
+  sessionConfig?: RealtimeSpeechConfig;
+  /** Spend guardrails (RFC 0001 §7). maxSessionMs defaults to 120 minutes. */
+  budget?: { maxSessionMs?: number; maxTokens?: number; onExceeded?: 'warn' | 'end-session' };
 }
 
 export class RealtimeRelayOrchestrator {
   /** Mirrored conversation history (final transcripts), RFC 0001 §3. */
   readonly history: Message[] = [];
 
-  private readonly session: RealtimeSpeechSession;
+  private session: RealtimeSpeechSession;
+  private readonly toolExecutor?: ToolExecutor;
+  private readonly provider?: RealtimeSpeechProvider;
+  private readonly sessionConfig?: RealtimeSpeechConfig;
+  private readonly budget: { maxSessionMs: number; maxTokens?: number; onExceeded: 'warn' | 'end-session' };
+  private totalTokens = 0;
+  private budgetTripped = false;
+  private readonly budgetWarned = new Set<string>();
+  private budgetTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly pendingTools = new Map<string, AbortController>();
+  private renewing = false;
   private readonly playback: RealtimePlayback;
   private readonly callbacks: RealtimeRelayCallbacks;
   private readonly metrics: MetricsAdapter;
@@ -59,6 +82,18 @@ export class RealtimeRelayOrchestrator {
     this.callbacks = options.callbacks;
     this.metrics = options.metrics ?? new NoopMetrics();
     this.logger = options.logger ?? console;
+    this.toolExecutor = options.toolRegistry ? new ToolExecutor(options.toolRegistry) : undefined;
+    this.provider = options.provider;
+    this.sessionConfig = options.sessionConfig;
+    this.budget = {
+      maxSessionMs: options.budget?.maxSessionMs ?? 120 * 60 * 1000,
+      maxTokens: options.budget?.maxTokens,
+      onExceeded: options.budget?.onExceeded ?? 'end-session'
+    };
+    if (this.budget.maxSessionMs > 0) {
+      this.budgetTimer = setTimeout(() => this.tripBudget('session duration'), this.budget.maxSessionMs);
+      this.budgetTimer.unref?.();
+    }
   }
 
   /** Begin consuming the provider control stream. Resolves on stream end. */
@@ -77,22 +112,34 @@ export class RealtimeRelayOrchestrator {
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    if (this.budgetTimer) clearTimeout(this.budgetTimer);
+    for (const controller of this.pendingTools.values()) controller.abort();
+    this.pendingTools.clear();
     await this.playback.stop();
     await this.session.close();
     await this.loopPromise.catch(() => {});
   }
 
   private async run(): Promise<void> {
+    // Bound to the session this loop was started for: a renewal swap
+    // must not let the OLD stream's death take down the NEW session
+    const session = this.session;
     try {
-      for await (const event of this.session.events()) {
+      for await (const event of session.events()) {
         if (this.stopped) break;
         this.handleEvent(event);
       }
     } catch (error) {
-      if (!this.stopped) {
-        const err = error instanceof Error ? error : new Error(String(error));
+      if (this.stopped) return;
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (session === this.session && !this.renewing) {
         this.logger.error('[realtime-relay] provider stream failed:', err.message);
         this.callbacks.onFatal(err);
+      } else {
+        // Superseded stream died (e.g. mid-renewal): clear turn state so
+        // the quiescence wait can complete instead of polling a dead flag
+        this.logger.warn('[realtime-relay] superseded provider stream ended:', err.message);
+        this.activeResponseId = null;
       }
     }
   }
@@ -135,6 +182,10 @@ export class RealtimeRelayOrchestrator {
           });
         }
         if (event.usage) {
+          this.totalTokens += event.usage.inputTokens + event.usage.outputTokens;
+          if (this.budget.maxTokens && this.totalTokens > this.budget.maxTokens && !this.budgetTripped) {
+            this.tripBudget('token budget');
+          }
           this.callbacks.send({ type: 'usage', ...event.usage });
           this.metrics.increment('realtime.tokens.input', event.usage.inputTokens);
           this.metrics.increment('realtime.tokens.output', event.usage.outputTokens);
@@ -178,16 +229,95 @@ export class RealtimeRelayOrchestrator {
         this.bargeIn('interrupted');
         break;
       case 'session-expiring':
-        // Renewal lands in M2; for now surface the signal to operators
-        this.logger.warn(
-          `[realtime-relay] provider session expiring${event.inMs ? ` in ~${Math.round(event.inMs / 1000)}s` : ''}`
-        );
         this.metrics.increment('realtime.session.expiring', 1);
+        // Only renew when the adapter has no internal recovery (RFC 0001
+        // §8: OpenAI reseeds; Gemini resumes inside its adapter)
+        if (event.renewable && this.provider && this.sessionConfig) {
+          this.logger.warn('[realtime-relay] provider session expiring; renewing from mirrored transcripts');
+          void this.renewSession();
+        } else if (event.renewable) {
+          this.logger.warn(
+            `[realtime-relay] provider session expiring${event.inMs ? ` in ~${Math.round(event.inMs / 1000)}s` : ''} and no renewal provider configured`
+          );
+        }
         break;
-      case 'tool-call':
+      case 'tool-call': {
+        if (!this.toolExecutor) {
+          this.logger.warn(`[realtime-relay] tool-call '${event.name}' received but no toolRegistry configured`);
+          this.session.sendToolResult(event.callId, { error: 'Tool execution is not configured' });
+          break;
+        }
+        this.callbacks.send({
+          type: 'tool-call-start',
+          name: event.name,
+          callId: event.callId,
+          arguments: event.arguments
+        });
+        const controller = new AbortController();
+        this.pendingTools.set(event.callId, controller);
+        // The call belongs to THIS session; after a renewal swap its
+        // call_id means nothing to the fresh session
+        const boundSession = this.session;
+        // Never block the control loop on tool execution
+        void this.toolExecutor
+          .executeSingle(
+            { name: event.name, callId: event.callId, arguments: event.arguments },
+            { abortSignal: controller.signal }
+          )
+          .then((result) => {
+            // A cancelled call already reported tool-call-end and must
+            // not send a late result to the provider
+            if (controller.signal.aborted) return;
+            this.pendingTools.delete(event.callId);
+            this.callbacks.send({
+              type: 'tool-call-end',
+              callId: event.callId,
+              result: result.result,
+              error: result.error,
+              durationMs: result.durationMs
+            });
+            if (!this.stopped && boundSession === this.session) {
+              boundSession.sendToolResult(
+                event.callId,
+                result.success ? result.result : { error: result.error }
+              );
+            }
+          })
+          .catch((err: unknown) => {
+            // A user tool returning something unserializable (circular,
+            // BigInt) must not become a process-wide unhandled rejection
+            this.pendingTools.delete(event.callId);
+            this.logger.error(
+              `[realtime-relay] tool '${event.name}' (${event.callId}) bridge failed:`,
+              err instanceof Error ? err.message : err
+            );
+            try {
+              if (!this.stopped && boundSession === this.session) {
+                boundSession.sendToolResult(event.callId, {
+                  error: 'Tool result could not be delivered'
+                });
+              }
+            } catch {
+              // session gone - nothing left to notify
+            }
+          });
+        break;
+      }
       case 'tool-call-cancelled':
-        // Tool bridging lands in M2
-        this.logger.warn(`[realtime-relay] ${event.type} received but tool bridging is not enabled yet`);
+        for (const callId of event.callIds) {
+          const controller = this.pendingTools.get(callId);
+          if (controller) {
+            controller.abort();
+            this.pendingTools.delete(callId);
+            this.callbacks.send({
+              type: 'tool-call-end',
+              callId,
+              result: null,
+              error: 'cancelled',
+              durationMs: 0
+            });
+          }
+        }
         break;
       case 'error':
         if (event.recoverable) {
@@ -199,6 +329,100 @@ export class RealtimeRelayOrchestrator {
         break;
       default:
         break;
+    }
+  }
+
+  /** Budget breach (RFC 0001 §7): warn or end the session. */
+  private tripBudget(what: string): void {
+    if (this.stopped) return;
+    if (this.budget.onExceeded === 'warn') {
+      if (!this.budgetWarned.has(what)) {
+        this.budgetWarned.add(what);
+        this.metrics.increment('realtime.budget.exceeded', 1);
+        this.logger.warn(`[realtime-relay] budget exceeded (${what}); continuing (onExceeded: 'warn')`);
+      }
+      return;
+    }
+    if (this.budgetTripped) return;
+    this.budgetTripped = true;
+    this.metrics.increment('realtime.budget.exceeded', 1);
+    this.logger.warn(`[realtime-relay] budget exceeded (${what}); ending session`);
+    this.session.cancelResponse(this.playback.playedMsForCurrentItem);
+    // Mirror bargeIn: in-flight deltas of the cancelled response must
+    // fail the staleness check instead of replaying into the new epoch
+    this.activeResponseId = null;
+    this.ttsStartedForResponse = null;
+    this.playback.clear();
+    this.callbacks.send({ type: 'tts-cancelled' });
+    this.callbacks.send(createErrorMessage('BUDGET_EXCEEDED', `Realtime session ${what} budget exceeded`));
+    // Marked as already-reported so the server's fatal handler doesn't
+    // send a second, generic error for the same condition
+    const err = new Error(`Budget exceeded: ${what}`);
+    err.name = 'ReportedRelayError';
+    this.callbacks.onFatal(err);
+  }
+
+  /**
+   * OpenAI 60-minute renewal (RFC 0001 §8): open a fresh session seeded
+   * from the mirrored transcripts, swap at a quiet moment, close the old.
+   */
+  private async renewSession(): Promise<void> {
+    if (this.renewing || this.stopped || !this.provider || !this.sessionConfig) return;
+    this.renewing = true;
+    try {
+      // Wait for quiescence: no active response, no pending tool calls
+      for (
+        let i = 0;
+        i < 100 && !this.stopped && (this.activeResponseId || this.pendingTools.size > 0);
+        i++
+      ) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (this.stopped) return;
+      if (this.activeResponseId || this.pendingTools.size > 0) {
+        // Forced swap: pending tool results can't be answered on the new
+        // session (unknown call_ids) and a half-played response would
+        // leave the client stuck in "speaking" - restore the invariants
+        this.logger.warn('[realtime-relay] renewing without quiescence; aborting in-flight work');
+        this.metrics.increment('realtime.session.renewal_forced', 1);
+        for (const controller of this.pendingTools.values()) controller.abort();
+        this.pendingTools.clear();
+        if (this.playback.audioFedThisEpoch) {
+          this.playback.clear();
+          this.callbacks.send({ type: 'tts-cancelled' });
+        }
+        this.activeResponseId = null;
+        this.ttsStartedForResponse = null;
+      }
+      // Transcript digest (RFC 0001 §8): last 40 turns, byte-capped. The
+      // digest goes into the instructions field, so user speech lands in
+      // the prompt verbatim - an accepted injection surface per the RFC,
+      // revisited in the security pass.
+      const digest = this.history
+        .slice(-40)
+        .map((m) => `${m.role}: ${m.content}`)
+        .join('\n')
+        .slice(-8000);
+      const instructions = `${this.sessionConfig.instructions ?? ''}\n\nThe conversation so far (continue it naturally; the session was renewed):\n${digest}`;
+      const fresh = await this.provider.connect({ ...this.sessionConfig, instructions });
+      if (this.stopped) {
+        // Client left while connecting: don't leak a live billable session
+        void fresh.close().catch(() => {});
+        return;
+      }
+      const old = this.session;
+      this.session = fresh;
+      // The old loop ends when the old session's stream closes; start
+      // consuming the fresh session
+      void old.close().catch(() => {});
+      this.loopPromise = this.run();
+      this.metrics.increment('realtime.session.renewals', 1);
+      this.logger.warn('[realtime-relay] provider session renewed from mirrored transcripts');
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.callbacks.onFatal(new Error(`Session renewal failed: ${err.message}`));
+    } finally {
+      this.renewing = false;
     }
   }
 
