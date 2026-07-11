@@ -112,6 +112,12 @@ export interface ReadyMessage extends BaseMessage {
   protocolVersion: number;
   /** ICE servers for WebRTC (STUN/TURN) - provided by server for client use */
   iceServers?: RTCIceServer[];
+  /**
+   * Session mode: 'pipeline' (STT-LLM-TTS, the default) or 'realtime'
+   * (native speech-to-speech relay). Absent from older servers, which
+   * are always pipeline.
+   */
+  mode?: 'pipeline' | 'realtime';
 }
 
 /**
@@ -156,6 +162,30 @@ export interface TranscriptMessage extends BaseMessage {
   text: string;
   /** Whether this is the final transcription */
   isFinal: boolean;
+}
+
+/**
+ * Assistant-side transcript (realtime relay mode): what the assistant
+ * is saying, streamed as it speaks.
+ */
+export interface AssistantTranscriptMessage extends BaseMessage {
+  type: 'assistant-transcript';
+  /** Transcript text */
+  text: string;
+  /** Whether this is the final transcript for the response */
+  isFinal: boolean;
+}
+
+/**
+ * Per-response token usage (realtime relay mode).
+ */
+export interface UsageMessage extends BaseMessage {
+  type: 'usage';
+  inputTokens: number;
+  outputTokens: number;
+  audioInputTokens?: number;
+  audioOutputTokens?: number;
+  cachedTokens?: number;
 }
 
 /**
@@ -330,6 +360,10 @@ export type ErrorCode =
   | 'TOOL_ERROR'
   | 'PLAYBOOK_ERROR'
 
+  // Realtime relay errors
+  | 'REALTIME_ERROR'
+  | 'BUDGET_EXCEEDED'
+
   // Generic errors
   | 'INTERNAL_ERROR'
   | 'RATE_LIMITED';
@@ -354,6 +388,8 @@ export type ServerMessage =
   | SignalMessage
   | ReconnectAckMessage
   | TranscriptMessage
+  | AssistantTranscriptMessage
+  | UsageMessage
   | LLMChunkMessage
   | LLMMessage
   | TTSStartMessage
@@ -393,6 +429,8 @@ const SERVER_MESSAGE_TYPES = new Set([
   'signal',
   'reconnect-ack',
   'transcript',
+  'assistant-transcript',
+  'usage',
   'llm-chunk',
   'llm',
   'tts-start',
@@ -455,8 +493,12 @@ export function parseMessage(json: string): ProtocolMessage | null {
 /**
  * Create a ready message
  */
-export function createReadyMessage(id: string, iceServers?: RTCIceServer[]): ReadyMessage {
-  return { type: 'ready', id, protocolVersion: PROTOCOL_VERSION, iceServers };
+export function createReadyMessage(
+  id: string,
+  iceServers?: RTCIceServer[],
+  mode?: 'pipeline' | 'realtime'
+): ReadyMessage {
+  return { type: 'ready', id, protocolVersion: PROTOCOL_VERSION, iceServers, ...(mode && { mode }) };
 }
 
 /**

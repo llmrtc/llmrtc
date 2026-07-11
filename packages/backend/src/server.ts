@@ -24,7 +24,10 @@ import {
   createErrorContext,
   callHookSafe,
   type Playbook,
-  ToolRegistry
+  ToolRegistry,
+  RealtimeSpeechConfig,
+  RealtimeSpeechProvider,
+  RealtimeSpeechSession
 } from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
@@ -34,6 +37,8 @@ import type {
 } from './turn-orchestrator.js';
 import { VoicePlaybookOrchestrator } from './voice-playbook-orchestrator.js';
 import { AudioProcessor, AudioFrameQueue } from './audio-processor.js';
+import { RealtimePlayback } from './realtime-playback.js';
+import { RealtimeRelayOrchestrator } from './realtime-relay-orchestrator.js';
 import {
   decodeToPCM,
   feedAudioToSource,
@@ -62,9 +67,39 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 // Types
 // =============================================================================
 
+/**
+ * Realtime relay configuration (RFC 0001, experimental).
+ */
+export interface RealtimeSpeechServerOptions extends RealtimeSpeechConfig {
+  /** The realtime speech provider (e.g. OpenAIRealtimeSpeechProvider). */
+  provider: RealtimeSpeechProvider;
+  /** Session spend guardrails (enforced from M2). */
+  budget?: {
+    /** Wall-clock cap (default 120 minutes; 0 disables). */
+    maxSessionMs?: number;
+    maxTokens?: number;
+    onExceeded?: 'warn' | 'end-session';
+  };
+  /** Keep the provider session alive across client reconnects (from M3). Default 30s; 0 disables. */
+  clientReconnectGraceMs?: number;
+}
+
 export interface LLMRTCServerConfig {
   /** Providers - users must provide pre-built provider instances */
-  providers: ConversationProviders;
+  /**
+   * Pipeline providers (STT/LLM/TTS). Required unless realtimeSpeech is
+   * configured, in which case they are optional (reserved for the
+   * pipeline fallback).
+   */
+  providers?: ConversationProviders;
+
+  /**
+   * EXPERIMENTAL (RFC 0001): realtime speech-to-speech relay mode.
+   * When set, sessions connect to the provider's native speech model
+   * instead of running the STT-LLM-TTS pipeline. streamingSTT and
+   * streamingTTS are ignored in this mode.
+   */
+  realtimeSpeech?: RealtimeSpeechServerOptions;
 
   /** Server port (default: 8787) */
   port?: number;
@@ -180,10 +215,10 @@ export interface LLMRTCServerEvents {
 
 export class LLMRTCServer {
   private readonly config: Required<
-    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered'>
+    Omit<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered' | 'providers' | 'realtimeSpeech'>
   > &
-    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered'>;
-  private readonly providers: ConversationProviders;
+    Pick<LLMRTCServerConfig, 'cors' | 'hooks' | 'metrics' | 'sentenceChunker' | 'playbook' | 'toolRegistry' | 'playbookOptions' | 'iceServers' | 'metered' | 'providers' | 'realtimeSpeech'>;
+  private readonly providers?: ConversationProviders;
   private readonly sessionManager: SessionManager;
   private readonly hooks: ServerHooks & OrchestratorHooks;
   private readonly metrics: MetricsAdapter;
@@ -212,6 +247,12 @@ export class LLMRTCServer {
     };
 
     this.providers = config.providers;
+    if (!config.providers && !config.realtimeSpeech) {
+      throw new Error('LLMRTCServer requires providers (pipeline mode) or realtimeSpeech (relay mode)');
+    }
+    if (config.realtimeSpeech && (config.streamingSTT || config.streamingTTS === false)) {
+      console.warn('[server] streamingSTT/streamingTTS are ignored in realtime relay mode');
+    }
     this.sessionManager = new SessionManager();
     this.hooks = config.hooks ?? {};
     this.metrics = config.metrics ?? new NoopMetrics();
@@ -305,13 +346,15 @@ export class LLMRTCServer {
    * Initialize providers and start the server
    */
   async start(): Promise<void> {
-    // Initialize providers
-    await Promise.all([
-      this.providers.llm.init?.(),
-      this.providers.stt.init?.(),
-      this.providers.tts.init?.(),
-      this.providers.vision?.init?.()
-    ]);
+    // Initialize providers (absent in relay-only configurations)
+    if (this.providers) {
+      await Promise.all([
+        this.providers.llm.init?.(),
+        this.providers.stt.init?.(),
+        this.providers.tts.init?.(),
+        this.providers.vision?.init?.()
+      ]);
+    }
 
     // Load WebRTC library
     await this.loadWebRTC();
@@ -393,6 +436,9 @@ export class LLMRTCServer {
    * Get the providers
    */
   getProviders(): ConversationProviders {
+    if (!this.providers) {
+      throw new Error('No pipeline providers configured (realtime relay mode)');
+    }
     return this.providers;
   }
 
@@ -413,12 +459,17 @@ export class LLMRTCServer {
   private logProviderConfig(): void {
     console.log('='.repeat(60));
     console.log('[server] Provider Configuration:');
-    console.log(`  LLM: ${this.providers.llm.name}`);
-    console.log(`  STT: ${this.providers.stt.name}`);
-    console.log(`  TTS: ${this.providers.tts.name}`);
-    console.log(`  Vision: ${this.providers.vision?.name ?? 'disabled'}`);
-    console.log(`  Streaming TTS: ${this.config.streamingTTS ? 'enabled' : 'disabled'}`);
-    console.log(`  Playbook Mode: ${this.config.playbook ? 'enabled' : 'disabled'}`);
+    if (this.config.realtimeSpeech) {
+      console.log(`  Mode: realtime relay (${this.config.realtimeSpeech.provider.name})`);
+      console.log(`  Pipeline fallback: ${this.providers ? 'configured' : 'none'}`);
+    } else {
+      console.log(`  LLM: ${this.providers!.llm.name}`);
+      console.log(`  STT: ${this.providers!.stt.name}`);
+      console.log(`  TTS: ${this.providers!.tts.name}`);
+      console.log(`  Vision: ${this.providers!.vision?.name ?? 'disabled'}`);
+      console.log(`  Streaming TTS: ${this.config.streamingTTS ? 'enabled' : 'disabled'}`);
+      console.log(`  Playbook Mode: ${this.config.playbook ? 'enabled' : 'disabled'}`);
+    }
     console.log('='.repeat(60));
   }
 
@@ -429,11 +480,15 @@ export class LLMRTCServer {
     sessionId: string,
     orchestratorHooks: OrchestratorHooks
   ): TurnOrchestrator {
+    if (!this.providers) {
+      throw new Error('Pipeline orchestrator requires providers');
+    }
+    const providers = this.providers;
     // Playbook mode: use VoicePlaybookOrchestrator
     if (this.config.playbook && this.config.toolRegistry) {
       console.log(`[server] Creating VoicePlaybookOrchestrator for session ${sessionId}`);
       return new VoicePlaybookOrchestrator({
-        providers: this.providers,
+        providers,
         playbook: this.config.playbook,
         toolRegistry: this.config.toolRegistry,
         systemPrompt: this.config.systemPrompt,
@@ -450,12 +505,248 @@ export class LLMRTCServer {
     return new ConversationOrchestrator({
       systemPrompt: this.config.systemPrompt,
       historyLimit: this.config.historyLimit,
-      providers: this.providers,
+      providers,
       streamingTTS: this.config.streamingTTS,
       sessionId,
       hooks: orchestratorHooks,
       metrics: this.metrics,
       sentenceChunker: this.config.sentenceChunker
+    });
+  }
+
+  /**
+   * Realtime relay mode (RFC 0001, experimental): connect the session
+   * to the provider's native speech-to-speech model and relay audio in
+   * both directions. Turn machinery (VAD turns, STT, LLM, TTS) is not
+   * used; the transport/protocol layer is shared with pipeline mode.
+   */
+  private async handleRelayConnection(ws: WebSocket): Promise<void> {
+    const rs = this.config.realtimeSpeech!;
+    const connId = uuidv4();
+    const connectionStartTime = Date.now();
+    console.log(`[server] New realtime relay connection: ${connId}`);
+    this.metrics.gauge(MetricNames.CONNECTIONS, this.wss!.clients.size);
+    await callHookSafe(this.hooks.onConnection, connId, connId);
+    this.emit('connection', { id: connId });
+
+    let peer: NativePeerServer | null = null;
+    let audioProcessor: AudioProcessor | null = null;
+    let relay: RealtimeRelayOrchestrator | null = null;
+    let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+
+    const resetHeartbeatTimeout = () => {
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = setTimeout(() => {
+        console.log(`[server] Client ${connId} heartbeat timeout`);
+        ws.close();
+      }, this.config.heartbeatTimeout);
+    };
+    resetHeartbeatTimeout();
+
+    const fatal = (error: Error) => {
+      if (closed) return;
+      console.error('[server] Realtime relay fatal error:', error.message);
+      this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), ws, peer);
+      ws.close();
+    };
+
+    // Registered BEFORE any await: a socket error in the connect window
+    // would otherwise crash the process, and a close would leak the
+    // provider session until its 60-minute cap
+    ws.on('error', (err) => {
+      console.error(`[server] Relay ws error (${connId}):`, err);
+    });
+    ws.on('close', async () => {
+      closed = true;
+      console.log(`[server] Relay connection closed: ${connId}`);
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+      await relay?.stop().catch(() => {});
+      if (!relay) {
+        // Close the provider session whether or not connect has settled
+        void connectPromise.then((c) => {
+          if (c.ok) void c.session.close().catch(() => {});
+        });
+      }
+      peer?.destroy();
+      audioProcessor?.destroy();
+      this.metrics.gauge(MetricNames.CONNECTIONS, this.wss?.clients.size ?? 0);
+      const sessionTiming = createTimingInfo(connectionStartTime, Date.now());
+      this.metrics.timing(MetricNames.SESSION_DURATION, sessionTiming.durationMs);
+      await callHookSafe(this.hooks.onDisconnect, connId, sessionTiming);
+      this.emit('disconnect', { id: connId });
+    });
+
+    // Eager provider connect, concurrent with ICE resolution, so the
+    // ready message carries the true session mode (RFC 0001 3)
+    const connectPromise = rs.provider
+      .connect({
+        instructions: rs.instructions ?? this.config.systemPrompt,
+        voice: rs.voice,
+        inputTranscription: rs.inputTranscription,
+        transcriptionModel: rs.transcriptionModel,
+        turnDetection: rs.turnDetection,
+        maxOutputTokens: rs.maxOutputTokens,
+        // Bounded provider-side context is the relay-mode default cost lever
+        contextManagement: rs.contextManagement ?? { strategy: 'truncate', retentionRatio: 0.8 }
+        // tools deliberately omitted: tool bridging lands in M2
+      })
+      .then((session) => ({ ok: true as const, session }))
+      .catch((error: unknown) => ({
+        ok: false as const,
+        error: error instanceof Error ? error : new Error(String(error))
+      }));
+
+    ws.on('message', async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        switch (msg.type) {
+          case 'ping':
+            ws.send(JSON.stringify({ type: 'pong', timestamp: msg.timestamp }));
+            resetHeartbeatTimeout();
+            break;
+
+          case 'offer':
+          case 'signal': {
+            const connected = await connectPromise;
+            if (!connected.ok) return;
+            if (!peer || peer.destroyed) {
+              peer = this.createPeer(ws, await this.resolveIceServers());
+              if (peer) {
+                this.setupRelayPeerHandlers(peer, connected.session, {
+                  setRelay: (r) => {
+                    relay = r;
+                  },
+                  setAudioProcessor: (ap) => {
+                    audioProcessor = ap;
+                  },
+                  ws,
+                  fatal
+                });
+              }
+            }
+            if (peer && msg.signal) {
+              const answer = await peer.handleOffer(msg.signal);
+              ws.send(JSON.stringify({ type: 'signal', signal: answer }));
+            }
+            break;
+          }
+
+          case 'audio':
+            // No buffered-turn path exists in relay mode (RFC 0001 3)
+            ws.send(
+              JSON.stringify(
+                createErrorMessage('INVALID_MESSAGE', 'Realtime relay mode requires the WebRTC audio track')
+              )
+            );
+            break;
+
+          case 'attachments':
+            // Vision input is a v1 non-goal in relay mode (RFC 0001)
+            console.warn('[server] Ignoring attachments in realtime relay mode');
+            break;
+
+          case 'reconnect':
+            // Provider-state recovery across client reconnects lands in
+            // M3 (grace window); until then be honest about recovery
+            ws.send(
+              JSON.stringify({
+                type: 'reconnect-ack',
+                success: false,
+                sessionId: connId,
+                historyRecovered: false
+              })
+            );
+            break;
+
+          default:
+            break;
+        }
+      } catch (err) {
+        console.error('[server] Relay message error:', err);
+      }
+    });
+
+    const [iceServers, connected] = await Promise.all([this.resolveIceServers(), connectPromise]);
+    if (closed) {
+      // Client left during the connect window; the close handler above
+      // already arranged provider-session cleanup
+      return;
+    }
+    if (!connected.ok) {
+      // Connect-time pipeline fallback lands in M5; fail loudly for now
+      console.error('[server] Realtime provider connect failed:', connected.error.message);
+      ws.send(JSON.stringify(createErrorMessage('REALTIME_ERROR', connected.error.message)));
+      ws.close();
+      return;
+    }
+    ws.send(JSON.stringify(createReadyMessage(connId, iceServers, 'realtime')));
+  }
+
+  private setupRelayPeerHandlers(
+    peer: NativePeerServer,
+    session: RealtimeSpeechSession,
+    ctx: {
+      setRelay: (r: RealtimeRelayOrchestrator) => void;
+      setAudioProcessor: (ap: AudioProcessor) => void;
+      ws: WebSocket;
+      fatal: (error: Error) => void;
+    }
+  ): void {
+    let audioWired = false;
+
+    peer.on('track', (track: MediaStreamTrack) => {
+      if (track.kind !== 'audio' || audioWired) return;
+      audioWired = true;
+
+      if (!peer.ttsAudioSource || !this.RTCAudioSource) {
+        ctx.fatal(new Error('Realtime relay mode requires native WebRTC audio support'));
+        return;
+      }
+
+      // Pass-through tee: every mic frame resampled to the provider's
+      // input rate; turn detection is provider-side (no VAD)
+      const audioProcessor = new AudioProcessor({
+        passThrough: true,
+        speechFrameSampleRate: session.inputSampleRate
+      });
+      ctx.setAudioProcessor(audioProcessor);
+
+      const playback = new RealtimePlayback(peer.ttsAudioSource, session.outputSampleRate, (err) =>
+        console.error('[server] Relay playback error:', err.message)
+      );
+
+      const relay = new RealtimeRelayOrchestrator({
+        session,
+        playback,
+        callbacks: {
+          send: (message) => this.sendBoth(message, ctx.ws, peer),
+          onFatal: ctx.fatal
+        },
+        metrics: this.metrics
+      });
+      ctx.setRelay(relay);
+
+      audioProcessor.on('speechFrame', (frame: Buffer) => {
+        relay.sendAudio(frame);
+      });
+      peer.on('audioData', async (data: AudioData) => {
+        await audioProcessor.processPCMData(data);
+      });
+
+      void relay.start();
+    });
+
+    // No re-offer support until the M3 reconnect grace window: a dead
+    // peer would otherwise leave the session mic-dead (or a naive rewire
+    // would attach a second consumer to the session's event queue)
+    peer.on('close', () => {
+      console.log('[server] Relay peer closed - ending connection');
+      ctx.ws.close();
+    });
+    peer.on('error', (err) => {
+      console.error('[server] Relay peer error:', err);
+      ctx.ws.close();
     });
   }
 
@@ -468,6 +759,10 @@ export class LLMRTCServer {
     this.wss.on('error', (err) => this.emit('error', err));
 
     this.wss.on('connection', async (ws) => {
+      if (this.config.realtimeSpeech) {
+        await this.handleRelayConnection(ws);
+        return;
+      }
       const connId = uuidv4();
       const connectionStartTime = Date.now();
       console.log(`[server] New connection: ${connId}`);
@@ -581,7 +876,7 @@ export class LLMRTCServer {
         | ((frames: AsyncIterable<Buffer>, attachments: VisionAttachment[]) => Promise<void>)
         | undefined => {
         if (!this.config.streamingSTT) return undefined;
-        if (typeof this.providers.stt.transcribeStream !== 'function') return undefined;
+        if (typeof this.providers?.stt.transcribeStream !== 'function') return undefined;
         if (typeof session.orchestrator.runTurnStreamFromAudioStream !== 'function') return undefined;
         return (frames, attachments) => startTurnFromSource(frames, attachments);
       };
@@ -655,7 +950,7 @@ export class LLMRTCServer {
                       ? {
                           emitSpeechFrames: true,
                           speechFrameSampleRate:
-                            this.providers.stt.streamingInputSampleRate ?? 16000
+                            this.providers?.stt.streamingInputSampleRate ?? 16000
                         }
                       : undefined
                   );
@@ -706,7 +1001,7 @@ export class LLMRTCServer {
 
       // Resolve ICE servers (TTL-cached) and tell the client we're ready
       const iceServers = await this.resolveIceServers();
-      ws.send(JSON.stringify(createReadyMessage(connId, iceServers)));
+      ws.send(JSON.stringify(createReadyMessage(connId, iceServers, 'pipeline')));
 
       ws.on('close', async () => {
         console.log(`[server] Connection closed: ${connId}`);

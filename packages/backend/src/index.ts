@@ -27,6 +27,9 @@
 // =============================================================================
 
 export { LLMRTCServer } from './server.js';
+export type { RealtimeSpeechServerOptions } from './server.js';
+export { RealtimeRelayOrchestrator } from './realtime-relay-orchestrator.js';
+export { RealtimePlayback } from './realtime-playback.js';
 export type { LLMRTCServerConfig, LLMRTCServerEvents } from './server.js';
 
 // =============================================================================
@@ -53,6 +56,7 @@ export {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
   OpenAIRealtimeSTTProvider,
+  OpenAIRealtimeSpeechProvider,
   OpenAITTSProvider
 } from '@llmrtc/llmrtc-provider-openai';
 

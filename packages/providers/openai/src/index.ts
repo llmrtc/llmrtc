@@ -714,3 +714,8 @@ function wavToRealtimePCM(audio: Buffer, targetRate: number): Buffer {
   }
   return out;
 }
+
+export {
+  OpenAIRealtimeSpeechProvider,
+  type OpenAIRealtimeSpeechOptions
+} from './realtime-speech.js';

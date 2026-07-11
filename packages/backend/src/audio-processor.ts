@@ -21,6 +21,12 @@ export interface AudioProcessorOptions {
   speechFrameSampleRate?: number;
   /** How much pre-speech audio to retain and flush on speechStart (default: 300ms) */
   preSpeechBufferMs?: number;
+  /**
+   * Realtime relay mode: emit every resampled frame as 'speechFrame'
+   * regardless of VAD state (turn detection is provider-side). Implies
+   * emitSpeechFrames; the pre-speech buffer is unused. Default: false.
+   */
+  passThrough?: boolean;
 }
 
 export class AudioProcessor extends EventEmitter {
@@ -40,9 +46,12 @@ export class AudioProcessor extends EventEmitter {
   private preSpeechFrames: Buffer[] = [];
   private preSpeechBytes = 0;
 
+  private readonly passThrough: boolean;
+
   constructor(options: AudioProcessorOptions = {}) {
     super();
-    this.emitSpeechFrames = options.emitSpeechFrames ?? false;
+    this.passThrough = options.passThrough ?? false;
+    this.emitSpeechFrames = this.passThrough || (options.emitSpeechFrames ?? false);
     this.speechFrameSampleRate = options.speechFrameSampleRate ?? 16000;
     const preSpeechMs = options.preSpeechBufferMs ?? 300;
     this.preSpeechBufferMaxBytes = Math.ceil((this.speechFrameSampleRate * 2 * preSpeechMs) / 1000);
@@ -136,7 +145,7 @@ export class AudioProcessor extends EventEmitter {
         data.channelCount || 1,
         this.speechFrameSampleRate
       );
-      if (this.isSpeaking) {
+      if (this.passThrough || this.isSpeaking) {
         this.emit('speechFrame', frame);
       } else {
         this.preSpeechFrames.push(frame);
@@ -147,12 +156,11 @@ export class AudioProcessor extends EventEmitter {
       }
     }
 
-    // Convert Int16 to Float32 for VAD
-    const float32Samples = this.int16ToFloat32(data.samples);
-
-    // Process through VAD - it handles speech detection and audio buffering via callbacks
-    // The VAD internally buffers audio and provides it in onSpeechEnd callback
+    // Process through VAD - it handles speech detection and audio buffering
+    // via callbacks. Skipped entirely (incl. the Float32 conversion) in
+    // pass-through/relay mode where the VAD is never initialized.
     if (this.vad && this.vadInitialized) {
+      const float32Samples = this.int16ToFloat32(data.samples);
       try {
         await this.vad.processAudio(float32Samples);
       } catch (err) {
