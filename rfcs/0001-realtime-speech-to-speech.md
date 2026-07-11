@@ -565,12 +565,14 @@ Renewal count and timing surface as metrics
 
 - **Connect-time fallback**: if `provider.connect()` fails and pipeline
   `providers` are configured, the session starts in pipeline mode
-  (`ready.mode: 'pipeline'`, logged + hook). Mid-session fatal errors
-  with pipeline configured: the server ends the provider session,
-  emits `mode-changed {mode: 'pipeline'}`, and seeds the pipeline
-  orchestrator's history from mirrored transcripts (§3). Without
-  pipeline providers: protocol `error` + session end; the client's
-  existing reconnect logic then re-establishes a session.
+  (`ready.mode: 'pipeline'`, logged). Mid-session fatal errors with
+  pipeline configured: the server emits `mode-changed {mode:
+  'pipeline'}` and ends the connection; the client's auto-reconnect
+  then lands on the connect-time fallback (v1 behavior — an in-place
+  takeover that seeds a pipeline orchestrator from mirrored transcripts
+  without a reconnect is noted as future work). Without pipeline
+  providers: protocol `error` + session end; the client's existing
+  reconnect logic then re-establishes a session.
 - **Client reconnects** (mobile networks; the shipped client
   auto-reconnects): the provider session is kept alive for
   `clientReconnectGraceMs` (default 30s) after client ws/peer loss —
@@ -628,7 +630,7 @@ Renewal count and timing surface as metrics
   characterization.
 - **Orchestrator unit tests** with a fake `RealtimeSpeechSession`:
   playback-queue epochs, budget enforcement sequences, renewal seams,
-  client-reconnect grace, fallback seeding.
+  client-reconnect grace, fallback (reconnect-driven, v1).
 - **Soak**: one hour-long session (crossing an OpenAI renewal) under
   synthetic conversation load, asserting no leaks (sockets, timers,
   queue growth).
@@ -641,7 +643,7 @@ Renewal count and timing surface as metrics
 | M2 | Tool bridging via ToolRegistry/ToolExecutor; usage events + metrics; cost budget + end-session sequence; OpenAI 60-minute renewal. |
 | M3 | Playbook stage mapping (native silent-tool flow); protocol/web-client extensions incl. `mode-changed`; client-reconnect grace; docs + tutorial. |
 | M4 | `GeminiLiveSpeechProvider` (resumption reconnection with input buffering, compression, system-text instruction updates); cross-provider conformance suite; Gemini live probe incl. forced resumption. |
-| M5 | Hardening: pipeline fallback seeding, soak test (renewal crossing), scale documentation, cost documentation (cached/uncached). |
+| M5 | Hardening: connect-time pipeline fallback + reconnect-driven mid-session degradation, soak test (renewal crossing), scale documentation, cost documentation (cached/uncached). |
 
 Each milestone lands behind the same regression gates as Phases 1–5
 (unit + live integration + review) and is independently shippable.

@@ -729,3 +729,159 @@ describe('RealtimeRelayOrchestrator M3: playbooks', () => {
     await done;
   });
 });
+
+describe('RealtimeRelayOrchestrator M5: renewal-crossing soak (fake provider)', () => {
+  it('survives repeated renewals with tool traffic and leaves no dangling state', async () => {
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool(
+        { name: 'echo', description: 'echo', parameters: { type: 'object', properties: {} } },
+        async () => ({ ok: true })
+      )
+    );
+    const sessions: FakeSession[] = [new FakeSession()];
+    const provider = {
+      name: 'fake',
+      connect: vi.fn(async () => {
+        const fresh = new FakeSession();
+        sessions.push(fresh);
+        return fresh;
+      })
+    };
+    const source = makeFakeSource();
+    const playback = new RealtimePlayback(source, 24000);
+    const sent: ServerMessage[] = [];
+    const fatals: Error[] = [];
+    const relay = new RealtimeRelayOrchestrator({
+      session: sessions[0],
+      playback,
+      callbacks: { send: (m) => sent.push(m), onFatal: (e) => fatals.push(e) },
+      logger: { warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      toolRegistry: registry,
+      provider,
+      sessionConfig: { instructions: 'soak' }
+    });
+    const done = relay.start();
+
+    // Three renewal cycles, each with a full turn + tool call
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const active = sessions[sessions.length - 1];
+      active.queue.push({ type: 'user-transcript', text: `question ${cycle}`, isFinal: true });
+      active.queue.push({ type: 'response-started', responseId: `r${cycle}` });
+      active.queue.push({ type: 'audio', pcm: pcm10ms(), sampleRate: 24000, responseId: `r${cycle}`, itemId: 'i' });
+      active.queue.push({ type: 'tool-call', callId: `c${cycle}`, name: 'echo', arguments: {} });
+      active.queue.push({
+        type: 'response-done',
+        responseId: `r${cycle}`,
+        usage: { inputTokens: 10, outputTokens: 10 }
+      });
+      await vi.waitFor(() => expect(active.toolResults).toHaveLength(1));
+      active.queue.push({ type: 'session-expiring', renewable: true });
+      await vi.waitFor(() => expect(provider.connect).toHaveBeenCalledTimes(cycle + 1));
+      await vi.waitFor(() => expect(sessions[sessions.length - 2].closed).toBe(true));
+    }
+
+    expect(provider.connect).toHaveBeenCalledTimes(3);
+    expect(sessions).toHaveLength(4);
+    expect(fatals).toHaveLength(0);
+    expect(sent.filter((m) => m.type === 'error')).toHaveLength(0);
+    // All superseded sessions are closed; only the newest lives
+    for (const s of sessions.slice(0, -1)) {
+      expect(s.closed).toBe(true);
+    }
+    // History accumulated across renewals; tool results all delivered
+    expect(relay.history.filter((m) => m.role === 'user')).toHaveLength(3);
+    const allToolResults = sessions.flatMap((s) => s.toolResults);
+    expect(allToolResults).toHaveLength(3);
+
+    await relay.stop();
+    await done;
+    // No dangling tool controllers or playback activity after stop
+    expect(sessions[sessions.length - 1].closed).toBe(true);
+  });
+});
+
+describe('LLMRTCServer relay fallback (M5)', () => {
+  const failingProvider = {
+    name: 'down',
+    connect: async () => {
+      throw new Error('provider unreachable');
+    }
+  };
+
+  function pipelineProviders() {
+    return {
+      llm: {
+        name: 'fake-llm',
+        async complete() {
+          return { fullText: 'ok' };
+        }
+      },
+      stt: {
+        name: 'fake-stt',
+        async transcribe() {
+          return { text: 'hi', isFinal: true };
+        }
+      },
+      tts: {
+        name: 'fake-tts',
+        async speak() {
+          return { audio: Buffer.from('a'), format: 'mp3' as const };
+        }
+      }
+    };
+  }
+
+  async function startServer(config: Record<string, unknown>) {
+    const { LLMRTCServer } = await import('../src/server.js');
+    const server = new LLMRTCServer({ port: 0, host: '127.0.0.1', ...config } as never);
+    await server.start();
+    const address = server.getServer()!.address() as { port: number };
+    return { server, port: address.port };
+  }
+
+  async function connectAndCollect(port: number, until: (msgs: Array<Record<string, unknown>>) => boolean) {
+    const { WebSocket } = await import('ws');
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const messages: Array<Record<string, unknown>> = [];
+    ws.on('message', (raw) => messages.push(JSON.parse(raw.toString())));
+    const deadline = Date.now() + 5000;
+    while (!until(messages) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return { ws, messages };
+  }
+
+  it('falls back to pipeline mode when the provider is unreachable', async () => {
+    const { server, port } = await startServer({
+      realtimeSpeech: { provider: failingProvider },
+      providers: pipelineProviders()
+    });
+    try {
+      const { ws, messages } = await connectAndCollect(port, (m) => m.some((x) => x.type === 'ready'));
+      const readies = messages.filter((m) => m.type === 'ready');
+      expect(readies).toHaveLength(1);
+      expect(readies[0].mode).toBe('pipeline');
+      expect(messages.filter((m) => m.type === 'error')).toHaveLength(0);
+      ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('fails loudly when the provider is unreachable and no pipeline exists', async () => {
+    const { server, port } = await startServer({
+      realtimeSpeech: { provider: failingProvider }
+    });
+    try {
+      const { ws, messages } = await connectAndCollect(port, (m) => m.some((x) => x.type === 'error'));
+      const errors = messages.filter((m) => m.type === 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].code).toBe('REALTIME_ERROR');
+      expect(messages.filter((m) => m.type === 'ready')).toHaveLength(0);
+      ws.close();
+    } finally {
+      await server.stop();
+    }
+  });
+});

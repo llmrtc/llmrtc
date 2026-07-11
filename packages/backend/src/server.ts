@@ -540,7 +540,7 @@ export class LLMRTCServer {
    * both directions. Turn machinery (VAD turns, STT, LLM, TTS) is not
    * used; the transport/protocol layer is shared with pipeline mode.
    */
-  private async handleRelayConnection(ws: WebSocket): Promise<void> {
+  private async handleRelayConnection(ws: WebSocket): Promise<boolean> {
     const rs = this.config.realtimeSpeech!;
     const connId = uuidv4();
     const connectionStartTime = Date.now();
@@ -592,6 +592,12 @@ export class LLMRTCServer {
       // BUDGET_EXCEEDED) must not produce a second, generic error
       if (error.name !== 'ReportedRelayError') {
         this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), io.ws, io.peer);
+      }
+      if (this.providers && error.name !== 'ReportedRelayError' && error.name !== 'RelayCapabilityError') {
+        // Mid-session degradation (RFC 0001 §9): tell the client the
+        // next session will run pipeline mode; its auto-reconnect lands
+        // on the connect-time fallback above
+        this.sendBoth({ type: 'mode-changed', mode: 'pipeline' }, io.ws, io.peer);
       }
       io.ws.close();
     };
@@ -827,21 +833,38 @@ export class LLMRTCServer {
     if (adopted) {
       // Reconnected client already owns a live session; its redundant
       // eager connect (even a failed one) is irrelevant
-      return;
+      return true;
     }
     if (closed) {
       // Client left during the connect window; the close handler above
       // already arranged provider-session cleanup
-      return;
+      return true;
     }
     if (!connected.ok) {
-      // Connect-time pipeline fallback lands in M5; fail loudly for now
       console.error('[server] Realtime provider connect failed:', connected.error.message);
+      if (this.providers) {
+        // Hand the connection to the pipeline path (RFC 0001 §9): drop
+        // every relay handler registered above so the pipeline path can
+        // wire its own without duplicates
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+        ws.removeAllListeners('message');
+        ws.removeAllListeners('close');
+        // The relay 'error' listener stays: a socket error in the gap
+        // before the pipeline path registers its own would otherwise
+        // crash the process (worst case now is a duplicate log line).
+        // Pair this connection id's lifecycle before handing off - the
+        // pipeline path announces its own id.
+        await callHookSafe(this.hooks.onDisconnect, connId, createTimingInfo(connectionStartTime, Date.now()));
+        this.emit('disconnect', { id: connId });
+        console.log(`[server] Relay ${connId} handing off to pipeline mode (new connection id follows)`);
+        return false;
+      }
       ws.send(JSON.stringify(createErrorMessage('REALTIME_ERROR', connected.error.message)));
       ws.close();
-      return;
+      return true;
     }
     ws.send(JSON.stringify(createReadyMessage(connId, iceServers, 'realtime')));
+    return true;
   }
 
   /** Wire a reconnecting client's fresh peer to an adopted relay session. */
@@ -904,7 +927,11 @@ export class LLMRTCServer {
       audioWired = true;
 
       if (!peer.ttsAudioSource || !this.RTCAudioSource) {
-        ctx.fatal(new Error('Realtime relay mode requires native WebRTC audio support'));
+        const err = new Error('Realtime relay mode requires native WebRTC audio support');
+        // Reconnecting cannot fix a capability gap - suppress the
+        // mode-changed fallback hint for this error class
+        err.name = 'RelayCapabilityError';
+        ctx.fatal(err);
         return;
       }
 
@@ -973,8 +1000,11 @@ export class LLMRTCServer {
 
     this.wss.on('connection', async (ws) => {
       if (this.config.realtimeSpeech) {
-        await this.handleRelayConnection(ws);
-        return;
+        const handled = await this.handleRelayConnection(ws);
+        if (handled) return;
+        // Connect-time pipeline fallback (RFC 0001 §9): the provider was
+        // unreachable and pipeline providers are configured
+        console.warn('[server] Realtime provider unavailable - falling back to pipeline mode');
       }
       const connId = uuidv4();
       const connectionStartTime = Date.now();

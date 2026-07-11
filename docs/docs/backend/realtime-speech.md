@@ -97,6 +97,27 @@ in pipeline mode.
   (`clientReconnectGraceMs`) to reconnect to the same live conversation
   before the provider session closes.
 
+## Fallback behavior
+
+With pipeline `providers` configured alongside `realtimeSpeech`, a
+session whose provider connection fails at setup starts in pipeline
+mode instead (`ready.mode: 'pipeline'`). A mid-session provider failure
+sends `mode-changed {mode: 'pipeline'}` (advisory) and ends the
+connection; the client's auto-reconnect lands on the fallback **if the
+provider is still unreachable** — otherwise the session resumes in
+realtime mode. `ready.mode` is authoritative. Without pipeline
+providers, failures surface as `REALTIME_ERROR`.
+
+## Scale notes
+
+Each relay session holds one provider WebSocket, streams ~43–64KB/s of
+base64 audio upstream continuously (16kHz Gemini / 24kHz OpenAI), and
+runs a 100Hz playback pacer. Provider-side, audio tokens-per-minute
+limits — not concurrent-session caps — are the binding constraint. New
+sessions scale any-node; reconnect recovery (the grace window, session
+history) is node-local, so keep load-balancer affinity at least as long
+as `clientReconnectGraceMs` if seamless reconnects matter.
+
 ## Cost warning
 
 Realtime audio pricing is roughly an order of magnitude above an
