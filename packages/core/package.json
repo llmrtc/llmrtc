@@ -9,9 +9,11 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "repository": {
     "type": "git",
@@ -28,7 +30,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -36,5 +39,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  }
 }
