@@ -139,7 +139,7 @@ export class ConnectionStateMachine extends EventEmitter<ConnectionStateMachineE
         ConnectionState.FAILED
       ],
       [ConnectionState.FAILED]: [ConnectionState.CONNECTING], // Allow retry from failed
-      [ConnectionState.CLOSED]: [] // No transitions from closed
+      [ConnectionState.CLOSED]: [ConnectionState.CONNECTING] // Allow restart after close()
     };
 
     return validTransitions[from]?.includes(to) ?? false;
@@ -180,6 +180,13 @@ export class ConnectionStateMachine extends EventEmitter<ConnectionStateMachineE
    */
   reset(): void {
     this._state = ConnectionState.DISCONNECTED;
+    this._retryCount = 0;
+  }
+
+  /**
+   * Reset only the retry counter (e.g. when the user restarts the client).
+   */
+  resetRetries(): void {
     this._retryCount = 0;
   }
 
