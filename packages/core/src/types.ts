@@ -105,6 +105,11 @@ export interface TTSResult {
 export interface TTSProvider {
   name: string;
   init?(): Promise<void> | void;
+  /**
+   * Sample rate (Hz) of PCM audio produced by speakStream/speak with
+   * format 'pcm'. Consumers assume 24000 when not declared.
+   */
+  pcmSampleRate?: number;
   speak(text: string, config?: TTSConfig): Promise<TTSResult>;
   speakStream?(text: string, config?: TTSConfig): AsyncIterable<Buffer>;
 }

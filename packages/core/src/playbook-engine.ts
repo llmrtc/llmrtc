@@ -29,6 +29,12 @@ export interface PlaybookEngineOptions {
     warn: (msg: string, ...args: unknown[]) => void;
     error: (msg: string, ...args: unknown[]) => void;
   };
+  /**
+   * Called when a transition with clearHistory is executed. The engine does
+   * not own the conversation history, so the owner (typically an
+   * orchestrator) supplies the actual clearing behavior.
+   */
+  onClearHistory?: () => void;
 }
 
 /**
@@ -326,9 +332,11 @@ export class PlaybookEngine {
     // Emit exit event
     await this.emit({ type: 'stage_exit', stage: fromStage, nextStage: toStage });
 
-    // Clear history if requested
+    // Clear conversation history if requested. The accumulated
+    // conversationContext is intentionally preserved - it carries
+    // cross-stage state, not messages.
     if (transition.action.clearHistory) {
-      this.state.conversationContext = {};
+      this.options.onClearHistory?.();
     }
 
     // Record transition in history

@@ -311,8 +311,14 @@ describe('PlaybookEngine', () => {
       expect(events).toContain('stage_enter');
     });
 
-    it('should clear history when requested', async () => {
-      engine.updateContext({ test: 'value' });
+    it('should invoke onClearHistory and preserve context when clearHistory is requested', async () => {
+      let cleared = 0;
+      const clearingEngine = new PlaybookEngine(playbook, {
+        onClearHistory: () => {
+          cleared++;
+        }
+      });
+      clearingEngine.updateContext({ test: 'value' });
 
       const transitionWithClear: Transition = {
         id: 'test-clear',
@@ -321,8 +327,12 @@ describe('PlaybookEngine', () => {
         action: { targetStage: 'main', clearHistory: true }
       };
 
-      await engine.executeTransition(transitionWithClear);
-      expect(engine.getState().conversationContext).toEqual({});
+      await clearingEngine.executeTransition(transitionWithClear);
+      // Conversation history is owned by the orchestrator and cleared via
+      // the callback; conversationContext carries cross-stage state and
+      // must survive the transition.
+      expect(cleared).toBe(1);
+      expect(clearingEngine.getState().conversationContext).toEqual({ test: 'value' });
     });
 
     it('should pass transition data', async () => {

@@ -86,13 +86,11 @@ export class ConversationOrchestrator {
       attachments: attachments.length ? attachments : undefined
     };
 
-    if (this.systemPrompt && !this.history.length) {
-      this.history.push({ role: 'system', content: this.systemPrompt });
-    }
+    this.ensureSystemMessage();
     this.pushHistory(userMessage);
 
     const llmRequest: LLMRequest = {
-      messages: this.history.slice(-this.historyLimit),
+      messages: this.buildRequestMessages(),
       config: {
         systemPrompt: this.systemPrompt,
         historyLimit: this.historyLimit,
@@ -124,11 +122,13 @@ export class ConversationOrchestrator {
    *
    * Hooks and metrics are called throughout the turn lifecycle.
    */
-  async *runTurnStream(audio: Buffer, attachments: VisionAttachment[] = []): AsyncGenerator<
-    OrchestratorYield,
-    void,
-    unknown
-  > {
+  async *runTurnStream(
+    audio: Buffer,
+    attachments: VisionAttachment[] = [],
+    options?: { signal?: AbortSignal }
+  ): AsyncGenerator<OrchestratorYield, void, unknown> {
+    const signal = options?.signal;
+
     // Generate turn context
     const turnStartTime = Date.now();
     const ctx: TurnContext = {
@@ -137,6 +137,37 @@ export class ConversationOrchestrator {
       startTime: turnStartTime
     };
 
+    let errored = false;
+    let turnEnded = false;
+    const endTurn = async () => {
+      if (turnEnded) return;
+      turnEnded = true;
+      const turnTiming = createTimingInfo(turnStartTime, Date.now());
+      this.metrics.timing(MetricNames.TURN_DURATION, turnTiming.durationMs);
+      await callHookSafe(this.hooks.onTurnEnd, ctx, turnTiming);
+    };
+
+    try {
+      yield* this.runTurnStreamInternal(ctx, audio, attachments, signal, () => {
+        errored = true;
+      });
+    } finally {
+      // Runs on normal completion, barge-in abort, and consumer abandonment,
+      // so turn metrics and onTurnEnd are never skipped. Errors keep the
+      // previous semantics: the turn ends without onTurnEnd.
+      if (!errored) {
+        await endTurn();
+      }
+    }
+  }
+
+  private async *runTurnStreamInternal(
+    ctx: TurnContext,
+    audio: Buffer,
+    attachments: VisionAttachment[],
+    signal: AbortSignal | undefined,
+    markErrored: () => void
+  ): AsyncGenerator<OrchestratorYield, void, unknown> {
     // Call onTurnStart hook
     await callHookSafe(this.hooks.onTurnStart, ctx, audio);
 
@@ -158,14 +189,27 @@ export class ConversationOrchestrator {
       const err = error instanceof Error ? error : new Error(String(error));
       await callHookSafe(this.hooks.onSTTError, ctx, err);
       this.metrics.increment(MetricNames.ERRORS, 1, { component: 'stt' });
+      markErrored();
       throw error;
     }
 
-    this.pushHistory({ role: 'user', content: transcript.text, attachments: attachments.length ? attachments : undefined });
     yield transcript;
 
+    // Empty transcript guard: VAD misfires and silent audio produce empty
+    // text - don't burn an LLM/TTS round trip or pollute history with it.
+    if (!transcript.text.trim()) {
+      return;
+    }
+
+    if (signal?.aborted) {
+      return;
+    }
+
+    this.ensureSystemMessage();
+    this.pushHistory({ role: 'user', content: transcript.text, attachments: attachments.length ? attachments : undefined });
+
     const llmRequest: LLMRequest = {
-      messages: this.history.slice(-this.historyLimit),
+      messages: this.buildRequestMessages(),
       config: {
         systemPrompt: this.systemPrompt,
         historyLimit: this.historyLimit,
@@ -185,29 +229,38 @@ export class ConversationOrchestrator {
 
     // Non-streaming LLM fallback
     if (!this.providers.llm.stream) {
+      let llm: LLMResult;
+      let llmTiming;
       try {
-        const llm = await this.providers.llm.complete(llmRequest);
-        const llmTiming = createTimingInfo(llmStartTime, Date.now());
+        llm = await this.providers.llm.complete(llmRequest);
+        llmTiming = createTimingInfo(llmStartTime, Date.now());
         this.metrics.timing(MetricNames.LLM_DURATION, llmTiming.durationMs, {
           provider: this.providers.llm.name
         });
-        await callHookSafe(this.hooks.onLLMEnd, ctx, llm, llmTiming);
-
-        this.pushHistory({ role: 'assistant', content: llm.fullText });
-        yield llm;
-        yield* this.generateTTSWithHooks(ctx, llm.fullText);
-
-        // Turn complete
-        const turnTiming = createTimingInfo(turnStartTime, Date.now());
-        this.metrics.timing(MetricNames.TURN_DURATION, turnTiming.durationMs);
-        await callHookSafe(this.hooks.onTurnEnd, ctx, turnTiming);
-        return;
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         await callHookSafe(this.hooks.onLLMError, ctx, err);
         this.metrics.increment(MetricNames.ERRORS, 1, { component: 'llm' });
+        markErrored();
         throw error;
       }
+
+      // Guardrail: a throw from onLLMEnd cancels the response - it is not
+      // committed to history and no TTS is produced.
+      try {
+        await this.hooks.onLLMEnd?.(ctx, llm, llmTiming);
+      } catch (error) {
+        markErrored();
+        throw error;
+      }
+
+      this.pushHistory({ role: 'assistant', content: llm.fullText });
+      yield llm;
+      if (signal?.aborted) {
+        return;
+      }
+      yield* this.generateTTSWithHooks(ctx, llm.fullText);
+      return;
     }
 
     // Check if we can do streaming TTS (requires config enabled AND provider support)
@@ -217,12 +270,18 @@ export class ConversationOrchestrator {
     let pendingText = '';
     let ttsStarted = false;
     let chunkIndex = 0;
-    const ttsStartTime = Date.now();
+    let ttsStartTime: number | undefined;
+    let aborted = false;
 
     try {
       for await (const chunk of this.providers.llm.stream(llmRequest)) {
+        if (signal?.aborted) {
+          aborted = true;
+          break;
+        }
+
         // Track time to first token
-        if (chunkIndex === 0 && chunk.content) {
+        if (llmFirstChunkTime === undefined && chunk.content) {
           llmFirstChunkTime = Date.now();
           this.metrics.timing(MetricNames.LLM_TTFT, llmFirstChunkTime - llmStartTime, {
             provider: this.providers.llm.name
@@ -249,39 +308,66 @@ export class ConversationOrchestrator {
             pendingText = sentences[sentences.length - 1];
 
             for (const completeSentence of completeSentences) {
+              if (signal?.aborted) {
+                aborted = true;
+                break;
+              }
               if (completeSentence.trim()) {
                 // Signal TTS start on first sentence
                 if (!ttsStarted) {
                   ttsStarted = true;
+                  ttsStartTime = Date.now();
                   await callHookSafe(this.hooks.onTTSStart, ctx, completeSentence.trim());
                   yield { type: 'tts-start' } as TTSStart;
                 }
 
                 // Stream TTS for this sentence
-                yield* this.streamTTSChunksWithHooks(ctx, completeSentence.trim());
+                yield* this.streamTTSChunksWithHooks(ctx, completeSentence.trim(), signal);
               }
+            }
+            if (aborted) {
+              break;
             }
           }
         }
       }
-
-      // LLM complete
-      const llmEndTime = Date.now();
-      const llmTiming = createTimingInfo(llmStartTime, llmEndTime);
-      this.metrics.timing(MetricNames.LLM_DURATION, llmTiming.durationMs, {
-        provider: this.providers.llm.name
-      });
-
-      const llmResult: LLMResult = { fullText: assembled };
-      await callHookSafe(this.hooks.onLLMEnd, ctx, llmResult, llmTiming);
-      this.pushHistory({ role: 'assistant', content: assembled });
-      yield llmResult;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       await callHookSafe(this.hooks.onLLMError, ctx, err);
       this.metrics.increment(MetricNames.ERRORS, 1, { component: 'llm' });
+      markErrored();
       throw error;
     }
+
+    // LLM complete (or interrupted)
+    const llmTiming = createTimingInfo(llmStartTime, Date.now());
+    this.metrics.timing(MetricNames.LLM_DURATION, llmTiming.durationMs, {
+      provider: this.providers.llm.name
+    });
+
+    if (aborted) {
+      // Barge-in: commit what was generated so far so history reflects what
+      // the user (partially) heard, then stop without further TTS.
+      if (assembled) {
+        this.pushHistory({ role: 'assistant', content: assembled });
+      }
+      return;
+    }
+
+    const llmResult: LLMResult = { fullText: assembled };
+
+    // Guardrail: a throw from onLLMEnd cancels the response - it is not
+    // committed to history and no further TTS is produced. (With streaming
+    // TTS, audio for earlier sentences may already have been emitted.)
+    try {
+      await this.hooks.onLLMEnd?.(ctx, llmResult, llmTiming);
+    } catch (error) {
+      markErrored();
+      throw error;
+    }
+
+    this.pushHistory({ role: 'assistant', content: assembled });
+    yield llmResult;
 
     // -------------------------------------------------------------------------
     // TTS Phase (remaining text)
@@ -290,25 +376,26 @@ export class ConversationOrchestrator {
       // Handle remaining text after LLM completes
       if (canStreamTTS) {
         const remainingText = pendingText.trim();
-        if (remainingText) {
+        if (remainingText && !signal?.aborted) {
           if (!ttsStarted) {
             ttsStarted = true;
+            ttsStartTime = Date.now();
             await callHookSafe(this.hooks.onTTSStart, ctx, remainingText);
             yield { type: 'tts-start' } as TTSStart;
           }
-          yield* this.streamTTSChunksWithHooks(ctx, remainingText);
+          yield* this.streamTTSChunksWithHooks(ctx, remainingText, signal);
         }
 
         // Signal TTS complete
         if (ttsStarted) {
-          const ttsTiming = createTimingInfo(ttsStartTime, Date.now());
+          const ttsTiming = createTimingInfo(ttsStartTime ?? llmStartTime, Date.now());
           this.metrics.timing(MetricNames.TTS_DURATION, ttsTiming.durationMs, {
             provider: this.providers.tts.name
           });
           await callHookSafe(this.hooks.onTTSEnd, ctx, ttsTiming);
           yield { type: 'tts-complete' } as TTSComplete;
         }
-      } else {
+      } else if (!signal?.aborted) {
         // Fallback to non-streaming TTS
         yield* this.generateTTSWithHooks(ctx, assembled);
       }
@@ -316,13 +403,9 @@ export class ConversationOrchestrator {
       const err = error instanceof Error ? error : new Error(String(error));
       await callHookSafe(this.hooks.onTTSError, ctx, err);
       this.metrics.increment(MetricNames.ERRORS, 1, { component: 'tts' });
+      markErrored();
       throw error;
     }
-
-    // Turn complete
-    const turnTiming = createTimingInfo(turnStartTime, Date.now());
-    this.metrics.timing(MetricNames.TURN_DURATION, turnTiming.durationMs);
-    await callHookSafe(this.hooks.onTurnEnd, ctx, turnTiming);
   }
 
   /**
@@ -353,26 +436,38 @@ export class ConversationOrchestrator {
    */
   private async *streamTTSChunksWithHooks(
     ctx: TurnContext,
-    text: string
+    text: string,
+    signal?: AbortSignal
   ): AsyncGenerator<TTSChunk, void, unknown> {
     if (!this.providers.tts.speakStream) return;
 
+    const sampleRate = this.providers.tts.pcmSampleRate ?? 24000;
     let chunkIndex = 0;
+    let emittedChunks = false;
     try {
       for await (const audioChunk of this.providers.tts.speakStream(text, { format: 'pcm' })) {
+        if (signal?.aborted) {
+          return;
+        }
         const ttsChunk: TTSChunk = {
           type: 'tts-chunk',
           audio: audioChunk,
           format: 'pcm',
-          sampleRate: 24000, // OpenAI/ElevenLabs PCM is 24kHz
+          sampleRate,
           sentence: text
         };
         await callHookSafe(this.hooks.onTTSChunk, ctx, ttsChunk, chunkIndex);
         chunkIndex++;
+        emittedChunks = true;
         yield ttsChunk;
       }
     } catch (err) {
       this.logger.error?.('[orchestrator] TTS stream error:', err);
+      if (emittedChunks) {
+        // Part of this sentence was already emitted; re-speaking it would
+        // duplicate audio, so surface the failure instead.
+        throw err;
+      }
       // Fallback: try non-streaming TTS
       try {
         const tts = await this.providers.tts.speak(text, { format: 'pcm' });
@@ -380,7 +475,7 @@ export class ConversationOrchestrator {
           type: 'tts-chunk',
           audio: tts.audio,
           format: 'pcm',
-          sampleRate: 24000,
+          sampleRate,
           sentence: text
         };
         await callHookSafe(this.hooks.onTTSChunk, ctx, ttsChunk, chunkIndex);
@@ -415,58 +510,33 @@ export class ConversationOrchestrator {
   }
 
   /**
-   * @deprecated Use streamTTSChunksWithHooks instead
-   * Stream TTS chunks for a sentence using PCM format.
+   * Ensure the system prompt is seeded as the first history message.
    */
-  private async *streamTTSChunks(text: string): AsyncGenerator<TTSChunk, void, unknown> {
-    if (!this.providers.tts.speakStream) return;
-
-    try {
-      for await (const audioChunk of this.providers.tts.speakStream(text, { format: 'pcm' })) {
-        yield {
-          type: 'tts-chunk',
-          audio: audioChunk,
-          format: 'pcm',
-          sampleRate: 24000, // OpenAI/ElevenLabs PCM is 24kHz
-          sentence: text
-        };
-      }
-    } catch (err) {
-      this.logger.error?.('[orchestrator] TTS stream error:', err);
-      // Fallback: try non-streaming TTS
-      try {
-        const tts = await this.providers.tts.speak(text, { format: 'pcm' });
-        yield {
-          type: 'tts-chunk',
-          audio: tts.audio,
-          format: 'pcm',
-          sampleRate: 24000,
-          sentence: text
-        };
-      } catch (fallbackErr) {
-        this.logger.error?.('[orchestrator] TTS fallback also failed:', fallbackErr);
-      }
+  private ensureSystemMessage(): void {
+    if (this.systemPrompt && this.history[0]?.role !== 'system') {
+      this.history.unshift({ role: 'system', content: this.systemPrompt });
     }
   }
 
   /**
-   * @deprecated Use generateTTSWithHooks instead
-   * Non-streaming TTS: generates complete audio and yields as single TTSResult.
+   * Build the message window for an LLM request.
+   * The system message is always included and does not consume history slots,
+   * so long conversations never lose the assistant's instructions.
    */
-  private async *generateTTS(text: string): AsyncGenerator<TTSStart | TTSResult | TTSComplete, void, unknown> {
-    yield { type: 'tts-start' } as TTSStart;
-    const tts = await this.providers.tts.speak(text);
-    yield tts;
-    yield { type: 'tts-complete' } as TTSComplete;
+  private buildRequestMessages(): Message[] {
+    const hasSystem = this.history[0]?.role === 'system';
+    const conversation = hasSystem ? this.history.slice(1) : this.history;
+    const window = conversation.slice(-this.historyLimit);
+    return hasSystem ? [this.history[0], ...window] : window;
   }
 
   private pushHistory(message: Message) {
     this.history.push(message);
-    if (this.history.length > this.historyLimit + 2) {
-      // keep system prompt if present
-      const start = this.history[0]?.role === 'system' ? 1 : 0;
-      const overflow = this.history.length - (this.historyLimit + 2);
-      this.history.splice(start, overflow);
+    const hasSystem = this.history[0]?.role === 'system';
+    const start = hasSystem ? 1 : 0;
+    const maxLength = this.historyLimit + 2 + start;
+    if (this.history.length > maxLength) {
+      this.history.splice(start, this.history.length - maxLength);
     }
   }
 }
