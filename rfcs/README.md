@@ -6,4 +6,4 @@ Status field tracks its lifecycle (Draft → Accepted → Implemented).
 
 | RFC | Title | Status |
 |-----|-------|--------|
-| [0001](0001-realtime-speech-to-speech.md) | Realtime Speech-to-Speech Orchestrator Mode | Draft |
+| [0001](0001-realtime-speech-to-speech.md) | Realtime Speech-to-Speech Orchestrator Mode | Implemented (experimental) |

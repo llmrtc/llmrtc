@@ -1,6 +1,6 @@
 # RFC 0001: Realtime Speech-to-Speech Orchestrator Mode
 
-- **Status**: Draft (rev 2)
+- **Status**: Implemented (experimental) — M1–M5 shipped 2026-07-11; Gemini live-probe validation pending (LIVE-PROBE markers in the adapter)
 - **Created**: 2026-07-11
 - **Revised**: 2026-07-11 — after an adversarial design audit and an
   independent fact-check of all provider API claims. Major changes:
