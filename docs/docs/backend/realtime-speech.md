@@ -24,6 +24,18 @@ Design details live in
 | Cost | Text-token pricing | Audio-token pricing (~10x) |
 | Transcripts | Always | Optional (billed separately) |
 
+## Providers
+
+| Provider | Model | Status |
+|---|---|---|
+| `OpenAIRealtimeSpeechProvider` | `gpt-realtime-2.1` (default), `-mini` | Live-verified |
+| `GeminiLiveSpeechProvider` | `gemini-3.1-flash-live-preview` | Experimental (Gemini Live is a Google preview API); conformance-tested against the documented wire format |
+
+Gemini notes: ~10-minute socket lifetimes are handled inside the adapter
+with session resumption and bounded input buffering, so reconnects don't
+clip user speech; barge-in is provider-driven; stage instruction updates
+use a system text turn, tool-set changes a resumption reconnect.
+
 ## Setup (library mode)
 
 ```typescript

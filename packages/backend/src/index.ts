@@ -64,7 +64,7 @@ export {
 export { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 // Google provider
-export { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
+export { GeminiLLMProvider, GeminiLiveSpeechProvider } from '@llmrtc/llmrtc-provider-google';
 
 // AWS Bedrock provider
 export { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';

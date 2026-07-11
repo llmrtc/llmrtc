@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@llmrtc/llmrtc-core": "^1.2.0",
-    "@google/genai": "^1.30.0"
+    "@google/genai": "^1.30.0",
+    "ws": "^8.16.0"
   },
   "exports": {
     ".": {
@@ -46,5 +47,8 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10"
   }
 }

@@ -237,3 +237,8 @@ function parseDataUri(uri: string): { mimeType: string; data: string } {
   // If not a data URI, assume it's already base64 and default to jpeg
   return { mimeType: 'image/jpeg', data: uri };
 }
+
+export {
+  GeminiLiveSpeechProvider,
+  type GeminiLiveSpeechOptions
+} from './realtime-speech.js';
