@@ -1,5 +1,36 @@
 # @llmrtc/llmrtc-provider-bedrock
 
+## 1.2.0
+
+### Minor Changes
+
+- fd91344: Anthropic modernization and richer stop reasons.
+  - The StopReason union gains `refusal`, `content_filter`, `pause_turn`, and
+    `context_overflow`. Note for TypeScript consumers with exhaustive switches:
+    this widens the union. OpenAI-compatible providers now report
+    `content_filter` for filtered responses (previously mis-reported as
+    `stop_sequence`); Gemini safety blocks and Bedrock guardrail interventions
+    also map to `content_filter`.
+  - The Anthropic provider defaults to `claude-sonnet-5` and automatically
+    omits temperature/top_p for model families that reject them (Sonnet 5,
+    Opus 4.7+, Fable tier), with a `samplingParamsSupported` override. The
+    Bedrock provider applies the same guard for Claude models.
+  - Orchestrators log a warning when a turn ends with an unusual stop reason.
+  - CLI and example fallbacks move off retired model ids.
+
+- 552005e: Default Bedrock model updated to us.anthropic.claude-sonnet-5 (the
+  dateless Sonnet 5 inference profile, live-verified). The previous
+  default us.anthropic.claude-sonnet-4-5-20250929-v1:0 remains fully
+  supported - pin it via the model option or BEDROCK_MODEL if you need
+  the old behavior.
+
+### Patch Changes
+
+- Updated dependencies [fd91344]
+- Updated dependencies [319bb47]
+- Updated dependencies [a7d1ecc]
+  - @llmrtc/llmrtc-core@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes

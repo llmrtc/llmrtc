@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-provider-zai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Z.ai GLM LLM adapter for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -44,7 +44,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "^1.1.0",
+    "@llmrtc/llmrtc-core": "^1.2.0",
     "openai": "^4.72.0"
   }
 }

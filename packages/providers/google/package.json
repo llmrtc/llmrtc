@@ -1,6 +1,6 @@
 {
   "name": "@llmrtc/llmrtc-provider-google",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Google Gemini LLM adapter for @llmrtc/LLMRTC",
   "homepage": "https://www.llmrtc.org",
   "license": "Apache-2.0",
@@ -32,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-core": "^1.1.0",
+    "@llmrtc/llmrtc-core": "^1.2.0",
     "@google/genai": "^1.30.0"
   },
   "exports": {
