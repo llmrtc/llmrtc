@@ -30,7 +30,8 @@
       "@llmrtc/llmrtc-provider-lmstudio": ["packages/providers/lmstudio/src/index.ts"],
       "@llmrtc/llmrtc-provider-local": ["packages/providers/local/src/index.ts"],
       "@llmrtc/llmrtc-provider-openai": ["packages/providers/openai/src/index.ts"],
-      "@llmrtc/llmrtc-provider-openrouter": ["packages/providers/openrouter/src/index.ts"]
+      "@llmrtc/llmrtc-provider-openrouter": ["packages/providers/openrouter/src/index.ts"],
+      "@llmrtc/llmrtc-provider-zai": ["packages/providers/zai/src/index.ts"]
     }
   }
 }

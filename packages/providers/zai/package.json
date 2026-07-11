@@ -1,0 +1,50 @@
+{
+  "name": "@llmrtc/llmrtc-provider-zai",
+  "version": "1.1.0",
+  "description": "Z.ai GLM LLM adapter for @llmrtc/LLMRTC",
+  "homepage": "https://www.llmrtc.org",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llmrtc/llmrtc.git",
+    "directory": "packages/providers/zai"
+  },
+  "bugs": {
+    "url": "https://github.com/llmrtc/llmrtc/issues",
+    "email": "contact@llmrtc.org"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@llmrtc/llmrtc-core": "^1.1.0",
+    "openai": "^4.72.0"
+  }
+}

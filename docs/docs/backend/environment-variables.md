@@ -28,3 +28,16 @@ Server config
 Behavior
 - Auto-detection for LLM (when `LLM_PROVIDER` and `LOCAL_ONLY` are not set) picks the first provider with a valid key in this order: Anthropic → Google → Bedrock → OpenRouter → OpenAI.
 - `LOCAL_ONLY=true` forces local providers: Ollama for LLM, Faster-Whisper for STT, and Piper for TTS.
+
+## Z.ai (GLM)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZAI_API_KEY` | - | Z.ai API key (`LLM_PROVIDER=zai`) |
+| `ZAI_MODEL` | `glm-5.2` | GLM model name |
+
+## Local vision
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_VISION_MODEL` | `llava` | Vision model used by the CLI's local vision provider. The CLI default stays `llava` so existing deployments keep working; set `qwen3-vl` for the current generation (the `OllamaVisionProvider` class itself defaults to `qwen3-vl`) |

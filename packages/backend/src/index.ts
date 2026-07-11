@@ -67,18 +67,22 @@ export { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 // OpenRouter provider
 export { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
+// Z.ai GLM provider
+export { ZaiLLMProvider } from '@llmrtc/llmrtc-provider-zai';
+
 // LM Studio provider
 export { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 // ElevenLabs provider
 export { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 
-// Local providers (Ollama, Faster-Whisper, Piper, Llava)
+// Local providers (Ollama, Faster-Whisper, Piper, local vision models)
 export {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider,
-  LlavaVisionProvider
+  LlavaVisionProvider,
+  OllamaVisionProvider
 } from '@llmrtc/llmrtc-provider-local';
 
 // =============================================================================

@@ -53,14 +53,15 @@
     "@llmrtc/llmrtc-provider-local": "^1.1.0",
     "@llmrtc/llmrtc-provider-openai": "^1.1.1",
     "@llmrtc/llmrtc-provider-openrouter": "^1.1.0",
+    "@llmrtc/llmrtc-provider-zai": "^1.1.0",
+    "@roamhq/wrtc": "^0.9.1",
     "avr-vad": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "fluent-ffmpeg": "^2.1.2",
     "uuid": "^9.0.1",
-    "ws": "^8.16.0",
-    "@roamhq/wrtc": "^0.9.1"
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.24",

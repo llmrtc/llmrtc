@@ -307,19 +307,35 @@ export class PiperTTSProvider implements TTSProvider {
   }
 }
 
-export interface LlavaConfig {
+export interface OllamaVisionConfig {
   baseUrl?: string;
+  /**
+   * Any vision-capable Ollama model, e.g. 'qwen3-vl' (default), 'gemma3',
+   * 'llava', or 'llama3.2-vision'.
+   */
   model?: string;
 }
 
-export class LlavaVisionProvider implements VisionProvider {
-  readonly name = 'llava-vision';
+/** @deprecated Use OllamaVisionConfig */
+export type LlavaConfig = OllamaVisionConfig;
+
+/**
+ * Vision provider backed by any vision-capable Ollama model.
+ *
+ * Works with the current local multimodal families - Qwen3-VL (default),
+ * Gemma 3, LLaVA, Llama 3.2 Vision - via Ollama's /api/generate endpoint.
+ * Note: Qwen 3.6's natively-multimodal GGUFs are not yet loadable by Ollama;
+ * run those through LM Studio with LMStudioLLMProvider vision attachments
+ * instead.
+ */
+export class OllamaVisionProvider implements VisionProvider {
+  readonly name: string = 'ollama-vision';
   private readonly baseUrl: string;
   private readonly model: string;
 
-  constructor(config: LlavaConfig = {}) {
+  constructor(config: OllamaVisionConfig = {}) {
     this.baseUrl = config.baseUrl ?? 'http://localhost:11434';
-    this.model = config.model ?? 'llava';
+    this.model = config.model ?? 'qwen3-vl';
   }
 
   /** Ollama expects raw base64, not data URIs */
@@ -343,9 +359,22 @@ export class LlavaVisionProvider implements VisionProvider {
     });
     if (!resp.ok) {
       const msg = await resp.text();
-      throw new Error(`llava failed: ${resp.status} ${msg}`);
+      throw new Error(`ollama vision (${this.model}) failed: ${resp.status} ${msg}`);
     }
     const json = (await resp.json()) as { response: string };
     return { content: json.response, raw: json };
+  }
+}
+
+/**
+ * LLaVA-flavored alias of OllamaVisionProvider, kept for backwards
+ * compatibility. Prefer OllamaVisionProvider, which defaults to the
+ * current-generation qwen3-vl model.
+ */
+export class LlavaVisionProvider extends OllamaVisionProvider {
+  override readonly name: string = 'llava-vision';
+
+  constructor(config: OllamaVisionConfig = {}) {
+    super({ ...config, model: config.model ?? 'llava' });
   }
 }

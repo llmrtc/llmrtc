@@ -15,6 +15,7 @@
     { "path": "../providers/lmstudio" },
     { "path": "../providers/local" },
     { "path": "../providers/openai" },
-    { "path": "../providers/openrouter" }
+    { "path": "../providers/openrouter" },
+    { "path": "../providers/zai" }
   ]
 }

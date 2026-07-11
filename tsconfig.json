@@ -12,6 +12,7 @@
     { "path": "./packages/providers/local" },
     { "path": "./packages/providers/openai" },
     { "path": "./packages/providers/openrouter" },
+    { "path": "./packages/providers/zai" },
     { "path": "./examples/vite-demo" }
   ]
 }

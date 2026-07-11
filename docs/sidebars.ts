@@ -107,6 +107,7 @@ const sidebars: SidebarsConfig = {
         'providers/google-gemini',
         'providers/aws-bedrock',
         'providers/openrouter',
+        'providers/zai-glm',
         'providers/lmstudio',
         'providers/elevenlabs',
         'providers/local-ollama',

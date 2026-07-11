@@ -39,7 +39,7 @@ The server starts on `http://127.0.0.1:8787` by default.
 
 | Variable | Description |
 |----------|-------------|
-| `LLM_PROVIDER` | Force LLM provider: `openai`, `anthropic`, `gemini`, `bedrock`, `openrouter`, `ollama`, `lmstudio` |
+| `LLM_PROVIDER` | Force LLM provider: `openai`, `anthropic`, `gemini`, `bedrock`, `openrouter`, `zai` (alias: `glm`), `ollama`, `lmstudio` |
 | `STT_PROVIDER` | Force STT provider: `openai`, `whisper`, `faster-whisper` |
 | `TTS_PROVIDER` | Force TTS provider: `openai`, `elevenlabs`, `piper` |
 
@@ -62,6 +62,9 @@ If not specified, providers are auto-detected based on available API keys.
 | `GOOGLE_MODEL` | Gemini model |
 | `BEDROCK_MODEL` | Bedrock model id (use `us.`/`eu.` inference-profile ids) |
 | `OPENROUTER_MODEL` | OpenRouter model (`provider/model` format) |
+| `ZAI_API_KEY` | Z.ai API key (for `LLM_PROVIDER=zai`) |
+| `ZAI_MODEL` | Z.ai GLM model (default: `glm-5.2`) |
+| `OLLAMA_VISION_MODEL` | Local vision model for the vision provider (default: `llava` for compatibility; set `qwen3-vl` for the current generation) |
 | `OPENAI_TTS_VOICE` | OpenAI TTS voice |
 
 ### Runtime

@@ -32,6 +32,7 @@ import nodeFetch from 'node-fetch';
 import { OpenAILLMProvider } from './openai/src/index.js';
 import { OpenRouterLLMProvider } from './openrouter/src/index.js';
 import { LMStudioLLMProvider } from './lmstudio/src/index.js';
+import { ZaiLLMProvider } from './zai/src/index.js';
 import { AnthropicLLMProvider } from './anthropic/src/index.js';
 import { GeminiLLMProvider } from './google/src/index.js';
 import { BedrockLLMProvider } from './bedrock/src/index.js';
@@ -81,6 +82,7 @@ describe.each([
   ['OpenAI', () => new OpenAILLMProvider({ apiKey: 'k' })],
   ['OpenRouter', () => new OpenRouterLLMProvider({ apiKey: 'k', model: 'openai/gpt-4o' })],
   ['LMStudio', () => new LMStudioLLMProvider({})],
+  ['Z.ai GLM', () => new ZaiLLMProvider({ apiKey: 'k' })],
 ])('%s tool conversation replay', (_name, makeProvider) => {
   let mockCreate: Mock;
 

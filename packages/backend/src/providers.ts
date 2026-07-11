@@ -18,7 +18,7 @@ import {
 } from '@llmrtc/llmrtc-provider-openai';
 import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 import {
-  LlavaVisionProvider,
+  OllamaVisionProvider,
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider
@@ -27,6 +27,7 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 import { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
+import { ZaiLLMProvider } from '@llmrtc/llmrtc-provider-zai';
 import { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
 /**
@@ -48,7 +49,7 @@ export function createProvidersFromEnv(): ConversationProviders {
  * 3. Auto-detect based on available API keys
  */
 function createLLMProvider(): LLMProvider {
-  const explicit = process.env.LLM_PROVIDER?.toLowerCase();
+  const explicit = process.env.LLM_PROVIDER?.trim().toLowerCase();
 
   if (explicit) {
     switch (explicit) {
@@ -79,6 +80,12 @@ function createLLMProvider(): LLMProvider {
           apiKey: process.env.OPENROUTER_API_KEY ?? '',
           model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4.5'
         });
+      case 'zai':
+      case 'glm':
+        return new ZaiLLMProvider({
+          apiKey: process.env.ZAI_API_KEY ?? '',
+          model: process.env.ZAI_MODEL
+        });
       case 'lmstudio':
         return new LMStudioLLMProvider({
           baseUrl: process.env.LMSTUDIO_BASE_URL,
@@ -91,6 +98,12 @@ function createLLMProvider(): LLMProvider {
         });
       case 'openai':
       default:
+        if (explicit !== 'openai') {
+          console.warn(
+            `[llmrtc] Unrecognized LLM_PROVIDER "${explicit}" - falling back to OpenAI. ` +
+              `Valid values: openai, anthropic, google, gemini, bedrock, openrouter, zai, glm, lmstudio, ollama.`
+          );
+        }
         return new OpenAILLMProvider({
           apiKey: process.env.OPENAI_API_KEY ?? '',
           baseURL: process.env.OPENAI_BASE_URL,
@@ -227,7 +240,13 @@ function createTTSProvider(): TTSProvider {
  */
 function createVisionProvider(): VisionProvider | undefined {
   if (process.env.LOCAL_ONLY === 'true') {
-    return new LlavaVisionProvider({});
+    // Default stays 'llava' here for compatibility with existing
+    // LOCAL_ONLY deployments; the OllamaVisionProvider class itself
+    // defaults to qwen3-vl for new code.
+    return new OllamaVisionProvider({
+      baseUrl: process.env.OLLAMA_BASE_URL,
+      model: process.env.OLLAMA_VISION_MODEL ?? 'llava'
+    });
   }
   return undefined;
 }

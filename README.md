@@ -67,8 +67,9 @@
 | `@llmrtc/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
 | `@llmrtc/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
 | `@llmrtc/llmrtc-provider-openrouter` | OpenRouter | Multi-model gateway |
+| `@llmrtc/llmrtc-provider-zai` | Z.ai | GLM 5.2 (1M context, open weights) |
 | `@llmrtc/llmrtc-provider-lmstudio` | LMStudio | Local model inference |
-| `@llmrtc/llmrtc-provider-local` | Local | Ollama, Faster Whisper, Piper TTS |
+| `@llmrtc/llmrtc-provider-local` | Local | Ollama (incl. Qwen3-VL vision), Faster Whisper, Piper TTS |
 
 ### TTS Providers
 
@@ -607,6 +608,17 @@ const llm = new OpenRouterLLMProvider({
 });
 ```
 
+### Z.ai (GLM)
+
+```typescript
+import { ZaiLLMProvider } from '@llmrtc/llmrtc-provider-zai';
+
+const llm = new ZaiLLMProvider({
+  apiKey: 'your-zai-key',
+  model: 'glm-5.2' // 1M context, open weights, strong tool calling
+});
+```
+
 ### LMStudio (Local)
 
 ```typescript
@@ -644,7 +656,7 @@ import {
   OllamaLLMProvider,
   FasterWhisperProvider,
   PiperTTSProvider,
-  LlavaVisionProvider
+  OllamaVisionProvider
 } from '@llmrtc/llmrtc-provider-local';
 
 // Ollama LLM
@@ -663,9 +675,9 @@ const tts = new PiperTTSProvider({
   baseUrl: 'http://localhost:5000'
 });
 
-// LLaVA Vision
-const vision = new LlavaVisionProvider({
-  model: 'llava:7b'
+// Local vision (Qwen3-VL, Gemma 3, LLaVA, ...)
+const vision = new OllamaVisionProvider({
+  model: 'qwen3-vl'
 });
 ```
 
@@ -796,6 +808,8 @@ ANTHROPIC_MODEL=claude-sonnet-5
 GOOGLE_MODEL=gemini-2.5-flash
 BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+ZAI_API_KEY=...
+ZAI_MODEL=glm-5.2
 OPENAI_TTS_VOICE=nova
 
 # Server config
@@ -807,6 +821,7 @@ STREAMING_TTS=true
 # Local providers
 LOCAL_ONLY=true                           # Use local providers only
 OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_VISION_MODEL=qwen3-vl              # CLI vision model (default: llava)
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 FASTER_WHISPER_URL=http://localhost:8000
 PIPER_URL=http://localhost:5000
