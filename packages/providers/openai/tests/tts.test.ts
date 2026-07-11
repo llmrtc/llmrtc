@@ -340,6 +340,29 @@ describe('OpenAITTSProvider', () => {
       );
     });
 
+    it('streams from a Node Readable-style async-iterable body (no getReader)', async () => {
+      // The OpenAI SDK returns a Node Readable body when running with its
+      // Node shims (e.g. Node < 18). Regression test for
+      // "TypeError: response.body?.getReader is not a function".
+      const chunk1 = Buffer.from('node-chunk-1');
+      const chunk2 = Buffer.from('node-chunk-2');
+      const nodeStyleBody = {
+        async *[Symbol.asyncIterator]() {
+          yield chunk1;
+          yield chunk2;
+        }
+      };
+      mockCreate.mockResolvedValue({ body: nodeStyleBody });
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of provider.speakStream('Test')) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toHaveLength(2);
+      expect(Buffer.concat(chunks).toString()).toBe('node-chunk-1node-chunk-2');
+    });
+
     it('should fallback to full buffer when no body reader', async () => {
       const audioBuffer = createTestAudioBuffer();
       mockCreate.mockResolvedValue({

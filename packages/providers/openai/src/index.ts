@@ -303,20 +303,35 @@ export class OpenAITTSProvider implements TTSProvider {
       speed: this.speed
     });
 
-    // Response is a Response-like object with body stream
-    const reader = response.body?.getReader();
-    if (!reader) {
-      // Fallback: return the whole buffer if streaming not available
-      const buffer = Buffer.from(await response.arrayBuffer());
-      yield buffer;
+    // The SDK's response body is a web ReadableStream when a global fetch
+    // is available, but a Node Readable when the SDK runs with its Node
+    // shims (e.g. Node < 18 or an app importing 'openai/shims/node').
+    // Handle both instead of assuming getReader() exists.
+    const body: unknown = response.body;
+
+    if (body && typeof (body as ReadableStream<Uint8Array>).getReader === 'function') {
+      const reader = (body as ReadableStream<Uint8Array>).getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield Buffer.from(value);
+      }
       return;
     }
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      yield Buffer.from(value);
+    if (
+      body &&
+      typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function'
+    ) {
+      for await (const chunk of body as AsyncIterable<Uint8Array | Buffer>) {
+        yield Buffer.from(chunk);
+      }
+      return;
     }
+
+    // Fallback: return the whole buffer if streaming is not available
+    const buffer = Buffer.from(await response.arrayBuffer());
+    yield buffer;
   }
 }
 

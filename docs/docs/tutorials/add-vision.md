@@ -60,7 +60,7 @@ voice-assistant/
     "dev": "concurrently \"tsx watch server.ts\" \"npm run dev --prefix client\""
   },
   "dependencies": {
-    "@llmrtc/llmrtc-backend": "^0.1.0",
+    "@llmrtc/llmrtc-backend": "^1.1.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
@@ -157,7 +157,7 @@ await server.start();
     "build": "vite build"
   },
   "dependencies": {
-    "@llmrtc/llmrtc-web-client": "^0.1.0",
+    "@llmrtc/llmrtc-web-client": "^1.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
