@@ -334,7 +334,7 @@ const server = new LLMRTCServer({
     // TTS: OpenAI for text-to-speech
     tts: new OpenAITTSProvider({
       apiKey: process.env.OPENAI_API_KEY,
-      voice: 'nova'  // Options: alloy, echo, fable, onyx, nova, shimmer
+      voice: 'nova'  // Options: alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer (+ ballad, verse on gpt-4o-mini-tts)
     })
   },
 
@@ -390,6 +390,20 @@ await server.start();
 2. **streamingTTS** - When `true`, audio streams to the browser as it's generated, reducing latency
 
 3. **systemPrompt** - Defines how the AI should behave and respond
+
+:::tip Give your assistant a voice persona
+The system prompt shapes *what* the assistant says; with the instructable
+`gpt-4o-mini-tts` model you can also shape *how* it sounds:
+
+```ts
+tts: new OpenAITTSProvider({
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-4o-mini-tts',
+  voice: 'coral',
+  instructions: 'Warm and upbeat, like a friendly concierge. Keep a natural conversational pace.'
+})
+```
+:::
 
 ---
 

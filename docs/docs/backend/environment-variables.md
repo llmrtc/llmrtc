@@ -3,7 +3,7 @@ title: Environment Variables
 ---
 
 Provider selection
-- `LLM_PROVIDER` = openai | anthropic | google | bedrock | openrouter | lmstudio | ollama
+- `LLM_PROVIDER` = openai | anthropic | google | bedrock | openrouter | zai (alias: glm) | lmstudio | ollama
 - `TTS_PROVIDER` = elevenlabs | openai | piper
 - `STT_PROVIDER` = openai | faster-whisper
 - `LOCAL_ONLY` = true to force local providers
@@ -18,7 +18,8 @@ API keys / URLs
 - `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL`, `FASTER_WHISPER_URL`, `PIPER_URL`
 
 Model overrides
-- `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GOOGLE_MODEL`, `BEDROCK_MODEL`, `OPENROUTER_MODEL`, `OPENAI_TTS_VOICE`
+- `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GOOGLE_MODEL`, `BEDROCK_MODEL`, `OPENROUTER_MODEL`
+- `OPENAI_STT_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TTS_INSTRUCTIONS`
 
 Server config
 - `PORT`, `HOST`
@@ -28,6 +29,15 @@ Server config
 Behavior
 - Auto-detection for LLM (when `LLM_PROVIDER` and `LOCAL_ONLY` are not set) picks the first provider with a valid key in this order: Anthropic → Google → Bedrock → OpenRouter → OpenAI.
 - `LOCAL_ONLY=true` forces local providers: Ollama for LLM, Faster-Whisper for STT, and Piper for TTS.
+
+## OpenAI voice
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_STT_MODEL` | `whisper-1` | Transcription model; `gpt-4o-transcribe` / `gpt-4o-mini-transcribe` improve accuracy |
+| `OPENAI_TTS_MODEL` | `tts-1` | TTS model; `gpt-4o-mini-tts` supports delivery instructions |
+| `OPENAI_TTS_VOICE` | `nova` | OpenAI TTS voice: alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer (plus ballad, verse on gpt-4o-mini-tts) |
+| `OPENAI_TTS_INSTRUCTIONS` | - | Natural-language delivery direction (tone, pacing, persona) for instructable TTS models |
 
 ## Z.ai (GLM)
 

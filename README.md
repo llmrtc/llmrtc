@@ -75,7 +75,7 @@
 
 | Package | Provider | Features |
 |---------|----------|----------|
-| `@llmrtc/llmrtc-provider-openai` | OpenAI | tts-1, tts-1-hd, streaming |
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | tts-1, tts-1-hd, gpt-4o-mini-tts (instructable), streaming |
 | `@llmrtc/llmrtc-provider-elevenlabs` | ElevenLabs | High-quality voices, streaming |
 | `@llmrtc/llmrtc-provider-local` | Piper | Offline TTS |
 
@@ -519,16 +519,24 @@ const llm = new OpenAILLMProvider({
 // STT
 const stt = new OpenAIWhisperProvider({
   apiKey: 'sk-...',
-  model: 'whisper-1',
+  model: 'whisper-1', // or 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'
   language: 'en' // optional
 });
 
 // TTS
 const tts = new OpenAITTSProvider({
   apiKey: 'sk-...',
-  model: 'tts-1', // or 'tts-1-hd', 'gpt-4o-mini-tts'
-  voice: 'nova', // alloy, echo, fable, onyx, nova, shimmer
+  model: 'tts-1', // or 'tts-1-hd', 'gpt-4o-mini-tts' (instructable)
+  voice: 'nova', // alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer (+ ballad, verse on gpt-4o-mini-tts)
   speed: 1.0 // 0.25 to 4.0
+});
+
+// Steerable TTS - gpt-4o-mini-tts takes natural-language delivery direction
+const steerableTts = new OpenAITTSProvider({
+  apiKey: 'sk-...',
+  model: 'gpt-4o-mini-tts',
+  voice: 'coral',
+  instructions: 'Speak like a friendly concierge, at a relaxed pace.'
 });
 
 // Streaming TTS
@@ -810,7 +818,10 @@ BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
 ZAI_API_KEY=...
 ZAI_MODEL=glm-5.2
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe   # optional; default whisper-1
+OPENAI_TTS_MODEL=gpt-4o-mini-tts          # optional; default tts-1
 OPENAI_TTS_VOICE=nova
+OPENAI_TTS_INSTRUCTIONS="Speak warmly."   # instructable TTS models only
 
 # Server config
 PORT=8787

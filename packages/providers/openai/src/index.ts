@@ -116,6 +116,11 @@ export class OpenAILLMProvider implements LLMProvider {
 export interface OpenAIWhisperConfig {
   apiKey: string;
   baseURL?: string;
+  /**
+   * Transcription model (default: 'whisper-1'). The newer
+   * 'gpt-4o-transcribe' and 'gpt-4o-mini-transcribe' models run on the
+   * same endpoint with better accuracy, especially in noisy audio.
+   */
   model?: string;
   language?: string;
 }
@@ -217,8 +222,12 @@ function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
 // OpenAI TTS Provider
 // =============================================================================
 
-export type OpenAITTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+export type OpenAITTSVoice =
+  | 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'fable'
+  | 'nova' | 'onyx' | 'sage' | 'shimmer' | 'verse'
+  | (string & {});
 export type OpenAITTSFormat = 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
+export type OpenAITTSModel = 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts' | (string & {});
 
 export interface OpenAITTSConfig {
   /** OpenAI API key */
@@ -226,25 +235,43 @@ export interface OpenAITTSConfig {
   /** Base URL for API (optional, for Azure OpenAI or proxies) */
   baseURL?: string;
   /** TTS model (default: 'tts-1') */
-  model?: 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts';
+  model?: OpenAITTSModel;
   /** Default voice (default: 'alloy') */
   voice?: OpenAITTSVoice;
-  /** Speech speed multiplier 0.25-4.0 (default: 1.0) */
+  /** Speech speed multiplier 0.25-4.0 (default: 1.0). No effect on gpt-4o-mini-tts - use `instructions` to direct pacing there. */
   speed?: number;
+  /**
+   * Default delivery instructions (tone, pacing, emotion, accent) for
+   * instructable models such as gpt-4o-mini-tts, e.g. "Speak like a
+   * calm customer-support agent". Instructions are only sent when the
+   * effective model name starts with 'gpt-'; on any other name
+   * (tts-1, tts-1-hd, proxy/deployment aliases) they are ignored with
+   * a one-time warning, since the API rejects them there.
+   */
+  instructions?: string;
+}
+
+/** The speech endpoint only accepts `instructions` on gpt-* TTS models. */
+function ttsModelSupportsInstructions(model: string): boolean {
+  return model.toLowerCase().startsWith('gpt-');
 }
 
 /**
  * OpenAI Text-to-Speech Provider.
  *
- * Available voices: alloy, echo, fable, onyx, nova, shimmer
- * Available models: tts-1 (fast), tts-1-hd (quality), gpt-4o-mini-tts (instructable)
+ * Available voices: alloy, ash, coral, echo, fable, nova, onyx, sage,
+ * shimmer on all models; ballad and verse additionally on
+ * gpt-4o-mini-tts.
+ * Available models: tts-1 (fast), tts-1-hd (quality), gpt-4o-mini-tts
+ * (instructable - accepts natural-language delivery `instructions`).
  *
  * @example
  * ```typescript
  * const provider = new OpenAITTSProvider({
  *   apiKey: 'sk-...',
- *   model: 'tts-1',
- *   voice: 'nova'
+ *   model: 'gpt-4o-mini-tts',
+ *   voice: 'coral',
+ *   instructions: 'Speak warmly, at a relaxed pace.'
  * });
  * ```
  */
@@ -253,28 +280,49 @@ export class OpenAITTSProvider implements TTSProvider {
   /** OpenAI PCM output is 24kHz, 16-bit signed LE, mono */
   readonly pcmSampleRate = 24000;
   private client: OpenAI;
-  private model: 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts';
+  private model: OpenAITTSModel;
   private voice: OpenAITTSVoice;
   private speed: number;
+  private instructions?: string;
+  private warnedInstructionsUnsupported = false;
 
   constructor(private readonly config: OpenAITTSConfig) {
     this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
     this.model = config.model ?? 'tts-1';
     this.voice = config.voice ?? 'alloy';
     this.speed = config.speed ?? 1.0;
+    this.instructions = config.instructions;
+  }
+
+  private speechParams(text: string, overrideConfig?: TTSConfig) {
+    const model = overrideConfig?.model ?? this.model;
+    const params = {
+      model,
+      voice: overrideConfig?.voice ?? this.voice,
+      input: text,
+      response_format: mapFormat(overrideConfig?.format),
+      speed: this.speed
+    } as Parameters<OpenAI['audio']['speech']['create']>[0];
+
+    const instructions = overrideConfig?.instructions ?? this.instructions;
+    if (instructions) {
+      if (ttsModelSupportsInstructions(model)) {
+        params.instructions = instructions;
+      } else if (!this.warnedInstructionsUnsupported) {
+        this.warnedInstructionsUnsupported = true;
+        console.warn(
+          `[openai-tts] Model "${model}" does not support TTS instructions - ignoring them. ` +
+            `Use an instructable model such as gpt-4o-mini-tts.`
+        );
+      }
+    }
+    return params;
   }
 
   async speak(text: string, overrideConfig?: TTSConfig): Promise<TTSResult> {
-    const voice = (overrideConfig?.voice as OpenAITTSVoice) ?? this.voice;
-    const format = mapFormat(overrideConfig?.format);
-
-    const response = await this.client.audio.speech.create({
-      model: (overrideConfig?.model as typeof this.model) ?? this.model,
-      voice,
-      input: text,
-      response_format: format,
-      speed: this.speed
-    });
+    const response = await this.client.audio.speech.create(
+      this.speechParams(text, overrideConfig)
+    );
 
     const buffer = Buffer.from(await response.arrayBuffer());
     return {
@@ -292,16 +340,9 @@ export class OpenAITTSProvider implements TTSProvider {
    * This is the recommended format for lowest latency (no decode step needed).
    */
   async *speakStream(text: string, overrideConfig?: TTSConfig): AsyncIterable<Buffer> {
-    const voice = (overrideConfig?.voice as OpenAITTSVoice) ?? this.voice;
-    const format = mapFormat(overrideConfig?.format);
-
-    const response = await this.client.audio.speech.create({
-      model: (overrideConfig?.model as typeof this.model) ?? this.model,
-      voice,
-      input: text,
-      response_format: format,
-      speed: this.speed
-    });
+    const response = await this.client.audio.speech.create(
+      this.speechParams(text, overrideConfig)
+    );
 
     // The SDK's response body is a web ReadableStream when a global fetch
     // is available, but a Node Readable when the SDK runs with its Node

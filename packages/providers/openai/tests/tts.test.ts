@@ -54,7 +54,10 @@ describe('OpenAITTSProvider', () => {
     });
 
     it('should accept all valid voice options', () => {
-      const voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const;
+      const voices = [
+        'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable',
+        'nova', 'onyx', 'sage', 'shimmer', 'verse'
+      ] as const;
       for (const voice of voices) {
         const voiceProvider = new OpenAITTSProvider({
           apiKey: 'test-key',
@@ -272,6 +275,142 @@ describe('OpenAITTSProvider', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ input: longText })
+      );
+    });
+  });
+
+  describe('instructions', () => {
+    beforeEach(() => {
+      mockCreate.mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(createTestAudioBuffer()),
+        body: createMockReadableStream([createTestAudioBuffer()])
+      });
+    });
+
+    it('sends constructor-level instructions on instructable models', async () => {
+      const instructable = new OpenAITTSProvider({
+        apiKey: 'k',
+        model: 'gpt-4o-mini-tts',
+        instructions: 'Speak calmly.'
+      });
+
+      await instructable.speak('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ instructions: 'Speak calmly.' })
+      );
+    });
+
+    it('per-call instructions override constructor instructions', async () => {
+      const instructable = new OpenAITTSProvider({
+        apiKey: 'k',
+        model: 'gpt-4o-mini-tts',
+        instructions: 'Speak calmly.'
+      });
+
+      await instructable.speak('Test', { instructions: 'Sound excited!' });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ instructions: 'Sound excited!' })
+      );
+    });
+
+    it('sends instructions on the streaming path', async () => {
+      const instructable = new OpenAITTSProvider({
+        apiKey: 'k',
+        model: 'gpt-4o-mini-tts',
+        instructions: 'Whisper.'
+      });
+
+      for await (const _ of instructable.speakStream('Test')) {
+        // consume stream
+      }
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ instructions: 'Whisper.' })
+      );
+    });
+
+    it('omits instructions when none are configured', async () => {
+      const instructable = new OpenAITTSProvider({
+        apiKey: 'k',
+        model: 'gpt-4o-mini-tts'
+      });
+
+      await instructable.speak('Test');
+
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('instructions');
+    });
+
+    it('drops instructions on tts-1 with a single warning', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const legacy = new OpenAITTSProvider({
+          apiKey: 'k',
+          model: 'tts-1',
+          instructions: 'Speak calmly.'
+        });
+
+        await legacy.speak('One');
+        await legacy.speak('Two');
+
+        expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('instructions');
+        expect(mockCreate.mock.calls[1][0]).not.toHaveProperty('instructions');
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toContain('tts-1');
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('does not warn when instructions are sent to an instructable model', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const instructable = new OpenAITTSProvider({
+          apiKey: 'k',
+          model: 'gpt-4o-mini-tts',
+          instructions: 'Speak calmly.'
+        });
+
+        await instructable.speak('One');
+        await instructable.speak('Two');
+
+        expect(warnSpy).not.toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('sends instructions to any future gpt-* TTS model', async () => {
+      const future = new OpenAITTSProvider({
+        apiKey: 'k',
+        model: 'gpt-5-tts',
+        instructions: 'Narrate briskly.'
+      });
+
+      await future.speak('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5-tts',
+          instructions: 'Narrate briskly.'
+        })
+      );
+    });
+
+    it('honors an instructions override when the base model is legacy', async () => {
+      const legacy = new OpenAITTSProvider({ apiKey: 'k', model: 'tts-1' });
+
+      await legacy.speak('Test', {
+        model: 'gpt-4o-mini-tts',
+        instructions: 'Narrate like a documentary.'
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-4o-mini-tts',
+          instructions: 'Narrate like a documentary.'
+        })
       );
     });
   });

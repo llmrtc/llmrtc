@@ -181,7 +181,8 @@ function createSTTProvider(): STTProvider {
 
   return new OpenAIWhisperProvider({
     apiKey: process.env.OPENAI_API_KEY ?? '',
-    baseURL: process.env.OPENAI_BASE_URL
+    baseURL: process.env.OPENAI_BASE_URL,
+    model: process.env.OPENAI_STT_MODEL || undefined
   });
 }
 
@@ -200,7 +201,9 @@ function createTTSProvider(): TTSProvider {
         return new OpenAITTSProvider({
           apiKey: process.env.OPENAI_API_KEY ?? '',
           baseURL: process.env.OPENAI_BASE_URL,
-          voice: (process.env.OPENAI_TTS_VOICE as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer') ?? 'nova'
+          model: process.env.OPENAI_TTS_MODEL || undefined,
+          voice: process.env.OPENAI_TTS_VOICE || 'nova',
+          instructions: process.env.OPENAI_TTS_INSTRUCTIONS || undefined
         });
       case 'piper':
         return new PiperTTSProvider({
@@ -231,7 +234,9 @@ function createTTSProvider(): TTSProvider {
   return new OpenAITTSProvider({
     apiKey: process.env.OPENAI_API_KEY ?? '',
     baseURL: process.env.OPENAI_BASE_URL,
-    voice: (process.env.OPENAI_TTS_VOICE as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer') ?? 'nova'
+    model: process.env.OPENAI_TTS_MODEL || undefined,
+    voice: process.env.OPENAI_TTS_VOICE || 'nova',
+    instructions: process.env.OPENAI_TTS_INSTRUCTIONS || undefined
   });
 }
 

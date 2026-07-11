@@ -133,7 +133,9 @@ const ttsProviders: Record<string, ProviderFactory<TTSProvider>> = {
     available: !!process.env.OPENAI_API_KEY,
     create: () => new OpenAITTSProvider({
       apiKey: process.env.OPENAI_API_KEY!,
-      voice: (process.env.OPENAI_TTS_VOICE as any) || 'nova'
+      model: process.env.OPENAI_TTS_MODEL || undefined,
+      voice: process.env.OPENAI_TTS_VOICE || 'nova',
+      instructions: process.env.OPENAI_TTS_INSTRUCTIONS || undefined
     })
   },
   piper: {

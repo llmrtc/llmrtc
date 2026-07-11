@@ -221,7 +221,7 @@ const sttProvider = new OpenAIWhisperProvider({
 // TTS: Converts text to speech
 const ttsProvider = new OpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY,
-  voice: 'alloy'  // alloy, echo, fable, onyx, nova, shimmer
+  voice: 'alloy'  // alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer (+ ballad, verse on gpt-4o-mini-tts)
 });
 ```
 

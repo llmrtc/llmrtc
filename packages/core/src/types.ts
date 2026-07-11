@@ -106,6 +106,12 @@ export interface TTSConfig {
   voice?: string;
   format?: 'mp3' | 'ogg' | 'wav' | 'pcm';
   model?: string;
+  /**
+   * Natural-language delivery direction (tone, pacing, emotion, accent)
+   * for instructable TTS models such as OpenAI's gpt-4o-mini-tts.
+   * Providers or models without instruction support ignore this.
+   */
+  instructions?: string;
 }
 
 export interface TTSResult {

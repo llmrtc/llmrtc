@@ -65,7 +65,10 @@ If not specified, providers are auto-detected based on available API keys.
 | `ZAI_API_KEY` | Z.ai API key (for `LLM_PROVIDER=zai`) |
 | `ZAI_MODEL` | Z.ai GLM model (default: `glm-5.2`) |
 | `OLLAMA_VISION_MODEL` | Local vision model for the vision provider (default: `llava` for compatibility; set `qwen3-vl` for the current generation) |
-| `OPENAI_TTS_VOICE` | OpenAI TTS voice |
+| `OPENAI_STT_MODEL` | OpenAI transcription model (default: `whisper-1`; try `gpt-4o-mini-transcribe`) |
+| `OPENAI_TTS_MODEL` | OpenAI TTS model (default: `tts-1`; `gpt-4o-mini-tts` supports instructions) |
+| `OPENAI_TTS_VOICE` | OpenAI TTS voice (default: `nova`) |
+| `OPENAI_TTS_INSTRUCTIONS` | Delivery instructions for instructable TTS models (tone, pacing, persona) |
 
 ### Runtime
 

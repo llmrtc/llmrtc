@@ -95,15 +95,16 @@ await server.stop();
   - TTS barge-in: When user starts speaking during TTS playback, current TTS is cancelled immediately.
   - Heartbeat: 15s interval, 45s timeout for connection health monitoring.
 - Provider selection env vars:
-  - `LLM_PROVIDER`: openai (default), anthropic, google, bedrock, openrouter, lmstudio, ollama
+  - `LLM_PROVIDER`: openai (default), anthropic, google, bedrock, openrouter, zai (alias: glm), lmstudio, ollama
   - `TTS_PROVIDER`: elevenlabs (default), openai, piper
   - `STT_PROVIDER`: openai (default), faster-whisper
 - Provider API keys:
-  - `OPENAI_API_KEY`, `OPENAI_BASE_URL?`, `OPENAI_MODEL?`, `OPENAI_TTS_VOICE?`
+  - `OPENAI_API_KEY`, `OPENAI_BASE_URL?`, `OPENAI_MODEL?`, `OPENAI_STT_MODEL?`, `OPENAI_TTS_MODEL?`, `OPENAI_TTS_VOICE?`, `OPENAI_TTS_INSTRUCTIONS?`
   - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL?`
   - `GOOGLE_API_KEY`, `GOOGLE_MODEL?`
   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION?`, `BEDROCK_MODEL?`
   - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL?`
+  - `ZAI_API_KEY`, `ZAI_MODEL?`
   - `ELEVENLABS_API_KEY`
   - `LMSTUDIO_BASE_URL?`, `LMSTUDIO_MODEL?`
   - `OLLAMA_BASE_URL?`, `OLLAMA_MODEL?`
