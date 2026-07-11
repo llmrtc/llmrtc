@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
         'backend/configuration',
         'backend/environment-variables',
         'backend/streaming-stt',
+        'backend/realtime-speech',
         'backend/networking-and-turn',
         'backend/voice-playbook',
         'backend/deployment',

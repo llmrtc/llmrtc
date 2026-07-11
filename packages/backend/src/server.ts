@@ -27,7 +27,8 @@ import {
   ToolRegistry,
   RealtimeSpeechConfig,
   RealtimeSpeechProvider,
-  RealtimeSpeechSession
+  RealtimeSpeechSession,
+  PlaybookEngine
 } from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
@@ -233,6 +234,18 @@ export class LLMRTCServer {
   private cachedIceServers: { servers: RTCIceServer[]; expiresAt: number } | null = null;
 
   private eventHandlers: Partial<LLMRTCServerEvents> = {};
+  private stopping = false;
+  /** Relay sessions surviving a client drop, awaiting reconnect (RFC 0001 §9). */
+  private readonly relayGrace = new Map<
+    string,
+    {
+      relay: RealtimeRelayOrchestrator;
+      playback: RealtimePlayback;
+      inputSampleRate: number;
+      io: { ws: WebSocket; peer: NativePeerServer | null; fatal: (error: Error) => void };
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
 
   constructor(config: LLMRTCServerConfig) {
     this.config = {
@@ -395,6 +408,13 @@ export class LLMRTCServer {
    * Stop the server
    */
   async stop(): Promise<void> {
+    this.stopping = true;
+    // Graced relay sessions must not outlive the server
+    for (const [key, entry] of this.relayGrace) {
+      clearTimeout(entry.timer);
+      await entry.relay.stop().catch(() => {});
+      this.relayGrace.delete(key);
+    }
     // Stop the session sweeper so the event loop can drain
     this.sessionManager.destroy();
 
@@ -532,8 +552,28 @@ export class LLMRTCServer {
     let peer: NativePeerServer | null = null;
     let audioProcessor: AudioProcessor | null = null;
     let relay: RealtimeRelayOrchestrator | null = null;
+    let playback: RealtimePlayback | null = null;
     let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
+    let fatalClosed = false;
+    // Mutable so a reconnecting client can adopt this session's output
+    // AND its failure path (fatal must close the CURRENT client)
+    const io: { ws: WebSocket; peer: NativePeerServer | null; fatal: (error: Error) => void } = {
+      ws,
+      peer: null,
+      fatal: () => {}
+    };
+    const graceMs = rs.clientReconnectGraceMs ?? 30000;
+    let adopted:
+      | {
+          relay: RealtimeRelayOrchestrator;
+          playback: RealtimePlayback;
+          inputSampleRate: number;
+          io: { ws: WebSocket; peer: NativePeerServer | null; fatal: (error: Error) => void };
+        }
+      | null = null;
+    // The id the client reconnects with; adopted sessions keep their original
+    let sessionKey = connId;
 
     const resetHeartbeatTimeout = () => {
       if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
@@ -546,14 +586,16 @@ export class LLMRTCServer {
 
     const fatal = (error: Error) => {
       if (closed) return;
+      fatalClosed = true;
       console.error('[server] Realtime relay fatal error:', error.message);
       // Errors the orchestrator already reported to the client (e.g.
       // BUDGET_EXCEEDED) must not produce a second, generic error
       if (error.name !== 'ReportedRelayError') {
-        this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), ws, peer);
+        this.sendBoth(createErrorMessage('REALTIME_ERROR', error.message), io.ws, io.peer);
       }
-      ws.close();
+      io.ws.close();
     };
+    io.fatal = fatal;
 
     // Registered BEFORE any await: a socket error in the connect window
     // would otherwise crash the process, and a close would leak the
@@ -565,7 +607,42 @@ export class LLMRTCServer {
       closed = true;
       console.log(`[server] Relay connection closed: ${connId}`);
       if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
-      await relay?.stop().catch(() => {});
+      if (relay && playback && !fatalClosed && !this.stopping && graceMs > 0) {
+        // Keep the provider session alive across a client blip: mic is
+        // silent, conversation state survives (RFC 0001 §9). Stash the
+        // io the relay is actually bound to (the adopted one on later
+        // reconnect cycles) so message routing survives cycle N+1.
+        const relayIo = adopted?.io ?? io;
+        const c = await connectPromise;
+        const graced = {
+          relay,
+          playback,
+          inputSampleRate: adopted?.inputSampleRate ?? (c.ok ? c.session.inputSampleRate : 24000),
+          io: relayIo,
+          timer: setTimeout(() => {}, 0)
+        };
+        clearTimeout(graced.timer);
+        // Playback targets a peer that is being destroyed - drop it
+        graced.playback.clear();
+        // Provider death while nobody is connected: remove the entry so
+        // a reconnecting client can never adopt a dead session
+        relayIo.fatal = (error: Error) => {
+          console.error(`[server] Graced relay ${sessionKey} died:`, error.message);
+          clearTimeout(graced.timer);
+          this.relayGrace.delete(sessionKey);
+          void graced.relay.stop().catch(() => {});
+        };
+        graced.timer = setTimeout(() => {
+          this.relayGrace.delete(sessionKey);
+          void graced.relay.stop().catch(() => {});
+          console.log(`[server] Relay grace expired for ${sessionKey}`);
+        }, graceMs);
+        graced.timer.unref?.();
+        this.relayGrace.set(sessionKey, graced);
+        console.log(`[server] Relay session ${connId} held for reconnect (${graceMs}ms grace)`);
+      } else {
+        await relay?.stop().catch(() => {});
+      }
       if (!relay) {
         // Close the provider session whether or not connect has settled
         void connectPromise.then((c) => {
@@ -581,10 +658,28 @@ export class LLMRTCServer {
       this.emit('disconnect', { id: connId });
     });
 
-    // Built ONCE and shared by the initial connect and session renewal,
-    // so a renewed session can never drift from the original config
+    // Playbook mode: the engine owns stage state; the session connects
+    // with the initial stage's instructions/tools (RFC 0001 §5)
+    const playbookEngine = this.config.playbook ? new PlaybookEngine(this.config.playbook) : undefined;
+    if (this.config.playbook) {
+      const unsupported = this.config.playbook.transitions.filter(
+        (t) => t.condition.type !== 'llm_decision'
+      );
+      const clears = this.config.playbook.transitions.filter((t) => t.action.clearHistory);
+      if (unsupported.length || clears.length) {
+        console.warn(
+          `[server] Relay-mode playbooks support llm_decision transitions only; ` +
+            `${unsupported.length} other transition(s) and ${clears.length} clearHistory action(s) will not fire`
+        );
+      }
+    }
+
+    // Built ONCE and shared by the initial connect and session renewal
+    // (renewal overrides instructions/tools from the live playbook stage)
     const sessionConfig: RealtimeSpeechConfig = {
-      instructions: rs.instructions ?? this.config.systemPrompt,
+      instructions: playbookEngine
+        ? playbookEngine.getEffectiveSystemPrompt()
+        : (rs.instructions ?? this.config.systemPrompt),
       voice: rs.voice,
       inputTranscription: rs.inputTranscription,
       transcriptionModel: rs.transcriptionModel,
@@ -592,7 +687,9 @@ export class LLMRTCServer {
       maxOutputTokens: rs.maxOutputTokens,
       // Bounded provider-side context is the relay-mode default cost lever
       contextManagement: rs.contextManagement ?? { strategy: 'truncate', retentionRatio: 0.8 },
-      tools: rs.tools ?? this.config.toolRegistry?.getDefinitions()
+      tools: playbookEngine
+        ? playbookEngine.getAvailableTools()
+        : (rs.tools ?? this.config.toolRegistry?.getDefinitions())
     };
 
     // Eager provider connect, concurrent with ICE resolution, so the
@@ -616,15 +713,38 @@ export class LLMRTCServer {
 
           case 'offer':
           case 'signal': {
+            if (adopted) {
+              // Reconnected client: wire a fresh peer to the adopted relay
+              if (!peer || peer.destroyed) {
+                peer = this.createPeer(ws, await this.resolveIceServers());
+                if (peer) {
+                  adopted.io.peer = peer;
+                  this.wireAdoptedRelayPeer(peer, adopted, ws, (ap) => {
+                    audioProcessor = ap;
+                  });
+                }
+              }
+              if (peer && msg.signal) {
+                const answer = await peer.handleOffer(msg.signal);
+                ws.send(JSON.stringify({ type: 'signal', signal: answer }));
+              }
+              break;
+            }
             const connected = await connectPromise;
             if (!connected.ok) return;
             if (!peer || peer.destroyed) {
               peer = this.createPeer(ws, await this.resolveIceServers());
               if (peer) {
+                io.peer = peer;
                 this.setupRelayPeerHandlers(peer, connected.session, {
                   sessionConfig,
+                  playbookEngine,
+                  io,
                   setRelay: (r) => {
                     relay = r;
+                  },
+                  setPlayback: (p) => {
+                    playback = p;
                   },
                   setAudioProcessor: (ap) => {
                     audioProcessor = ap;
@@ -655,18 +775,45 @@ export class LLMRTCServer {
             console.warn('[server] Ignoring attachments in realtime relay mode');
             break;
 
-          case 'reconnect':
-            // Provider-state recovery across client reconnects lands in
-            // M3 (grace window); until then be honest about recovery
-            ws.send(
-              JSON.stringify({
-                type: 'reconnect-ack',
-                success: false,
-                sessionId: connId,
-                historyRecovered: false
-              })
-            );
+          case 'reconnect': {
+            const graced = typeof msg.sessionId === 'string' ? this.relayGrace.get(msg.sessionId) : undefined;
+            if (graced) {
+              // Adopt the surviving session: its output now targets this
+              // ws; this connection's own eager session is redundant
+              this.relayGrace.delete(msg.sessionId);
+              clearTimeout(graced.timer);
+              graced.io.ws = ws;
+              graced.io.peer = null;
+              graced.io.fatal = fatal;
+              adopted = graced;
+              sessionKey = msg.sessionId;
+              relay = graced.relay;
+              playback = graced.playback;
+              void connectPromise.then((c) => {
+                if (c.ok) void c.session.close().catch(() => {});
+              });
+              console.log(`[server] Relay session ${msg.sessionId} adopted by ${connId}`);
+              ws.send(
+                JSON.stringify({
+                  type: 'reconnect-ack',
+                  success: true,
+                  sessionId: msg.sessionId,
+                  historyRecovered: true
+                })
+              );
+            } else {
+              // Nothing to resume: transcript-level recovery only (§9)
+              ws.send(
+                JSON.stringify({
+                  type: 'reconnect-ack',
+                  success: false,
+                  sessionId: connId,
+                  historyRecovered: false
+                })
+              );
+            }
             break;
+          }
 
           default:
             break;
@@ -677,6 +824,11 @@ export class LLMRTCServer {
     });
 
     const [iceServers, connected] = await Promise.all([this.resolveIceServers(), connectPromise]);
+    if (adopted) {
+      // Reconnected client already owns a live session; its redundant
+      // eager connect (even a failed one) is irrelevant
+      return;
+    }
     if (closed) {
       // Client left during the connect window; the close handler above
       // already arranged provider-session cleanup
@@ -692,12 +844,54 @@ export class LLMRTCServer {
     ws.send(JSON.stringify(createReadyMessage(connId, iceServers, 'realtime')));
   }
 
+  /** Wire a reconnecting client's fresh peer to an adopted relay session. */
+  private wireAdoptedRelayPeer(
+    peer: NativePeerServer,
+    adopted: {
+      relay: RealtimeRelayOrchestrator;
+      playback: RealtimePlayback;
+      inputSampleRate: number;
+    },
+    ws: WebSocket,
+    setAudioProcessor: (ap: AudioProcessor) => void
+  ): void {
+    let audioWired = false;
+    peer.on('track', (track: MediaStreamTrack) => {
+      if (track.kind !== 'audio' || audioWired) return;
+      audioWired = true;
+      if (!peer.ttsAudioSource || !this.RTCAudioSource) {
+        this.sendBoth(
+          createErrorMessage('REALTIME_ERROR', 'Realtime relay mode requires native WebRTC audio support'),
+          ws,
+          peer
+        );
+        ws.close();
+        return;
+      }
+      adopted.playback.setSource(peer.ttsAudioSource);
+      const audioProcessor = new AudioProcessor({
+        passThrough: true,
+        speechFrameSampleRate: adopted.inputSampleRate
+      });
+      setAudioProcessor(audioProcessor);
+      audioProcessor.on('speechFrame', (frame: Buffer) => adopted.relay.sendAudio(frame));
+      peer.on('audioData', async (data: AudioData) => {
+        await audioProcessor.processPCMData(data);
+      });
+      peer.on('close', () => ws.close());
+      peer.on('error', () => ws.close());
+    });
+  }
+
   private setupRelayPeerHandlers(
     peer: NativePeerServer,
     session: RealtimeSpeechSession,
     ctx: {
       sessionConfig: RealtimeSpeechConfig;
+      playbookEngine?: PlaybookEngine;
+      io: { ws: WebSocket; peer: NativePeerServer | null; fatal: (error: Error) => void };
       setRelay: (r: RealtimeRelayOrchestrator) => void;
+      setPlayback: (p: RealtimePlayback) => void;
       setAudioProcessor: (ap: AudioProcessor) => void;
       ws: WebSocket;
       fatal: (error: Error) => void;
@@ -725,20 +919,24 @@ export class LLMRTCServer {
       const playback = new RealtimePlayback(peer.ttsAudioSource, session.outputSampleRate, (err) =>
         console.error('[server] Relay playback error:', err.message)
       );
+      ctx.setPlayback(playback);
 
       const rs = this.config.realtimeSpeech!;
       const relay = new RealtimeRelayOrchestrator({
         session,
         playback,
         callbacks: {
-          send: (message) => this.sendBoth(message, ctx.ws, peer),
-          onFatal: ctx.fatal
+          // Routed through the mutable io holder so an adopted reconnect
+          // redirects output to the new client transparently
+          send: (message) => this.sendBoth(message, ctx.io.ws, ctx.io.peer),
+          onFatal: (error) => ctx.io.fatal(error)
         },
         metrics: this.metrics,
         toolRegistry: this.config.toolRegistry,
         provider: rs.provider,
         sessionConfig: ctx.sessionConfig,
-        budget: rs.budget
+        budget: rs.budget,
+        playbookEngine: ctx.playbookEngine
       });
       ctx.setRelay(relay);
 

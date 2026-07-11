@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AsyncEventQueue, ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
+import { AsyncEventQueue, PlaybookEngine, ToolRegistry, defineTool } from '@llmrtc/llmrtc-core';
+import type { Playbook } from '@llmrtc/llmrtc-core';
 import type {
   RealtimeSpeechConfig,
   RealtimeSpeechEvent,
@@ -31,7 +32,14 @@ class FakeSession implements RealtimeSpeechSession {
   sendToolResult(callId: string, output: unknown): void {
     this.toolResults.push({ callId, output });
   }
-  async update(_c: Partial<RealtimeSpeechConfig>): Promise<void> {}
+  updates: Array<Partial<RealtimeSpeechConfig>> = [];
+  responsesRequested = 0;
+  requestResponse(): void {
+    this.responsesRequested++;
+  }
+  async update(c: Partial<RealtimeSpeechConfig>): Promise<void> {
+    this.updates.push(c);
+  }
   async close(): Promise<void> {
     this.closed = true;
     this.queue.end();
@@ -620,6 +628,104 @@ describe('RealtimeRelayOrchestrator M2 review regressions', () => {
     expect(fresh.sentAudio).toHaveLength(1);
     expect(session.sentAudio).toHaveLength(0);
     await relay.stop();
+    await done;
+  });
+});
+
+describe('RealtimeRelayOrchestrator M3: playbooks', () => {
+  const playbook: Playbook = {
+    id: 'p',
+    name: 'P',
+    initialStage: 'greeting',
+    stages: [
+      { id: 'greeting', name: 'Greeting', systemPrompt: 'Greet warmly.', description: 'g' },
+      { id: 'booking', name: 'Booking', systemPrompt: 'Book a table.', description: 'b' }
+    ],
+    transitions: [
+      {
+        id: 't1',
+        from: 'greeting',
+        condition: { type: 'llm_decision' },
+        action: { targetStage: 'booking' }
+      }
+    ]
+  };
+
+  it('reconfigures the live session on a playbook_transition tool call', async () => {
+    const engine = new PlaybookEngine(playbook);
+    const { session, relay, sent } = setup({ playbookEngine: engine });
+    const done = relay.start();
+
+    session.queue.push({
+      type: 'tool-call',
+      callId: 'c1',
+      name: 'playbook_transition',
+      arguments: { targetStage: 'booking', reason: 'user wants to book' }
+    });
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(engine.getCurrentStage().id).toBe('booking');
+    expect(session.updates).toHaveLength(1);
+    expect(String(session.updates[0].instructions)).toContain('Book a table.');
+    expect(sent.some((m) => m.type === 'stage-change' && m.to === 'booking')).toBe(true);
+    expect(session.toolResults[0].output).toMatchObject({ success: true, stage: 'booking' });
+    // sendToolResult already triggers the announcement response
+    expect(session.responsesRequested).toBe(0);
+    session.queue.end();
+    await done;
+  });
+
+  it('renews into the CURRENT playbook stage, not the initial one', async () => {
+    const engine = new PlaybookEngine(playbook);
+    const fresh = new FakeSession();
+    const connectCalls: Array<Record<string, unknown>> = [];
+    const provider = {
+      name: 'fake',
+      connect: vi.fn(async (cfg: Record<string, unknown>) => {
+        connectCalls.push(cfg);
+        return fresh;
+      })
+    };
+    const { session, relay } = setup({
+      playbookEngine: engine,
+      provider,
+      sessionConfig: { instructions: 'Greet warmly.' }
+    });
+    const done = relay.start();
+
+    session.queue.push({
+      type: 'tool-call',
+      callId: 'c1',
+      name: 'playbook_transition',
+      arguments: { targetStage: 'booking', reason: 'r' }
+    });
+    await new Promise((r) => setTimeout(r, 80));
+    session.queue.push({ type: 'session-expiring', renewable: true });
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(String(connectCalls[0].instructions)).toContain('Book a table.');
+    await relay.stop();
+    await done;
+  });
+
+  it('rejects a transition to an unknown stage without reconfiguring', async () => {
+    const engine = new PlaybookEngine(playbook);
+    const { session, relay, sent } = setup({ playbookEngine: engine });
+    const done = relay.start();
+
+    session.queue.push({
+      type: 'tool-call',
+      callId: 'c1',
+      name: 'playbook_transition',
+      arguments: { targetStage: 'nope', reason: 'x' }
+    });
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(engine.getCurrentStage().id).toBe('greeting');
+    expect(session.updates).toHaveLength(0);
+    expect(sent.some((m) => m.type === 'stage-change')).toBe(false);
+    expect(session.toolResults[0].output).toMatchObject({ success: false });
+    session.queue.end();
     await done;
   });
 });

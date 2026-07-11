@@ -55,6 +55,18 @@ export interface StageChangePayload {
 
 export type ClientEvents = {
   transcript: (text: string, isFinal?: boolean) => void;
+  /** Assistant-side transcript (realtime relay mode). */
+  assistantTranscript: (text: string, isFinal?: boolean) => void;
+  /** Per-response token usage (realtime relay mode). */
+  usage: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    audioInputTokens?: number;
+    audioOutputTokens?: number;
+    cachedTokens?: number;
+  }) => void;
+  /** Mid-session mode change (relay fell back to pipeline). */
+  modeChanged: (mode: 'pipeline' | 'realtime') => void;
   llm: (text: string) => void;
   llmChunk: (text: string) => void;
   tts: (audio: ArrayBuffer, format: string) => void;
@@ -480,6 +492,21 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
       switch (msg.type) {
         case 'transcript':
           this.emit('transcript', msg.text, msg.isFinal ?? true);
+          break;
+        case 'assistant-transcript':
+          this.emit('assistantTranscript', msg.text, msg.isFinal ?? true);
+          break;
+        case 'usage':
+          this.emit('usage', {
+            inputTokens: msg.inputTokens ?? 0,
+            outputTokens: msg.outputTokens ?? 0,
+            audioInputTokens: msg.audioInputTokens,
+            audioOutputTokens: msg.audioOutputTokens,
+            cachedTokens: msg.cachedTokens
+          });
+          break;
+        case 'mode-changed':
+          this.emit('modeChanged', msg.mode);
           break;
         case 'llm-chunk':
           if (msg.content) this.emit('llmChunk', msg.content);

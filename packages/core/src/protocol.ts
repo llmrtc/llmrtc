@@ -189,6 +189,14 @@ export interface UsageMessage extends BaseMessage {
 }
 
 /**
+ * Mid-session mode change (realtime relay fell back to pipeline).
+ */
+export interface ModeChangedMessage extends BaseMessage {
+  type: 'mode-changed';
+  mode: 'pipeline' | 'realtime';
+}
+
+/**
  * LLM response chunk (streaming)
  */
 export interface LLMChunkMessage extends BaseMessage {
@@ -390,6 +398,7 @@ export type ServerMessage =
   | TranscriptMessage
   | AssistantTranscriptMessage
   | UsageMessage
+  | ModeChangedMessage
   | LLMChunkMessage
   | LLMMessage
   | TTSStartMessage
@@ -431,6 +440,7 @@ const SERVER_MESSAGE_TYPES = new Set([
   'transcript',
   'assistant-transcript',
   'usage',
+  'mode-changed',
   'llm-chunk',
   'llm',
   'tts-start',

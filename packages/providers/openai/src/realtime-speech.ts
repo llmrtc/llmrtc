@@ -61,7 +61,10 @@ interface RealtimeServerEvent {
 const BENIGN_ERROR_CODES = new Set([
   'response_cancel_not_active',
   'item_truncate_invalid',
-  'invalid_item_truncate'
+  'invalid_item_truncate',
+  // response.create colliding with an in-flight response (e.g. two tool
+  // results in quick succession) - the active response continues
+  'conversation_already_has_active_response'
 ]);
 
 function mapTools(tools: ToolDefinition[] | undefined): unknown[] | undefined {
@@ -313,6 +316,11 @@ class OpenAIRealtimeSpeechSession implements RealtimeSpeechSession {
         }
       })
     );
+    this.ws.send(JSON.stringify({ type: 'response.create' }));
+  }
+
+  requestResponse(): void {
+    if (this.ws.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type: 'response.create' }));
   }
 

@@ -107,6 +107,12 @@ export interface RealtimeSpeechSession {
    */
   cancelResponse(playedMs?: number): void;
   sendToolResult(callId: string, output: unknown): void;
+  /**
+   * Ask the model to produce a response now (e.g. a stage onEnter
+   * announcement after a playbook transition). Optional: providers
+   * whose responses are purely VAD-driven may omit it.
+   */
+  requestResponse?(): void;
   /** Live re-configuration (playbook stage changes swap instructions/tools). */
   update(config: Partial<RealtimeSpeechConfig>): Promise<void>;
   close(): Promise<void>;

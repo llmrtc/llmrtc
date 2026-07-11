@@ -39,10 +39,20 @@ export class RealtimePlayback {
   private drainedWaiters: Array<() => void> = [];
 
   constructor(
-    private readonly source: WrtcAudioSource,
+    private source: WrtcAudioSource,
     private readonly inputSampleRate: number,
     private readonly onError?: (err: Error) => void
   ) {}
+
+  /**
+   * Re-point playback at a new WebRTC source (client reconnect within
+   * the grace window). Anything queued belonged to the old peer's
+   * timeline and is dropped.
+   */
+  setSource(source: WrtcAudioSource): void {
+    this.clear();
+    this.source = source;
+  }
 
   /** Current playback epoch; bumped by clear(). */
   get currentEpoch(): number {
@@ -75,6 +85,9 @@ export class RealtimePlayback {
     if (!this.running) {
       this.running = true;
       this.drainPromise = this.drain().catch((err: Error) => {
+        // A feed error (e.g. destroyed source) must degrade to dropped
+        // audio, not a permanently dead pacer
+        this.running = false;
         this.onError?.(err);
       });
     }

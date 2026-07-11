@@ -16,6 +16,7 @@ import {
   Message,
   MetricsAdapter,
   NoopMetrics,
+  PlaybookEngine,
   RealtimeSpeechConfig,
   RealtimeSpeechEvent,
   RealtimeSpeechProvider,
@@ -48,6 +49,12 @@ export interface RealtimeRelayOptions {
   sessionConfig?: RealtimeSpeechConfig;
   /** Spend guardrails (RFC 0001 §7). maxSessionMs defaults to 120 minutes. */
   budget?: { maxSessionMs?: number; maxTokens?: number; onExceeded?: 'warn' | 'end-session' };
+  /**
+   * Playbook mode (RFC 0001 §5): stage transitions reconfigure the live
+   * session. The engine is shared with the server so the session was
+   * connected with the initial stage's instructions/tools.
+   */
+  playbookEngine?: PlaybookEngine;
 }
 
 export class RealtimeRelayOrchestrator {
@@ -65,6 +72,8 @@ export class RealtimeRelayOrchestrator {
   private budgetTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pendingTools = new Map<string, AbortController>();
   private renewing = false;
+  private readonly playbookEngine?: PlaybookEngine;
+  private transitionChain: Promise<void> = Promise.resolve();
   private readonly playback: RealtimePlayback;
   private readonly callbacks: RealtimeRelayCallbacks;
   private readonly metrics: MetricsAdapter;
@@ -85,6 +94,7 @@ export class RealtimeRelayOrchestrator {
     this.toolExecutor = options.toolRegistry ? new ToolExecutor(options.toolRegistry) : undefined;
     this.provider = options.provider;
     this.sessionConfig = options.sessionConfig;
+    this.playbookEngine = options.playbookEngine;
     this.budget = {
       maxSessionMs: options.budget?.maxSessionMs ?? 120 * 60 * 1000,
       maxTokens: options.budget?.maxTokens,
@@ -242,6 +252,14 @@ export class RealtimeRelayOrchestrator {
         }
         break;
       case 'tool-call': {
+        if (event.name === 'playbook_transition' && this.playbookEngine) {
+          // Serialized: parallel transition calls in one response must
+          // not race the engine or interleave session.update calls
+          this.transitionChain = this.transitionChain.then(() =>
+            this.handleStageTransition(event.callId, event.arguments)
+          );
+          break;
+        }
         if (!this.toolExecutor) {
           this.logger.warn(`[realtime-relay] tool-call '${event.name}' received but no toolRegistry configured`);
           this.session.sendToolResult(event.callId, { error: 'Tool execution is not configured' });
@@ -332,6 +350,65 @@ export class RealtimeRelayOrchestrator {
     }
   }
 
+  /**
+   * Playbook stage transition (RFC 0001 §5): validate via the engine,
+   * reconfigure the live session with the new stage's instructions and
+   * tools, notify the client, then nudge the model to speak the new
+   * stage (providers without requestResponse rely on the next user turn).
+   */
+  private async handleStageTransition(callId: string, args: Record<string, unknown>): Promise<void> {
+    const engine = this.playbookEngine!;
+    const from = engine.getCurrentStage().id;
+    const targetStage = String(args.targetStage ?? '');
+    const reason = String(args.reason ?? '');
+    try {
+      const evalResult = await engine.evaluateExplicitTransition(
+        targetStage,
+        reason,
+        args.data as Record<string, unknown> | undefined
+      );
+      if (!evalResult.shouldTransition || !evalResult.transition) {
+        this.session.sendToolResult(callId, {
+          success: false,
+          error: `Transition to '${targetStage}' was not allowed`
+        });
+        return;
+      }
+      await engine.executeTransition(evalResult.transition, args.data as Record<string, unknown> | undefined);
+      const stage = engine.getCurrentStage();
+      const newConfig = {
+        instructions: engine.getEffectiveSystemPrompt(),
+        tools: engine.getAvailableTools()
+      };
+      try {
+        await this.session.update(newConfig);
+      } catch {
+        // The engine already transitioned; a session that can't be
+        // reconfigured has drifted (stale instructions AND stale tool
+        // exposure) - retry once, then treat as unrecoverable
+        await this.session.update(newConfig).catch((err: Error) => {
+          this.callbacks.onFatal(new Error(`Stage reconfiguration failed: ${err.message}`));
+          throw err;
+        });
+      }
+      this.callbacks.send({ type: 'stage-change', from, to: stage.id, reason });
+      this.metrics.increment('realtime.stage_changes', 1);
+      // sendToolResult already triggers a response on OpenAI (its
+      // adapter sends response.create with the result) - that response
+      // IS the stage announcement; a second requestResponse would
+      // collide with it
+      this.session.sendToolResult(callId, { success: true, stage: stage.id });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error('[realtime-relay] stage transition failed:', err.message);
+      try {
+        this.session.sendToolResult(callId, { success: false, error: err.message });
+      } catch {
+        // session gone
+      }
+    }
+  }
+
   /** Budget breach (RFC 0001 §7): warn or end the session. */
   private tripBudget(what: string): void {
     if (this.stopped) return;
@@ -403,8 +480,13 @@ export class RealtimeRelayOrchestrator {
         .map((m) => `${m.role}: ${m.content}`)
         .join('\n')
         .slice(-8000);
-      const instructions = `${this.sessionConfig.instructions ?? ''}\n\nThe conversation so far (continue it naturally; the session was renewed):\n${digest}`;
-      const fresh = await this.provider.connect({ ...this.sessionConfig, instructions });
+      // With a playbook, renew into the CURRENT stage's configuration -
+      // the frozen sessionConfig holds the initial stage only
+      const baseInstructions =
+        this.playbookEngine?.getEffectiveSystemPrompt() ?? this.sessionConfig.instructions ?? '';
+      const tools = this.playbookEngine?.getAvailableTools() ?? this.sessionConfig.tools;
+      const instructions = `${baseInstructions}\n\nThe conversation so far (continue it naturally; the session was renewed):\n${digest}`;
+      const fresh = await this.provider.connect({ ...this.sessionConfig, instructions, tools });
       if (this.stopped) {
         // Client left while connecting: don't leak a live billable session
         void fresh.close().catch(() => {});
