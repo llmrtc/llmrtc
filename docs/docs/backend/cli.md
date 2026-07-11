@@ -60,6 +60,7 @@ If not specified, providers are auto-detected based on available API keys.
 |----------|-------------|
 | `OPENAI_MODEL` | OpenAI LLM model |
 | `ANTHROPIC_MODEL` | Anthropic model |
+| `ANTHROPIC_PROMPT_CACHING` | `true` enables Anthropic prompt caching (~90% input-cost saving on multi-turn conversations) |
 | `GOOGLE_MODEL` | Gemini model |
 | `BEDROCK_MODEL` | Bedrock model id (use `us.`/`eu.` inference-profile ids) |
 | `OPENROUTER_MODEL` | OpenRouter model (`provider/model` format) |

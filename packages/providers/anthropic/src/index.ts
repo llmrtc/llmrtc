@@ -40,6 +40,18 @@ export interface AnthropicConfig {
    * regardless of the model id.
    */
   samplingParamsSupported?: boolean;
+  /**
+   * Enable Anthropic prompt caching (default: false). When on, the
+   * system prompt gets an ephemeral cache breakpoint (which also covers
+   * tool definitions) and a rolling breakpoint is placed on the last
+   * message, so each conversation turn reuses the cached prefix of the
+   * previous one. Cache writes cost 1.25x input price; cache reads cost
+   * 0.1x - a large saving for multi-turn voice conversations that resend
+   * the system prompt and history every turn. Prefixes below the model's
+   * minimum cacheable length (~1024 tokens on Sonnet/Opus, 2048 on
+   * Haiku) are simply not cached.
+   */
+  promptCaching?: boolean;
 }
 
 /**
@@ -110,13 +122,59 @@ export class AnthropicLLMProvider implements LLMProvider {
     return {};
   }
 
+  /**
+   * Apply ephemeral cache breakpoints when prompt caching is enabled:
+   * one on the system prompt (the prefix covers tool definitions too)
+   * and a rolling one on the last message, so the next turn's prefix -
+   * system + full history - is a cache hit.
+   */
+  private applyPromptCaching(
+    systemPrompt: string | undefined,
+    messages: MessageParam[]
+  ): { system: string | TextBlockParam[] | undefined; messages: MessageParam[] } {
+    if (!this.config.promptCaching) {
+      return { system: systemPrompt, messages };
+    }
+
+    const system: TextBlockParam[] | undefined = systemPrompt
+      ? [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }]
+      : undefined;
+
+    const last = messages[messages.length - 1];
+    let cachedLast: MessageParam | undefined;
+    if (last && typeof last.content === 'string' && last.content) {
+      cachedLast = {
+        ...last,
+        content: [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }]
+      };
+    } else if (last && Array.isArray(last.content) && last.content.length > 0) {
+      const blocks = last.content.slice();
+      // extractSystemAndMessages emits only text/image/tool_use/tool_result
+      // blocks, all of which accept cache_control; thinking blocks (which
+      // do not) never appear here
+      blocks[blocks.length - 1] = {
+        ...blocks[blocks.length - 1],
+        cache_control: { type: 'ephemeral' }
+      } as ContentBlockParam;
+      cachedLast = { ...last, content: blocks };
+    }
+
+    return cachedLast
+      ? { system, messages: [...messages.slice(0, -1), cachedLast] }
+      : { system, messages };
+  }
+
   async complete(request: LLMRequest): Promise<LLMResult> {
-    const { systemPrompt, messages } = extractSystemAndMessages(request.messages);
+    const extracted = extractSystemAndMessages(request.messages);
+    const { system, messages } = this.applyPromptCaching(
+      extracted.systemPrompt,
+      extracted.messages
+    );
 
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: request.config?.maxTokens ?? this.maxTokens,
-      system: systemPrompt,
+      system,
       messages: messages,
       ...this.samplingParams(request),
       ...(request.tools?.length && {
@@ -137,12 +195,16 @@ export class AnthropicLLMProvider implements LLMProvider {
   }
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
-    const { systemPrompt, messages } = extractSystemAndMessages(request.messages);
+    const extracted = extractSystemAndMessages(request.messages);
+    const { system, messages } = this.applyPromptCaching(
+      extracted.systemPrompt,
+      extracted.messages
+    );
 
     const stream = this.client.messages.stream({
       model: this.model,
       max_tokens: request.config?.maxTokens ?? this.maxTokens,
-      system: systemPrompt,
+      system,
       messages: messages,
       ...this.samplingParams(request),
       ...(request.tools?.length && {

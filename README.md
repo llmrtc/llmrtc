@@ -562,7 +562,8 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 const llm = new AnthropicLLMProvider({
   apiKey: 'sk-ant-...',
   model: 'claude-sonnet-5', // or claude-opus-4-8, claude-haiku-4-5
-  maxTokens: 4096
+  maxTokens: 4096,
+  promptCaching: true // ~90% input-cost saving on multi-turn conversations
 });
 
 // Supports vision via message attachments
@@ -828,6 +829,7 @@ AWS_REGION=us-east-1
 # Model overrides (optional)
 OPENAI_MODEL=gpt-5.2
 ANTHROPIC_MODEL=claude-sonnet-5
+ANTHROPIC_PROMPT_CACHING=true             # optional; big input-cost saving on long chats
 GOOGLE_MODEL=gemini-2.5-flash
 BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.5

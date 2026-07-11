@@ -601,3 +601,189 @@ describe('AnthropicLLMProvider', () => {
     });
   });
 });
+
+describe('AnthropicLLMProvider prompt caching', () => {
+  let mockCreate: Mock;
+  let mockStream: Mock;
+
+  const CACHE = { type: 'ephemeral' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreate = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn'
+    });
+    mockStream = vi.fn().mockReturnValue(createMockStream([]));
+    (Anthropic as unknown as Mock).mockImplementation(() => ({
+      messages: { create: mockCreate, stream: mockStream }
+    }));
+  });
+
+  function cachingProvider() {
+    return new AnthropicLLMProvider({ apiKey: 'k', promptCaching: true });
+  }
+
+  it('is off by default: plain string system, untouched messages', async () => {
+    const provider = new AnthropicLLMProvider({ apiKey: 'k' });
+    await provider.complete({
+      messages: [
+        { role: 'system', content: 'You are helpful.' },
+        { role: 'user', content: 'hi' }
+      ]
+    });
+    const request = mockCreate.mock.calls[0][0];
+    expect(request.system).toBe('You are helpful.');
+    expect(request.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  it('places breakpoints on the system prompt and last message', async () => {
+    await cachingProvider().complete({
+      messages: [
+        { role: 'system', content: 'You are helpful.' },
+        { role: 'user', content: 'first turn' },
+        { role: 'assistant', content: 'reply' },
+        { role: 'user', content: 'second turn' }
+      ]
+    });
+    const request = mockCreate.mock.calls[0][0];
+    expect(request.system).toEqual([
+      { type: 'text', text: 'You are helpful.', cache_control: CACHE }
+    ]);
+    // Only the LAST message carries the rolling breakpoint
+    expect(request.messages[0]).toEqual({ role: 'user', content: 'first turn' });
+    expect(request.messages[1]).toEqual({ role: 'assistant', content: 'reply' });
+    expect(request.messages[2]).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'second turn', cache_control: CACHE }]
+    });
+  });
+
+  it('annotates the final block of a multi-block last message', async () => {
+    await cachingProvider().complete({
+      messages: [
+        { role: 'user', content: 'weather?' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ callId: 'c1', name: 'get_weather', arguments: { city: 'Tokyo' } }]
+        },
+        { role: 'tool', content: '{"temp":22}', toolCallId: 'c1', toolName: 'get_weather' }
+      ]
+    });
+    const request = mockCreate.mock.calls[0][0];
+    const last = request.messages[request.messages.length - 1];
+    expect(last.role).toBe('user');
+    expect(last.content[last.content.length - 1]).toMatchObject({
+      type: 'tool_result',
+      tool_use_id: 'c1',
+      cache_control: CACHE
+    });
+    // The assistant tool_use message before it is untouched
+    const assistant = request.messages[1];
+    for (const block of assistant.content) {
+      expect(block).not.toHaveProperty('cache_control');
+    }
+  });
+
+  it('annotates only the last of grouped parallel tool results', async () => {
+    await cachingProvider().complete({
+      messages: [
+        { role: 'user', content: 'weather in two cities?' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            { callId: 'c1', name: 'get_weather', arguments: { city: 'Tokyo' } },
+            { callId: 'c2', name: 'get_weather', arguments: { city: 'Kyoto' } }
+          ]
+        },
+        { role: 'tool', content: '{"temp":22}', toolCallId: 'c1', toolName: 'get_weather' },
+        { role: 'tool', content: '{"temp":19}', toolCallId: 'c2', toolName: 'get_weather' }
+      ]
+    });
+    const request = mockCreate.mock.calls[0][0];
+    const last = request.messages[request.messages.length - 1];
+    // Both results grouped into one user message; breakpoint on the
+    // final block only
+    expect(last.content).toHaveLength(2);
+    expect(last.content[0]).not.toHaveProperty('cache_control');
+    expect(last.content[1]).toMatchObject({
+      type: 'tool_result',
+      tool_use_id: 'c2',
+      cache_control: CACHE
+    });
+  });
+
+  it('annotates the image block when a vision message is last', async () => {
+    await cachingProvider().complete({
+      messages: [
+        {
+          role: 'user',
+          content: 'what is this?',
+          attachments: [{ data: 'data:image/png;base64,AAAA' }]
+        }
+      ]
+    });
+    const request = mockCreate.mock.calls[0][0];
+    const blocks = request.messages[0].content;
+    expect(blocks[0]).toEqual({ type: 'text', text: 'what is this?' });
+    expect(blocks[1]).toMatchObject({ type: 'image', cache_control: CACHE });
+  });
+
+  it('does not mutate the caller request across repeated calls', async () => {
+    const request = {
+      messages: [
+        { role: 'system' as const, content: 'Sys.' },
+        { role: 'user' as const, content: 'hi' }
+      ]
+    };
+    const snapshot = JSON.parse(JSON.stringify(request));
+    const provider = cachingProvider();
+
+    await provider.complete(request);
+    await provider.complete(request);
+
+    // Caller-owned messages untouched, and the second wire request is
+    // identical to the first (no accumulated cache_control)
+    expect(request).toEqual(snapshot);
+    expect(mockCreate.mock.calls[1][0]).toEqual(mockCreate.mock.calls[0][0]);
+  });
+
+  it('applies the same breakpoints on the streaming path', async () => {
+    const chunks = [];
+    for await (const chunk of cachingProvider().stream({
+      messages: [
+        { role: 'system', content: 'Sys.' },
+        { role: 'user', content: 'hi' }
+      ]
+    })) {
+      chunks.push(chunk);
+    }
+    const request = mockStream.mock.calls[0][0];
+    expect(request.system).toEqual([{ type: 'text', text: 'Sys.', cache_control: CACHE }]);
+    expect(request.messages[0].content).toEqual([
+      { type: 'text', text: 'hi', cache_control: CACHE }
+    ]);
+  });
+
+  it('handles a missing system prompt and skips empty last messages', async () => {
+    await cachingProvider().complete({
+      messages: [{ role: 'user', content: 'hi' }]
+    });
+    let request = mockCreate.mock.calls[0][0];
+    expect(request.system).toBeUndefined();
+    expect(request.messages[0].content[0]).toMatchObject({ text: 'hi', cache_control: CACHE });
+
+    // An empty-text last message cannot carry a breakpoint (the API
+    // rejects empty text blocks) - it must pass through unchanged
+    await cachingProvider().complete({
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: '' }
+      ]
+    });
+    request = mockCreate.mock.calls[1][0];
+    expect(request.messages[1]).toEqual({ role: 'assistant', content: '' });
+  });
+});

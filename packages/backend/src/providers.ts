@@ -57,7 +57,8 @@ function createLLMProvider(): LLMProvider {
       case 'anthropic':
         return new AnthropicLLMProvider({
           apiKey: process.env.ANTHROPIC_API_KEY ?? '',
-          model: process.env.ANTHROPIC_MODEL
+          model: process.env.ANTHROPIC_MODEL,
+          promptCaching: process.env.ANTHROPIC_PROMPT_CACHING === 'true'
         });
       case 'google':
       case 'gemini':
@@ -125,7 +126,8 @@ function createLLMProvider(): LLMProvider {
   if (process.env.ANTHROPIC_API_KEY) {
     return new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.ANTHROPIC_MODEL
+      model: process.env.ANTHROPIC_MODEL,
+      promptCaching: process.env.ANTHROPIC_PROMPT_CACHING === 'true'
     });
   }
   if (process.env.GOOGLE_API_KEY) {

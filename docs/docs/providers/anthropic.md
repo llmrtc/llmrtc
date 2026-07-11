@@ -18,7 +18,57 @@ const llm = new AnthropicLLMProvider({
 
 Env vars
 - `ANTHROPIC_API_KEY`
-- Optional: `ANTHROPIC_MODEL`
+- Optional: `ANTHROPIC_MODEL`, `ANTHROPIC_PROMPT_CACHING`
+
+## Prompt caching
+
+Voice conversations resend the system prompt and the full history on
+every turn - a perfect fit for Anthropic's prompt caching. Enable it
+with one flag:
+
+```ts
+const llm = new AnthropicLLMProvider({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  promptCaching: true
+});
+```
+
+CLI mode: `ANTHROPIC_PROMPT_CACHING=true`.
+
+The provider places an ephemeral cache breakpoint on the system prompt
+(the cached prefix also covers tool definitions) and a rolling
+breakpoint on the last message of each request, so every turn reuses the
+previous turn's prefix.
+
+### What it saves
+
+Cache writes cost **1.25x** the input price, cache reads **0.1x**. For a
+conversation with a 2,000-token system prompt and ~10 turns on
+`claude-sonnet-5` ($3/M input):
+
+| | Without caching | With caching |
+|---|---|---|
+| Turn 1 | 2,000 tokens x $3/M | 2,000 x $3.75/M (write) |
+| Turn 10 | ~6,500 tokens x $3/M | ~500 new x $3.75/M + ~6,000 cached x $0.30/M |
+| ~10-turn total | ~$0.13 | ~$0.03 |
+
+The longer the system prompt (playbooks, tool definitions) and the
+conversation, the larger the saving - typically **~90% off input costs**
+from turn 2 onward. Latency also improves because cached prefix tokens
+are not re-processed.
+
+Verified behavior (live): turn 1 reports `cache_creation_input_tokens`,
+turn 2+ report the full prefix in `cache_read_input_tokens` (visible on
+`LLMResult.raw.usage`).
+
+Caching notes
+- Prefixes below the model's minimum cacheable length (~1024 tokens on
+  Sonnet/Opus models, 2048 on Haiku) are not cached; the flag is then a
+  no-op, never an error.
+- The cache has a 5-minute TTL, refreshed on every hit - active
+  conversations keep it warm.
+- Applies to the direct Anthropic provider; the Bedrock provider does
+  not implement caching yet.
 
 Notes
 - Great for tool use and longer context windows; latency slightly higher than OpenAI mini models.

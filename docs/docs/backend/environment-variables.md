@@ -31,6 +31,12 @@ Behavior
 - Auto-detection for LLM (when `LLM_PROVIDER` and `LOCAL_ONLY` are not set) picks the first provider with a valid key in this order: Anthropic → Google → Bedrock → OpenRouter → OpenAI.
 - `LOCAL_ONLY=true` forces local providers: Ollama for LLM, Faster-Whisper for STT, and Piper for TTS.
 
+## Anthropic
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_PROMPT_CACHING` | `false` | `true` places cache breakpoints on the system prompt and rolling history - cache reads cost 0.1x input price |
+
 ## OpenAI voice
 
 | Variable | Default | Description |
