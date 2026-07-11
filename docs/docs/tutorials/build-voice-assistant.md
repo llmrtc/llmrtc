@@ -323,7 +323,7 @@ const server = new LLMRTCServer({
     // LLM: Claude for generating responses
     llm: new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: 'claude-sonnet-4-5'
+      model: 'claude-sonnet-5'
     }),
 
     // STT: OpenAI Whisper for speech-to-text

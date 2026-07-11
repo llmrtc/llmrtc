@@ -26,3 +26,10 @@ Env vars
 
 Notes
 - Good for customers already on AWS; watch per-model throttles.
+
+## Sampling parameters on current Claude models
+
+Claude Sonnet 5, Opus 4.7+, and Fable-tier models reject `temperature`/`top_p`
+on the Converse API just as they do on the first-party Anthropic API. The
+provider automatically omits configured sampling parameters for those model
+families (with a one-time warning) instead of failing the request.

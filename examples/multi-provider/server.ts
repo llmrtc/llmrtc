@@ -56,7 +56,7 @@ const llmProviders: Record<string, ProviderFactory<LLMProvider>> = {
     available: !!process.env.ANTHROPIC_API_KEY,
     create: () => new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY!,
-      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929'
+      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
     })
   },
   gemini: {
@@ -72,7 +72,7 @@ const llmProviders: Record<string, ProviderFactory<LLMProvider>> = {
     available: !!process.env.OPENROUTER_API_KEY,
     create: () => new OpenRouterLLMProvider({
       apiKey: process.env.OPENROUTER_API_KEY!,
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet'
+      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5'
     })
   },
   bedrock: {
@@ -80,7 +80,7 @@ const llmProviders: Record<string, ProviderFactory<LLMProvider>> = {
     available: !!process.env.AWS_ACCESS_KEY_ID,
     create: () => new BedrockLLMProvider({
       region: process.env.AWS_REGION || 'us-east-1',
-      model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+      model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
     })
   },
   lmstudio: {

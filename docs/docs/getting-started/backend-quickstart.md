@@ -342,7 +342,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: 'claude-sonnet-4-5'
+      model: 'claude-sonnet-5'
     }),
     stt: new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY }),
     tts: new OpenAITTSProvider({ apiKey: process.env.OPENAI_API_KEY })

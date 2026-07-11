@@ -50,7 +50,19 @@ export interface LLMChunk {
 }
 
 /** Why the LLM stopped generating */
-export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
+export type StopReason =
+  | 'end_turn'
+  | 'tool_use'
+  | 'max_tokens'
+  | 'stop_sequence'
+  /** The model or a safety system declined to answer */
+  | 'refusal'
+  /** The provider's content filter stopped generation */
+  | 'content_filter'
+  /** A server-side tool loop paused; the request can be resumed */
+  | 'pause_turn'
+  /** The model's context window was exhausted */
+  | 'context_overflow';
 
 export interface LLMResult {
   fullText: string;

@@ -570,7 +570,18 @@ export class PlaybookOrchestrator {
           finalResponse: result.fullText
         };
       } else {
-        // LLM is done with tools, has a final response
+        // LLM is done with tools, has a final response.
+        // Surface unusual terminations - a refusal or filtered response may
+        // carry empty text, and pause_turn means a server-side tool loop
+        // paused (resubmission required once server tools are supported).
+        if (
+          result.stopReason === 'refusal' ||
+          result.stopReason === 'content_filter' ||
+          result.stopReason === 'context_overflow' ||
+          result.stopReason === 'pause_turn'
+        ) {
+          this.log('warn', `LLM stopped with '${result.stopReason}' - the response may be empty or truncated`);
+        }
         await this.emit({ type: 'phase1_complete', toolCallCount: allToolCalls.length });
 
         return {

@@ -11,7 +11,7 @@ import type {
   ToolChoice as BedrockToolChoice,
   ContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice, StopReason } from '@llmrtc/llmrtc-core';
 
 // Define our own type that matches the runtime API (SDK types may vary across versions)
 interface ToolResultBlock {
@@ -171,7 +171,7 @@ function parseArguments(str: string): {
  */
 export function mapStopReasonFromBedrock(
   stopReason: string | undefined
-): 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | undefined {
+): StopReason | undefined {
   switch (stopReason) {
     case 'end_turn':
       return 'end_turn';
@@ -181,6 +181,9 @@ export function mapStopReasonFromBedrock(
       return 'max_tokens';
     case 'stop_sequence':
       return 'stop_sequence';
+    case 'content_filtered':
+    case 'guardrail_intervened':
+      return 'content_filter';
     default:
       return undefined;
   }

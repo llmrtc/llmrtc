@@ -6,7 +6,7 @@
 
 import type { ChatCompletionTool, ChatCompletionToolChoiceOption } from 'openai/resources/chat/completions';
 import type { FunctionParameters } from 'openai/resources/shared';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice, StopReason } from '@llmrtc/llmrtc-core';
 
 export function mapToolsToOpenAI(tools: ToolDefinition[]): ChatCompletionTool[] {
   return tools.map(tool => ({
@@ -102,12 +102,12 @@ function parseArguments(str: string): {
 
 export function mapStopReasonFromOpenAI(
   finishReason: string | null | undefined
-): 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | undefined {
+): StopReason | undefined {
   switch (finishReason) {
     case 'stop': return 'end_turn';
     case 'tool_calls': return 'tool_use';
     case 'length': return 'max_tokens';
-    case 'content_filter': return 'stop_sequence';
+    case 'content_filter': return 'content_filter';
     default: return undefined;
   }
 }

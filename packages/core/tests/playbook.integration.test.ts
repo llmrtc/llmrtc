@@ -321,7 +321,7 @@ describe.skipIf(SKIP_ANTHROPIC)('PlaybookOrchestrator + Anthropic Integration', 
 
     llmProvider = new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY!,
-      model: 'claude-sonnet-4-5-20250929'
+      model: 'claude-sonnet-5'
     });
 
     toolRegistry = createTestToolRegistry();
@@ -517,7 +517,7 @@ describe.skipIf(SKIP_ALL)('PlaybookOrchestrator Cross-Provider Tests', () => {
       const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
       llmProvider = new AnthropicLLMProvider({
         apiKey: process.env.ANTHROPIC_API_KEY,
-        model: 'claude-sonnet-4-5-20250929'
+        model: 'claude-sonnet-5'
       });
       providerName = 'Anthropic';
     } else {

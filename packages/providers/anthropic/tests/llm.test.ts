@@ -13,6 +13,104 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import Anthropic from '@anthropic-ai/sdk';
 
+describe('AnthropicLLMProvider sampling and stop reasons', () => {
+  let mockCreate: Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreate = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn'
+    });
+    (Anthropic as unknown as Mock).mockImplementation(() => ({
+      messages: { create: mockCreate }
+    }));
+  });
+
+  it('omits temperature/top_p for models that reject sampling params', async () => {
+    const provider = new AnthropicLLMProvider({ apiKey: 'k', model: 'claude-sonnet-5' });
+    await provider.complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      config: { temperature: 0.7, topP: 0.9 }
+    });
+    const request = mockCreate.mock.calls[0][0];
+    expect(request).not.toHaveProperty('temperature');
+    expect(request).not.toHaveProperty('top_p');
+  });
+
+  it('keeps temperature/top_p for models that accept them', async () => {
+    const provider = new AnthropicLLMProvider({ apiKey: 'k', model: 'claude-sonnet-4-5-20250929' });
+    await provider.complete({
+      messages: [{ role: 'user', content: 'hi' }],
+      config: { temperature: 0.7, topP: 0.9 }
+    });
+    const request = mockCreate.mock.calls[0][0];
+    expect(request.temperature).toBe(0.7);
+    expect(request.top_p).toBe(0.9);
+  });
+
+  it('omits temperature/top_p on the stream() path for guarded models', async () => {
+    const mockStream = vi.fn().mockReturnValue((async function* () {
+      yield { type: 'message_delta', delta: { stop_reason: 'end_turn' } };
+    })());
+    (Anthropic as unknown as Mock).mockImplementation(() => ({
+      messages: { create: mockCreate, stream: mockStream }
+    }));
+    const provider = new AnthropicLLMProvider({ apiKey: 'k', model: 'claude-sonnet-5' });
+    for await (const _ of provider.stream({
+      messages: [{ role: 'user', content: 'hi' }],
+      config: { temperature: 0.7, topP: 0.9 }
+    })) { /* drain */ }
+    const request = mockStream.mock.calls[0][0];
+    expect(request).not.toHaveProperty('temperature');
+    expect(request).not.toHaveProperty('top_p');
+  });
+
+  it('warns exactly once when sampling params are dropped, never otherwise', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = new AnthropicLLMProvider({ apiKey: 'k', model: 'claude-sonnet-5' });
+
+    // No sampling configured: no warning
+    await provider.complete({ messages: [{ role: 'user', content: 'a' }] });
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    // Sampling configured twice: warn once
+    await provider.complete({ messages: [{ role: 'user', content: 'b' }], config: { temperature: 0.5 } });
+    await provider.complete({ messages: [{ role: 'user', content: 'c' }], config: { temperature: 0.5 } });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('honors the samplingParamsSupported override in both directions', async () => {
+    const forced = new AnthropicLLMProvider({
+      apiKey: 'k', model: 'claude-sonnet-5', samplingParamsSupported: true
+    });
+    await forced.complete({ messages: [{ role: 'user', content: 'hi' }], config: { temperature: 0.3 } });
+    expect(mockCreate.mock.calls[0][0].temperature).toBe(0.3);
+
+    mockCreate.mockClear();
+    const suppressed = new AnthropicLLMProvider({
+      apiKey: 'k', model: 'claude-sonnet-4-5-20250929', samplingParamsSupported: false
+    });
+    await suppressed.complete({ messages: [{ role: 'user', content: 'hi' }], config: { temperature: 0.3 } });
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('temperature');
+  });
+
+  it.each([
+    ['refusal', 'refusal'],
+    ['pause_turn', 'pause_turn'],
+    ['model_context_window_exceeded', 'context_overflow']
+  ])('maps stop reason %s to %s', async (apiReason, mapped) => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: '' }],
+      stop_reason: apiReason
+    });
+    const provider = new AnthropicLLMProvider({ apiKey: 'k' });
+    const result = await provider.complete({ messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.stopReason).toBe(mapped);
+  });
+});
+
 describe('AnthropicLLMProvider', () => {
   let provider: AnthropicLLMProvider;
   let mockCreate: Mock;
@@ -37,7 +135,7 @@ describe('AnthropicLLMProvider', () => {
   });
 
   describe('constructor', () => {
-    it('should use default model (claude-sonnet-4-5-20250929) when not specified', async () => {
+    it('should use default model (claude-sonnet-5) when not specified', async () => {
       const defaultProvider = new AnthropicLLMProvider({
         apiKey: 'test-key'
       });
@@ -48,7 +146,7 @@ describe('AnthropicLLMProvider', () => {
       });
 
       expect(mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'claude-sonnet-4-5-20250929' })
+        expect.objectContaining({ model: 'claude-sonnet-5' })
       );
     });
 

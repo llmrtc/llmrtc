@@ -146,7 +146,7 @@ export function createMockAnthropicResponse(text: string) {
         text
       }
     ],
-    model: 'claude-sonnet-4-5-20250929',
+    model: 'claude-sonnet-5',
     stop_reason: 'end_turn',
     stop_sequence: null,
     usage: {

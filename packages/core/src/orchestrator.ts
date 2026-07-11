@@ -245,6 +245,17 @@ export class ConversationOrchestrator {
         throw error;
       }
 
+      if (
+        llm.stopReason === 'refusal' ||
+        llm.stopReason === 'content_filter' ||
+        llm.stopReason === 'context_overflow' ||
+        llm.stopReason === 'pause_turn'
+      ) {
+        this.logger.warn?.(
+          `[orchestrator] LLM stopped with '${llm.stopReason}' - the response may be empty or truncated`
+        );
+      }
+
       // Guardrail: a throw from onLLMEnd cancels the response - it is not
       // committed to history and no TTS is produced.
       try {

@@ -77,7 +77,7 @@ function createLLMProvider(): LLMProvider {
       case 'openrouter':
         return new OpenRouterLLMProvider({
           apiKey: process.env.OPENROUTER_API_KEY ?? '',
-          model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-3.5-sonnet'
+          model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4.5'
         });
       case 'lmstudio':
         return new LMStudioLLMProvider({
@@ -133,7 +133,7 @@ function createLLMProvider(): LLMProvider {
   if (process.env.OPENROUTER_API_KEY) {
     return new OpenRouterLLMProvider({
       apiKey: process.env.OPENROUTER_API_KEY,
-      model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-3.5-sonnet'
+      model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4.5'
     });
   }
 

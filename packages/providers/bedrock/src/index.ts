@@ -56,10 +56,48 @@ export interface BedrockConfig {
  * });
  * ```
  */
+/**
+ * Claude families that reject temperature/top_p with a ValidationException
+ * on the Converse API (same constraint as the first-party Anthropic API).
+ */
+const SAMPLING_UNSUPPORTED = [
+  /anthropic\.claude-sonnet-5/,
+  /anthropic\.claude-opus-4-7/,
+  /anthropic\.claude-opus-4-8/,
+  /anthropic\.claude-fable/,
+  /anthropic\.claude-mythos/,
+];
+
 export class BedrockLLMProvider implements LLMProvider {
   readonly name = 'bedrock-llm';
   private client: BedrockRuntimeClient;
   private model: string;
+  private warnedSamplingDropped = false;
+
+  /**
+   * Sampling params for the request, or empty when the target model rejects
+   * them (Claude Sonnet 5 / Opus 4.7+ / Fable-tier on Bedrock).
+   */
+  private samplingParams(request: LLMRequest): { temperature?: number; topP?: number } {
+    const supported = !SAMPLING_UNSUPPORTED.some((re) => re.test(this.model.toLowerCase()));
+    if (supported) {
+      return {
+        temperature: request.config?.temperature,
+        topP: request.config?.topP,
+      };
+    }
+    if (
+      !this.warnedSamplingDropped &&
+      (request.config?.temperature !== undefined || request.config?.topP !== undefined)
+    ) {
+      this.warnedSamplingDropped = true;
+      console.warn(
+        `[bedrock-llm] ${this.model} does not accept temperature/top_p; ` +
+          'the configured sampling parameters are ignored for this model.'
+      );
+    }
+    return {};
+  }
 
   constructor(private readonly config: BedrockConfig = {}) {
     // The cross-region inference profile id: bare model ids cannot be
@@ -80,8 +118,7 @@ export class BedrockLLMProvider implements LLMProvider {
       system,
       messages,
       inferenceConfig: {
-        temperature: request.config?.temperature,
-        topP: request.config?.topP,
+        ...this.samplingParams(request),
         maxTokens: request.config?.maxTokens ?? 4096
       },
       ...(request.tools?.length && {
@@ -114,8 +151,7 @@ export class BedrockLLMProvider implements LLMProvider {
       system,
       messages,
       inferenceConfig: {
-        temperature: request.config?.temperature,
-        topP: request.config?.topP,
+        ...this.samplingParams(request),
         maxTokens: request.config?.maxTokens ?? 4096
       },
       ...(request.tools?.length && {

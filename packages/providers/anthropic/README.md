@@ -15,15 +15,15 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: process.env.ANTHROPIC_API_KEY!,
-  model: 'claude-sonnet-4-20250514'
+  model: 'claude-sonnet-5'
 });
 ```
 
 ## Supported Models
 
-- claude-sonnet-4-20250514
+- claude-sonnet-5
 - claude-opus-4-20250514
-- claude-3-5-sonnet-20241022
+- claude-sonnet-4-5
 - And other Claude models
 
 ## Documentation

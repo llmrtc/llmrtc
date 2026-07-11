@@ -15,13 +15,13 @@ import { BedrockLLMProvider } from '@llmrtc/llmrtc-provider-bedrock';
 
 const llm = new BedrockLLMProvider({
   region: 'us-east-1',
-  model: 'anthropic.claude-3-sonnet-20240229-v1:0'
+  model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
 });
 ```
 
 ## Supported Models
 
-- anthropic.claude-3-sonnet-20240229-v1:0
+- us.anthropic.claude-sonnet-4-5-20250929-v1:0
 - anthropic.claude-3-haiku-20240307-v1:0
 - amazon.titan-text-express-v1
 - And other Bedrock models

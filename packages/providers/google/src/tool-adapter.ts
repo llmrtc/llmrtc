@@ -6,7 +6,7 @@
  */
 
 import type { Tool as GeminiTool, FunctionDeclaration, Part } from '@google/genai';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice, StopReason } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to Gemini format
@@ -116,7 +116,7 @@ export function finalizeToolCalls(
  */
 export function mapStopReasonFromGemini(
   finishReason: string | undefined
-): 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | undefined {
+): StopReason | undefined {
   switch (finishReason) {
     case 'STOP':
       return 'end_turn';
@@ -124,6 +124,9 @@ export function mapStopReasonFromGemini(
       return 'max_tokens';
     case 'SAFETY':
     case 'RECITATION':
+    case 'PROHIBITED_CONTENT':
+    case 'BLOCKLIST':
+      return 'content_filter';
     case 'OTHER':
       return 'stop_sequence';
     default:

@@ -16,7 +16,7 @@ const SKIP = !process.env.INTEGRATION_TESTS || !process.env.ANTHROPIC_API_KEY;
 describe.skipIf(SKIP)('AnthropicLLMProvider Integration', () => {
   const provider = new AnthropicLLMProvider({
     apiKey: process.env.ANTHROPIC_API_KEY!,
-    model: 'claude-sonnet-4-5-20250929'
+    model: 'claude-sonnet-5'
   });
 
   it('should complete a real request', async () => {

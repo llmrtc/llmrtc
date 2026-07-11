@@ -401,7 +401,7 @@ describe.skipIf(SKIP_ANTHROPIC)('VoicePlaybookOrchestrator + Anthropic Integrati
     const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
     llmProvider = new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY!,
-      model: 'claude-sonnet-4-5-20250929'
+      model: 'claude-sonnet-5'
     });
   });
 
@@ -470,7 +470,7 @@ describe.skipIf(SKIP_BEDROCK)('VoicePlaybookOrchestrator + Bedrock Integration',
     const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
     llmProvider = new BedrockLLMProvider({
       region: process.env.AWS_REGION || 'us-east-1',
-      model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
+      model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
     });
   });
 
@@ -542,13 +542,13 @@ describe.skipIf(SKIP_ALL)('VoicePlaybookOrchestrator Edge Cases', () => {
       const { AnthropicLLMProvider } = await import('@llmrtc/llmrtc-provider-anthropic');
       llmProvider = new AnthropicLLMProvider({
         apiKey: process.env.ANTHROPIC_API_KEY,
-        model: 'claude-sonnet-4-5-20250929'
+        model: 'claude-sonnet-5'
       });
     } else {
       const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
       llmProvider = new BedrockLLMProvider({
         region: process.env.AWS_REGION || 'us-east-1',
-        model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
+        model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
       });
     }
   });

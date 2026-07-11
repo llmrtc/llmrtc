@@ -63,7 +63,7 @@
 | Package | Provider | Features |
 |---------|----------|----------|
 | `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-5.2 / GPT-5.1, Whisper STT, TTS |
-| `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude 4.5 (Sonnet/Haiku/Opus), vision |
+| `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude Sonnet 5, Opus 4.8, Haiku 4.5, vision |
 | `@llmrtc/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
 | `@llmrtc/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
 | `@llmrtc/llmrtc-provider-openrouter` | OpenRouter | Multi-model gateway |
@@ -373,7 +373,9 @@ interface ToolCallRequest {
 }
 
 type ToolChoice = 'auto' | 'none' | 'required' | { name: string };
-type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
+type StopReason =
+  | 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence'
+  | 'refusal' | 'content_filter' | 'pause_turn' | 'context_overflow';
 ```
 
 #### STTProvider
@@ -541,7 +543,7 @@ import { AnthropicLLMProvider } from '@llmrtc/llmrtc-provider-anthropic';
 
 const llm = new AnthropicLLMProvider({
   apiKey: 'sk-ant-...',
-  model: 'claude-sonnet-4-5', // or claude-opus-4-5, claude-haiku-4-5
+  model: 'claude-sonnet-5', // or claude-opus-4-8, claude-haiku-4-5
   maxTokens: 4096
 });
 
@@ -731,7 +733,7 @@ import {
 	  providers: {
 	    llm: new AnthropicLLMProvider({
 	      apiKey: process.env.ANTHROPIC_API_KEY!,
-	      model: 'claude-sonnet-4-5'
+	      model: 'claude-sonnet-5'
 	    }),
 	    stt: new FasterWhisperProvider({
 	      baseUrl: 'http://localhost:9000'
@@ -790,7 +792,7 @@ AWS_REGION=us-east-1
 
 # Model overrides (optional)
 OPENAI_MODEL=gpt-5.2
-ANTHROPIC_MODEL=claude-sonnet-4-5
+ANTHROPIC_MODEL=claude-sonnet-5
 GOOGLE_MODEL=gemini-2.5-flash
 BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.5

@@ -28,23 +28,44 @@ import {
 export interface AnthropicConfig {
   /** Anthropic API key */
   apiKey: string;
-  /** Model name (default: 'claude-sonnet-4-5-20250929') */
+  /** Model name (default: 'claude-sonnet-5') */
   model?: string;
   /** Max tokens for response (default: 4096) */
   maxTokens?: number;
+  /**
+   * Override the sampling-parameter heuristic. Claude Sonnet 5, Opus 4.7+,
+   * and Fable-tier models reject temperature/top_p at the API level, so the
+   * provider omits them automatically for those families. Set true to always
+   * send configured sampling params, or false to always omit them,
+   * regardless of the model id.
+   */
+  samplingParamsSupported?: boolean;
 }
+
+/**
+ * Model families that reject sampling parameters (temperature/top_p) with a
+ * 400 error: Claude Sonnet 5, Opus 4.7+, and the Fable/Mythos tier steer via
+ * prompting instead.
+ */
+const SAMPLING_UNSUPPORTED = [
+  /^claude-sonnet-5/,
+  /^claude-opus-4-7/,
+  /^claude-opus-4-8/,
+  /^claude-fable/,
+  /^claude-mythos/,
+];
 
 /**
  * Anthropic Claude LLM Provider.
  *
- * Supports Claude 3.5 Sonnet, Claude 3 Opus, and other Anthropic models.
+ * Supports Claude Sonnet 5, Opus 4.8, Haiku 4.5, and other Anthropic models.
  * Features streaming support and vision capabilities.
  *
  * @example
  * ```typescript
  * const provider = new AnthropicLLMProvider({
  *   apiKey: 'sk-ant-...',
- *   model: 'claude-sonnet-4-5-20250929'
+ *   model: 'claude-sonnet-5'
  * });
  * ```
  */
@@ -53,11 +74,40 @@ export class AnthropicLLMProvider implements LLMProvider {
   private client: Anthropic;
   private model: string;
   private maxTokens: number;
+  private warnedSamplingDropped = false;
 
   constructor(private readonly config: AnthropicConfig) {
     this.client = new Anthropic({ apiKey: config.apiKey });
-    this.model = config.model ?? 'claude-sonnet-4-5-20250929';
+    this.model = config.model ?? 'claude-sonnet-5';
     this.maxTokens = config.maxTokens ?? 4096;
+  }
+
+  /**
+   * Sampling params for the request, or empty when the target model rejects
+   * them. Passing temperature/top_p to Sonnet 5, Opus 4.7+, or Fable-tier
+   * models fails the whole request with a 400.
+   */
+  private samplingParams(request: LLMRequest): { temperature?: number; top_p?: number } {
+    const supported =
+      this.config.samplingParamsSupported ??
+      !SAMPLING_UNSUPPORTED.some((re) => re.test(this.model.toLowerCase()));
+    if (supported) {
+      return {
+        temperature: request.config?.temperature,
+        top_p: request.config?.topP,
+      };
+    }
+    if (
+      !this.warnedSamplingDropped &&
+      (request.config?.temperature !== undefined || request.config?.topP !== undefined)
+    ) {
+      this.warnedSamplingDropped = true;
+      console.warn(
+        `[anthropic-llm] ${this.model} does not accept temperature/top_p; ` +
+          'the configured sampling parameters are ignored for this model.'
+      );
+    }
+    return {};
   }
 
   async complete(request: LLMRequest): Promise<LLMResult> {
@@ -68,8 +118,7 @@ export class AnthropicLLMProvider implements LLMProvider {
       max_tokens: request.config?.maxTokens ?? this.maxTokens,
       system: systemPrompt,
       messages: messages,
-      temperature: request.config?.temperature,
-      top_p: request.config?.topP,
+      ...this.samplingParams(request),
       ...(request.tools?.length && {
         tools: mapToolsToAnthropic(request.tools),
         tool_choice: mapToolChoiceToAnthropic(request.toolChoice),
@@ -95,8 +144,7 @@ export class AnthropicLLMProvider implements LLMProvider {
       max_tokens: request.config?.maxTokens ?? this.maxTokens,
       system: systemPrompt,
       messages: messages,
-      temperature: request.config?.temperature,
-      top_p: request.config?.topP,
+      ...this.samplingParams(request),
       ...(request.tools?.length && {
         tools: mapToolsToAnthropic(request.tools),
         tool_choice: mapToolChoiceToAnthropic(request.toolChoice),

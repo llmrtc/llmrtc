@@ -10,7 +10,7 @@ import type {
   ChatCompletionToolChoiceOption,
 } from 'openai/resources/chat/completions';
 import type { FunctionParameters } from 'openai/resources/shared';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice, StopReason } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to OpenAI format
@@ -176,7 +176,7 @@ function parseArguments(str: string): {
  */
 export function mapStopReasonFromOpenAI(
   finishReason: string | null | undefined
-): 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | undefined {
+): StopReason | undefined {
   switch (finishReason) {
     case 'stop':
       return 'end_turn';
@@ -185,7 +185,7 @@ export function mapStopReasonFromOpenAI(
     case 'length':
       return 'max_tokens';
     case 'content_filter':
-      return 'stop_sequence';
+      return 'content_filter';
     default:
       return undefined;
   }

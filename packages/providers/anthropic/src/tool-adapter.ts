@@ -6,7 +6,7 @@
  */
 
 import type { Tool, ToolChoice as AnthropicToolChoice } from '@anthropic-ai/sdk/resources/messages';
-import type { ToolDefinition, ToolCallRequest, ToolChoice } from '@llmrtc/llmrtc-core';
+import type { ToolDefinition, ToolCallRequest, ToolChoice, StopReason } from '@llmrtc/llmrtc-core';
 
 /**
  * Convert provider-agnostic tool definitions to Anthropic format
@@ -154,7 +154,7 @@ function parseArguments(str: string): {
  */
 export function mapStopReasonFromAnthropic(
   stopReason: string | null | undefined
-): 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | undefined {
+): StopReason | undefined {
   switch (stopReason) {
     case 'end_turn':
       return 'end_turn';
@@ -164,6 +164,12 @@ export function mapStopReasonFromAnthropic(
       return 'max_tokens';
     case 'stop_sequence':
       return 'stop_sequence';
+    case 'refusal':
+      return 'refusal';
+    case 'pause_turn':
+      return 'pause_turn';
+    case 'model_context_window_exceeded':
+      return 'context_overflow';
     default:
       return undefined;
   }
