@@ -14,7 +14,7 @@ export default [
       'test-results/',
       '.npm-cache/',
       '**/*.min.js'
-    ]
+    , 'docs/docusaurus.config.js', 'docs/sidebars.js']
   },
   js.configs.recommended,
   ...ts.configs.recommended,

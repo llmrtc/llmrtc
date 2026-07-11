@@ -26,6 +26,7 @@
 - **Vision/Multimodal** - Camera and screen capture with automatic frame extraction
 - **Streaming Responses** - Stream LLM and TTS responses for minimal latency
 - **Streaming STT** - Optional live transcription with interim transcripts while the user is still speaking (ElevenLabs Scribe v2 Realtime, OpenAI Realtime API)
+- **Realtime Speech-to-Speech (experimental)** - Opt-in relay mode connecting sessions to native voice models (OpenAI gpt-realtime-2.1, Gemini Live) for ~300-500ms responses with tools, playbooks, budgets, and barge-in intact
 - **Barge-in Support** - Interrupt AI responses mid-speech
 - **Automatic Reconnection** - Built-in connection state management with exponential backoff
 - **Session Persistence** - Maintain conversation history across reconnections

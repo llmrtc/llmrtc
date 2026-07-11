@@ -1,5 +1,51 @@
 # @llmrtc/llmrtc-provider-openai
 
+## 1.3.0
+
+### Minor Changes
+
+- 6a74624: Experimental realtime speech-to-speech relay mode (RFC 0001, M1).
+  - New opt-in realtimeSpeech server mode: sessions connect to a native
+    speech-to-speech model over the provider's WebSocket instead of the
+    STT-LLM-TTS pipeline, for ~300-500ms voice-to-voice latency.
+  - OpenAIRealtimeSpeechProvider (gpt-realtime-2.1 family): bidirectional
+    24kHz PCM, user/assistant transcripts, provider-side turn detection,
+    barge-in with response cancellation and history truncation, per-
+    response usage, session-expiry warning ahead of the 60-minute cap.
+  - Relay orchestrator with a decoupled control loop, epoch-tagged
+    playback queue, and independent pacer, so interruption reaction is
+    bounded regardless of response length; final transcripts are mirrored
+    into session history.
+  - Protocol (additive): assistant-transcript and usage messages,
+    ready.mode, REALTIME_ERROR/BUDGET_EXCEEDED error codes.
+  - M1 scope: tool bridging, budgets, session renewal, playbooks, client
+    reconnect grace, and the Gemini adapter land in subsequent milestones.
+
+- 3db8818: Realtime relay milestone 3 (RFC 0001): playbooks, client events,
+  reconnect grace.
+  - Playbooks work in relay mode (llm_decision transitions;
+    clearHistory and per-stage llmConfig are not applied in relay mode): playbook_transition tool calls
+    reconfigure the live session's instructions and tools via the shared
+    PlaybookEngine, emit stage-change to clients, and nudge the model to
+    speak the new stage.
+  - Web client: new assistantTranscript and usage events, plus a
+    reserved modeChanged event (mid-session pipeline fallback ships in a
+    later milestone);
+    new mode-changed protocol message; session interface gains optional
+    requestResponse (OpenAI adapter implements it).
+  - Client reconnect grace: a dropped client has clientReconnectGraceMs
+    (default 30s) to reconnect and adopt its still-live provider session
+    (honest historyRecovered semantics); playback re-targets the new
+    peer.
+  - New docs page: Realtime Speech-to-Speech (experimental).
+
+### Patch Changes
+
+- Updated dependencies [6a74624]
+- Updated dependencies [2cc97a0]
+- Updated dependencies [3db8818]
+  - @llmrtc/llmrtc-core@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes

@@ -1,5 +1,113 @@
 # @llmrtc/llmrtc-backend
 
+## 1.3.0
+
+### Minor Changes
+
+- 6a74624: Experimental realtime speech-to-speech relay mode (RFC 0001, M1).
+  - New opt-in realtimeSpeech server mode: sessions connect to a native
+    speech-to-speech model over the provider's WebSocket instead of the
+    STT-LLM-TTS pipeline, for ~300-500ms voice-to-voice latency.
+  - OpenAIRealtimeSpeechProvider (gpt-realtime-2.1 family): bidirectional
+    24kHz PCM, user/assistant transcripts, provider-side turn detection,
+    barge-in with response cancellation and history truncation, per-
+    response usage, session-expiry warning ahead of the 60-minute cap.
+  - Relay orchestrator with a decoupled control loop, epoch-tagged
+    playback queue, and independent pacer, so interruption reaction is
+    bounded regardless of response length; final transcripts are mirrored
+    into session history.
+  - Protocol (additive): assistant-transcript and usage messages,
+    ready.mode, REALTIME_ERROR/BUDGET_EXCEEDED error codes.
+  - M1 scope: tool bridging, budgets, session renewal, playbooks, client
+    reconnect grace, and the Gemini adapter land in subsequent milestones.
+
+- 2cc97a0: Realtime relay milestone 2 (RFC 0001): tools, budgets, session renewal.
+  - Tool bridging: the same ToolRegistry definitions drive provider-native
+    function calling; calls execute through ToolExecutor (timeouts, abort
+    support) without blocking the relay control loop, with results
+    returned to the live session and tool-call-start/end relayed to
+    clients. Provider-side cancellations abort in-flight executions.
+  - Session budgets: maxSessionMs (default 120 minutes) and maxTokens
+    guardrails with warn or end-session behavior; ending emits
+    BUDGET_EXCEEDED and closes the provider session.
+  - OpenAI 60-minute session renewal: near expiry (session-expiring
+    events now carry a renewable flag in core) the orchestrator opens a
+    fresh provider session seeded from the mirrored transcript history
+    and swaps it in at a quiet moment; in-flight work is aborted cleanly
+    if quiescence cannot be reached. The onSessionRenewed hook is
+    deferred to a later milestone.
+  - Budget end-session reports exactly one BUDGET_EXCEEDED error to the
+    client; tool bridge failures (unserializable results) are contained
+    per call instead of crashing the process.
+
+- 3db8818: Realtime relay milestone 3 (RFC 0001): playbooks, client events,
+  reconnect grace.
+  - Playbooks work in relay mode (llm_decision transitions;
+    clearHistory and per-stage llmConfig are not applied in relay mode): playbook_transition tool calls
+    reconfigure the live session's instructions and tools via the shared
+    PlaybookEngine, emit stage-change to clients, and nudge the model to
+    speak the new stage.
+  - Web client: new assistantTranscript and usage events, plus a
+    reserved modeChanged event (mid-session pipeline fallback ships in a
+    later milestone);
+    new mode-changed protocol message; session interface gains optional
+    requestResponse (OpenAI adapter implements it).
+  - Client reconnect grace: a dropped client has clientReconnectGraceMs
+    (default 30s) to reconnect and adopt its still-live provider session
+    (honest historyRecovered semantics); playback re-targets the new
+    peer.
+  - New docs page: Realtime Speech-to-Speech (experimental).
+
+- 3f9e7be: Realtime relay milestone 4 (RFC 0001): Gemini Live adapter.
+  - New GeminiLiveSpeechProvider: speech-to-speech over the Gemini Live
+    API (gemini-3.1-flash-live-preview by default; the Live API is a
+    Google preview). 16kHz PCM in / 24kHz out, native user and assistant
+    transcripts, provider-driven barge-in, tool calls with cancellation.
+  - Gemini's ~10-minute socket lifetime is handled inside the adapter:
+    goAway (and socket loss) trigger a session-resumption reconnect with
+    bounded input-audio buffering, so user speech spanning the gap is
+    replayed rather than clipped. Stage instruction updates use a
+    system-text turn without reconnecting; tool-set changes reconnect
+    with the resumption handle.
+  - Cost controls hold on Gemini too: maxOutputTokens maps into
+    generationConfig, and usageMetadata feeds per-response usage events,
+    budget enforcement, and spend metrics.
+  - Reconnects retry with backoff, treat resumption handles as
+    single-use (falling back to a fresh session rather than dying),
+    drain trailing messages from the old socket, buffer tool results
+    across the gap, and close interrupted turns cleanly so client state
+    never dangles.
+  - Conformance-tested against the documented BidiGenerateContent wire
+    format (mock server incl. handle rotation and close-during-reconnect).
+    Live validation is pending an API key environment; wire shapes marked
+    LIVE-PROBE in the adapter (system-role instruction turns, tool-result
+    delivery across a resumption) must be confirmed before
+    playbooks-on-Gemini leave experimental status.
+
+- 24fbcd4: Realtime relay milestone 5 (RFC 0001): pipeline fallback and hardening.
+  - Connect-time fallback: when the realtime provider is unreachable and
+    pipeline providers are configured, the session starts in pipeline
+    mode instead of failing. Mid-session provider failures send
+    an advisory mode-changed {mode: 'pipeline'}; the auto-reconnect lands
+    on the fallback if the provider is still unreachable (ready.mode is
+    authoritative).
+  - Renewal-crossing soak coverage: a fake-provider soak test exercises
+    repeated renewals with tool traffic asserting no leaked sessions or
+    dangling state, and the live probe verified a real OpenAI session
+    renewal mid-conversation with memory preserved through the
+    transcript seed.
+  - Docs: fallback behavior and scale notes.
+
+### Patch Changes
+
+- Updated dependencies [6a74624]
+- Updated dependencies [2cc97a0]
+- Updated dependencies [3db8818]
+- Updated dependencies [3f9e7be]
+  - @llmrtc/llmrtc-core@1.3.0
+  - @llmrtc/llmrtc-provider-openai@1.3.0
+  - @llmrtc/llmrtc-provider-google@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes

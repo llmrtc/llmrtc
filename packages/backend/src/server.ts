@@ -672,10 +672,12 @@ export class LLMRTCServer {
         (t) => t.condition.type !== 'llm_decision'
       );
       const clears = this.config.playbook.transitions.filter((t) => t.action.clearHistory);
-      if (unsupported.length || clears.length) {
+      const llmConfigs = this.config.playbook.stages.filter((st) => st.llmConfig);
+      if (unsupported.length || clears.length || llmConfigs.length) {
         console.warn(
           `[server] Relay-mode playbooks support llm_decision transitions only; ` +
-            `${unsupported.length} other transition(s) and ${clears.length} clearHistory action(s) will not fire`
+            `${unsupported.length} other transition(s), ${clears.length} clearHistory action(s), ` +
+            `and ${llmConfigs.length} per-stage llmConfig(s) will not be applied`
         );
       }
     }

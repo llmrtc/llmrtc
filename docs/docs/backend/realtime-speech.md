@@ -58,27 +58,154 @@ await server.start();
 requires the WebRTC audio track (no base64-audio fallback), and
 `streamingSTT`/`streamingTTS` are ignored.
 
+## How it flows
+
+```mermaid
+sequenceDiagram
+    participant U as User (mic)
+    participant S as LLMRTC Server
+    participant P as Realtime model (WS)
+    participant C as Client UI
+
+    U->>S: WebRTC audio (48kHz)
+    S->>P: PCM stream (resampled)
+    P->>S: transcript (user, streaming)
+    S-->>C: transcript events
+    P->>S: assistant audio (faster than realtime)
+    Note over S: playback queue paces it out
+    S->>U: WebRTC audio track
+    S-->>C: assistant-transcript + usage
+    U->>S: user interrupts mid-answer
+    S->>S: clear playback (~10ms)
+    S->>P: cancel + truncate history
+    C-->>C: tts-cancelled
+```
+
 ## What clients receive
 
 The existing protocol carries relay sessions — old clients keep
 working. New additive events on the web client:
 
 ```typescript
-client.on('transcript', (text, isFinal) => {});          // user speech
-client.on('assistantTranscript', (text, isFinal) => {}); // assistant speech (new)
-client.on('usage', (usage) => {});                       // per-response tokens (new)
-client.on('modeChanged', (mode) => {});                  // reserved: mid-session fallback ships in a later milestone
+client.on('transcript', (text, isFinal) => {
+  // User speech: partials carry the accumulated text so far, so
+  // replace the preview in place
+  userLine.textContent = text;
+});
+client.on('assistantTranscript', (text, isFinal) => {
+  assistantLine.textContent = text;      // what the assistant is saying
+  if (isFinal) commitToHistory('assistant', text);
+});
+client.on('usage', (u) => {
+  // Per-response spend telemetry (audio tokens are the cost driver)
+  totalTokens += u.inputTokens + u.outputTokens;
+});
+client.on('modeChanged', (mode) => {
+  // Advisory: the provider failed mid-session; after auto-reconnect,
+  // check ready.mode - it is authoritative
+  banner.show(`Voice quality changed: running in ${mode} mode`);
+});
+client.on('ttsCancelled', () => assistantLine.classList.add('interrupted'));
 ```
 
-`ready.mode` reports `'realtime'` or `'pipeline'`.
+`ready.mode` reports `'realtime'` or `'pipeline'`. Everything else —
+connecting, mic capture, playing the audio track — is identical to
+pipeline mode, so an existing app switches modes with a server-side
+config change only.
 
-## Tools and playbooks
+## Complete example: a voice agent with tools
 
 The same `ToolRegistry` definitions drive the realtime model's native
-function calling — no changes to tool code. With a `playbook`
-configured, stage transitions reconfigure the live session's
-instructions and tools, and `stage-change` events reach the client as
-in pipeline mode.
+function calling — no changes to tool code:
+
+```typescript
+import {
+  LLMRTCServer,
+  OpenAIRealtimeSpeechProvider,
+  ToolRegistry,
+  defineTool
+} from '@llmrtc/llmrtc-backend';
+
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(defineTool(
+  {
+    name: 'check_order_status',
+    description: 'Look up the status of an order by its number',
+    parameters: {
+      type: 'object',
+      properties: { orderNumber: { type: 'string' } },
+      required: ['orderNumber']
+    }
+  },
+  async ({ orderNumber }) => {
+    const order = await db.orders.find(orderNumber);
+    return { status: order.status, eta: order.eta };
+  }
+));
+
+const server = new LLMRTCServer({
+  realtimeSpeech: {
+    provider: new OpenAIRealtimeSpeechProvider({
+      apiKey: process.env.OPENAI_API_KEY!,
+      model: 'gpt-realtime-2.1'        // or 'gpt-realtime-2.1-mini' (~1/3 cost)
+    }),
+    voice: 'marin',
+    turnDetection: { type: 'semantic', eagerness: 'auto' },
+    maxOutputTokens: 800,
+    budget: { maxSessionMs: 30 * 60 * 1000, onExceeded: 'end-session' }
+  },
+  systemPrompt:
+    'You are a friendly order-support voice agent. Use check_order_status ' +
+    'when the caller mentions an order. Keep answers to one or two sentences.',
+  toolRegistry
+});
+
+await server.start();
+```
+
+The model hears "where's my order twelve-forty-five?", calls
+`check_order_status({ orderNumber: '1245' })` through your handler, and
+speaks the result — the client sees the same `tool-call-start` /
+`tool-call-end` events as in pipeline mode.
+
+### Gemini variant
+
+```typescript
+import { GeminiLiveSpeechProvider } from '@llmrtc/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  realtimeSpeech: {
+    provider: new GeminiLiveSpeechProvider({ apiKey: process.env.GOOGLE_API_KEY! }),
+    voice: 'Kore'
+  },
+  systemPrompt: 'You are a concise voice assistant.'
+});
+```
+
+### Configuration reference
+
+| Option | Default | Description |
+|---|---|---|
+| `provider` | — | `OpenAIRealtimeSpeechProvider` or `GeminiLiveSpeechProvider` |
+| `voice` | provider default | Provider voice id (`marin`, `cedar`… / `Kore`…) |
+| `instructions` | server `systemPrompt` | System prompt for the realtime model |
+| `inputTranscription` | `true` | User transcripts (billed separately) |
+| `transcriptionModel` | `gpt-4o-mini-transcribe` | OpenAI transcript model (Gemini transcribes natively) |
+| `turnDetection` | `server_vad` | `{type: 'server_vad', silenceDurationMs?}` or `{type: 'semantic', eagerness?}` |
+| `maxOutputTokens` | provider default | Per-response cap — the primary runaway-cost bound |
+| `contextManagement` | truncate @ 0.8 | Provider-side context cost lever |
+| `budget.maxSessionMs` | 120 minutes | Wall-clock cap (`0` disables) |
+| `budget.maxTokens` | unset | Cumulative token cap |
+| `budget.onExceeded` | `end-session` | Or `warn` |
+| `clientReconnectGraceMs` | 30000 | Reconnect-adoption window (`0` disables) |
+
+## Playbooks
+
+With a `playbook` configured, stage transitions reconfigure the live
+session's instructions and tools, and `stage-change` events reach the
+client as in pipeline mode. Relay-mode playbooks support
+`llm_decision` transitions; `clearHistory` and per-stage `llmConfig`
+are not applied (a startup warning lists anything unsupported).
 
 ## Interruptions, budgets, renewal
 
