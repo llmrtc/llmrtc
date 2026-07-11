@@ -28,11 +28,11 @@ class StreamingLLMStub implements LLMProvider {
     this.chunkSize = chunkSize;
   }
 
-  async complete(req: LLMRequest) {
+  async complete(_req: LLMRequest) {
     return { fullText: this.response };
   }
 
-  async *stream(req: LLMRequest): AsyncIterable<LLMChunk> {
+  async *stream(_req: LLMRequest): AsyncIterable<LLMChunk> {
     for (let i = 0; i < this.response.length; i += this.chunkSize) {
       const content = this.response.slice(i, i + this.chunkSize);
       yield { content, done: false };
@@ -63,7 +63,7 @@ class StreamingTTSStub implements TTSProvider {
     return { audio: Buffer.from(`audio:${text}`), format: 'mp3' as const };
   }
 
-  async *speakStream(text: string, config?: { format?: string }): AsyncIterable<Buffer> {
+  async *speakStream(text: string, _config?: { format?: string }): AsyncIterable<Buffer> {
     this.streamCalls.push(text);
     // Simulate streaming by yielding chunks
     yield Buffer.from(`chunk1:${text.slice(0, 10)}`);

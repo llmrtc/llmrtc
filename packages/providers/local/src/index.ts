@@ -24,6 +24,21 @@ export interface OllamaConfig {
   baseUrl?: string;
 }
 
+/** Shape of a message in Ollama's /api/chat request/response. */
+interface OllamaChatMessage {
+  role: string;
+  content: string;
+  images?: string[];
+  tool_calls?: Array<{ function: { name: string; arguments: unknown } }>;
+}
+
+/** Shape of an /api/chat response object (one NDJSON line when streaming). */
+interface OllamaChatResponse {
+  message?: OllamaChatMessage;
+  done?: boolean;
+  done_reason?: string;
+}
+
 export class OllamaLLMProvider implements LLMProvider {
   readonly name = 'ollama-llm';
   private readonly model: string;
@@ -72,7 +87,7 @@ export class OllamaLLMProvider implements LLMProvider {
 
   async complete(request: LLMRequest): Promise<LLMResult> {
     const supportsVision = await this.checkVisionSupport();
-    const res: any = await this.call(request, false, supportsVision);
+    const res = await this.call(request, false, supportsVision);
     const fullText = res.message?.content ?? '';
     const toolCalls = parseToolCallsFromOllama(res.message?.tool_calls);
     const stopReason = mapStopReasonFromOllama(res.message ?? {});
@@ -81,7 +96,7 @@ export class OllamaLLMProvider implements LLMProvider {
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
     const supportsVision = await this.checkVisionSupport();
-    const body: any = {
+    const body: Record<string, unknown> = {
       model: this.model,
       stream: true,
       messages: this.mapMessages(request.messages, supportsVision),
@@ -97,8 +112,8 @@ export class OllamaLLMProvider implements LLMProvider {
     });
     if (!res.body) throw new Error('ollama stream missing body');
 
-    let lastMessage: any = null;
-    for await (const chunk of res.body as any as AsyncIterable<Buffer>) {
+    let lastMessage: OllamaChatResponse | null = null;
+    for await (const chunk of res.body as unknown as AsyncIterable<Buffer>) {
       const text = chunk.toString();
       for (const line of text.split('\n').filter(Boolean)) {
         try {
@@ -125,13 +140,13 @@ export class OllamaLLMProvider implements LLMProvider {
    * @param messages - The messages to map
    * @param supportsVision - Whether the model supports vision (from checkVisionSupport)
    */
-  private mapMessages(messages: LLMRequest['messages'], supportsVision: boolean): any[] {
+  private mapMessages(messages: LLMRequest['messages'], supportsVision: boolean): OllamaChatMessage[] {
     return messages.map((m) => {
       if (m.role === 'tool') {
         return { role: 'tool', content: m.content };
       }
 
-      const mapped: any = { role: m.role, content: m.content };
+      const mapped: OllamaChatMessage = { role: m.role, content: m.content };
 
       // Handle vision attachments for multimodal models (Gemma 3, LLaVA, etc.)
       if (m.attachments?.length) {
@@ -148,8 +163,12 @@ export class OllamaLLMProvider implements LLMProvider {
     });
   }
 
-  private async call(request: LLMRequest, stream: boolean, supportsVision: boolean) {
-    const body: any = {
+  private async call(
+    request: LLMRequest,
+    stream: boolean,
+    supportsVision: boolean
+  ): Promise<OllamaChatResponse> {
+    const body: Record<string, unknown> = {
       model: this.model,
       stream,
       messages: this.mapMessages(request.messages, supportsVision),
@@ -164,7 +183,7 @@ export class OllamaLLMProvider implements LLMProvider {
       body: JSON.stringify(body)
     });
     if (!resp.ok) throw new Error(`ollama failed: ${resp.status}`);
-    return resp.json();
+    return (await resp.json()) as OllamaChatResponse;
   }
 }
 

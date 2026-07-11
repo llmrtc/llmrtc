@@ -48,20 +48,20 @@ test.describe('Voice Playbook - Tool Call Events', () => {
       }
 
       // Register tool call event listeners
-      let toolCallStartReceived = false;
-      let toolCallEndReceived = false;
-      let stageChangeReceived = false;
+      let _toolCallStartReceived = false;
+      let _toolCallEndReceived = false;
+      let _stageChangeReceived = false;
 
       client.on('toolCallStart', () => {
-        toolCallStartReceived = true;
+        _toolCallStartReceived = true;
       });
 
       client.on('toolCallEnd', () => {
-        toolCallEndReceived = true;
+        _toolCallEndReceived = true;
       });
 
       client.on('stageChange', () => {
-        stageChangeReceived = true;
+        _stageChangeReceived = true;
       });
 
       return {

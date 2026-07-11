@@ -24,7 +24,6 @@ import {
   OpenAIWhisperProvider,
   ElevenLabsTTSProvider,
   createLoggingHooks,
-  MetricNames,
   type MetricsAdapter
 } from '@llmrtc/llmrtc-backend';
 

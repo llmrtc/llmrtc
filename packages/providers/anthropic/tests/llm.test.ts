@@ -445,7 +445,6 @@ describe('AnthropicLLMProvider', () => {
     it('should extract system prompt in streaming', async () => {
       mockStream.mockReturnValue(createMockStream([]));
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [
           { role: 'system', content: 'Be concise' },
@@ -465,7 +464,6 @@ describe('AnthropicLLMProvider', () => {
     it('should pass config to streaming request', async () => {
       mockStream.mockReturnValue(createMockStream([]));
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }],
         config: { temperature: 0.7, topP: 0.95, maxTokens: 500 }

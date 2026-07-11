@@ -62,7 +62,7 @@ function containsSensitiveInfo(text: string): boolean {
   return BLOCKED_OUTPUT_WORDS.some(word => lowerText.includes(word));
 }
 
-function sanitizeForLogging(text: string): string {
+function _sanitizeForLogging(text: string): string {
   // Remove any potential secrets from logs
   return text.replace(/sk-[a-zA-Z0-9]+/g, 'sk-***');
 }

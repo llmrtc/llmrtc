@@ -165,7 +165,11 @@ export function createLoggingHooks(
         logger.debug(formatted);
         break;
       case 'info':
-        logger.info ? logger.info(formatted) : logger.log(formatted);
+        if (logger.info) {
+          logger.info(formatted);
+        } else {
+          logger.log(formatted);
+        }
         break;
       case 'warn':
         logger.warn(formatted);

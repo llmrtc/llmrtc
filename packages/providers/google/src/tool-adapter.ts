@@ -27,7 +27,7 @@ export function mapToolsToGemini(tools: ToolDefinition[]): GeminiTool[] {
  */
 export function mapToolChoiceToGemini(
   choice?: ToolChoice,
-  tools?: ToolDefinition[]
+  _tools?: ToolDefinition[]
 ): { mode?: string; allowedFunctionNames?: string[] } | undefined {
   if (!choice) return undefined;
 

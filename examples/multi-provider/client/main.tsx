@@ -50,7 +50,7 @@ function App() {
     ]).then(([providerList, currentProviders]) => {
       setProviders(providerList);
       setCurrent(currentProviders);
-    }).catch(err => {
+    }).catch(_err => {
       setError('Failed to fetch provider info');
     });
   }, []);

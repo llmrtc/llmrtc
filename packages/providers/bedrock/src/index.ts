@@ -6,7 +6,6 @@ import {
   Message as BedrockMessage,
   SystemContentBlock,
   ImageFormat,
-  ToolResultContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
 import {
   LLMChunk,

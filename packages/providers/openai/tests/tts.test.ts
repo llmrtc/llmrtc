@@ -299,7 +299,6 @@ describe('OpenAITTSProvider', () => {
         body: createMockReadableStream([createTestAudioBuffer()])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test')) {
         // consume stream
       }
@@ -318,7 +317,6 @@ describe('OpenAITTSProvider', () => {
         body: createMockReadableStream([createTestAudioBuffer()])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test', { voice: 'shimmer' })) {
         // consume stream
       }
@@ -333,7 +331,6 @@ describe('OpenAITTSProvider', () => {
         body: createMockReadableStream([createTestAudioBuffer()])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test', { format: 'pcm' })) {
         // consume stream
       }

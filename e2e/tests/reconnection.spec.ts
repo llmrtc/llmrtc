@@ -203,7 +203,7 @@ test.describe('Session Recovery', () => {
       (window as any).__reconnectAck = null;
       const client = (window as any).llmrtcClient;
       // Listen for the raw WebSocket message
-      const originalOnMessage = (client as any).ws?.onmessage;
+      const _originalOnMessage = (client as any).ws?.onmessage;
       if ((client as any).ws) {
         (client as any).ws.addEventListener('message', (event: MessageEvent) => {
           try {
@@ -211,7 +211,9 @@ test.describe('Session Recovery', () => {
             if (msg.type === 'reconnect-ack') {
               (window as any).__reconnectAck = msg;
             }
-          } catch {}
+          } catch {
+            // ignore non-JSON messages
+          }
         });
       }
     });

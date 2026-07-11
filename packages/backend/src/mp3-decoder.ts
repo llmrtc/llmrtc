@@ -1,5 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { Readable, PassThrough } from 'stream';
+import type { WrtcAudioSource } from './wrtc-types.js';
 
 /**
  * Decode audio (MP3, WAV, etc.) to raw PCM for RTCAudioSource
@@ -61,7 +62,7 @@ export interface FeedAudioOptions {
  */
 export async function feedAudioToSource(
   pcmBuffer: Buffer,
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   options?: FeedAudioOptions
 ): Promise<boolean> {
   const { signal, onComplete } = options ?? {};
@@ -184,7 +185,7 @@ export interface FeedPCMChunkOptions {
  */
 export async function feedPCMChunkToSource(
   pcmChunk: Buffer,
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   state: PCMFeederState,
   options?: FeedPCMChunkOptions
 ): Promise<void> {
@@ -285,7 +286,7 @@ export async function feedPCMChunkToSource(
  * @param state - Feeder state containing pending samples
  */
 export async function flushPCMFeeder(
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   state: PCMFeederState
 ): Promise<void> {
   if (state.aborted || state.pendingSamples.length === 0) {

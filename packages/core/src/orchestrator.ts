@@ -1,7 +1,6 @@
 import {
   ConversationOrchestratorConfig,
   ConversationProviders,
-  LLMChunk,
   LLMRequest,
   LLMResult,
   Message,
@@ -17,7 +16,6 @@ import {
   OrchestratorHooks,
   TurnContext,
   createTimingInfo,
-  createErrorContext,
   callHookSafe
 } from './hooks.js';
 import { MetricsAdapter, MetricNames, NoopMetrics } from './metrics.js';

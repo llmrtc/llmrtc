@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   Playbook,
-  Stage,
   Transition,
-  TransitionCondition,
   validatePlaybook,
   createPlaybookState,
   PLAYBOOK_TRANSITION_TOOL
@@ -18,7 +16,7 @@ function createMockLLMProvider(responses: LLMResult[]): LLMProvider {
   let callIndex = 0;
   return {
     name: 'mock-llm',
-    async complete(request: LLMRequest): Promise<LLMResult> {
+    async complete(_request: LLMRequest): Promise<LLMResult> {
       const response = responses[callIndex] ?? responses[responses.length - 1];
       callIndex++;
       return response;
@@ -777,6 +775,7 @@ describe('LLM Retry', () => {
         throw new Error('Permanent failure');
       },
       async *stream(): AsyncIterable<LLMChunk> {
+        yield* []; // no chunks emitted by this mock
         throw new Error('Permanent failure');
       }
     };

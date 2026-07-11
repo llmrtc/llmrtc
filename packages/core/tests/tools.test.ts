@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ToolRegistry,
   Tool,
@@ -411,7 +411,7 @@ describe('ToolExecutor', () => {
       const trackingRegistry = new ToolRegistry();
       trackingRegistry.register({
         ...createWeatherTool(),
-        handler: async (params) => {
+        handler: async (_params) => {
           executionOrder.push('weather-start');
           await new Promise(resolve => setTimeout(resolve, 10));
           executionOrder.push('weather-end');

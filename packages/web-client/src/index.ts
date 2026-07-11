@@ -6,7 +6,7 @@ import {
   ConnectionState,
   ReconnectionConfig
 } from './connection-state.js';
-import { PROTOCOL_VERSION } from '@llmrtc/llmrtc-core';
+import { PROTOCOL_VERSION, type ServerMessage } from '@llmrtc/llmrtc-core';
 
 // Re-export for convenience
 export { ConnectionState } from './connection-state.js';
@@ -355,7 +355,7 @@ export class LLMRTCWebClient extends EventEmitter<ClientEvents> {
       const parsed = MessageSchema.safeParse(JSON.parse(raw));
       if (!parsed.success) return;
 
-      const msg = parsed.data as any;
+      const msg = parsed.data as ServerMessage;
 
       switch (msg.type) {
         case 'signal':
@@ -766,8 +766,23 @@ export async function captureScreenFrame(): Promise<string> {
   return image;
 }
 
+/** Minimal surface of the (non-universal) ImageCapture API used for frame grabs. */
+interface ImageCaptureLike {
+  grabFrame(): Promise<ImageBitmap>;
+}
+
+function createImageCapture(track: MediaStreamTrack): ImageCaptureLike {
+  const Ctor = (window as unknown as {
+    ImageCapture?: new (track: MediaStreamTrack) => ImageCaptureLike;
+  }).ImageCapture;
+  if (!Ctor) {
+    throw new Error('ImageCapture API not supported in this browser');
+  }
+  return new Ctor(track);
+}
+
 async function grabFrame(track: MediaStreamTrack): Promise<string> {
-  const capture: any = new (window as any).ImageCapture(track);
+  const capture = createImageCapture(track);
   const bitmap = await capture.grabFrame();
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;
@@ -792,13 +807,13 @@ function startFrameCapture(
   const tick = async () => {
     if (stopped) return;
     try {
-      const capture: any = new (window as any).ImageCapture(track);
+      const capture = createImageCapture(track);
       const bitmap = await capture.grabFrame();
       canvas.width = bitmap.width;
       canvas.height = bitmap.height;
       ctx?.drawImage(bitmap, 0, 0);
       lastFrame = canvas.toDataURL('image/jpeg', 0.6);
-    } catch (err) {
+    } catch {
       // ignore frame errors
     }
     timer = window.setTimeout(tick, intervalMs);

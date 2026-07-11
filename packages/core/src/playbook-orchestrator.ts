@@ -12,7 +12,7 @@ import type { LLMProvider, LLMRequest, LLMResult, Message, VisionAttachment } fr
 import type { ToolDefinition, ToolCallRequest, ToolCallResult } from './tools.js';
 import { ToolRegistry } from './tools.js';
 import { ToolExecutor } from './tool-executor.js';
-import { PlaybookEngine, PlaybookEvent, PlaybookEventListener } from './playbook-engine.js';
+import { PlaybookEngine, PlaybookEvent } from './playbook-engine.js';
 import type { Playbook, Stage, Transition } from './playbook.js';
 import { PLAYBOOK_TRANSITION_TOOL } from './playbook.js';
 

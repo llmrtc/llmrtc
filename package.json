@@ -2,6 +2,7 @@
   "name": "@llmrtc/llmrtc",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "@llmrtc/LLMRTC monorepo: realtime LLM + voice + vision SDK",
   "license": "Apache-2.0",
   "scripts": {

@@ -74,8 +74,8 @@ test.describe('WebRTC Connection', () => {
     // Verify error event listeners can be properly attached to the client
     const errorListenerSetup = await page.evaluate(() => {
       const client = (window as any).llmrtcClient;
-      let errorHandlerCalled = false;
-      let errorReceived: any = null;
+      let _errorHandlerCalled = false;
+      let _errorReceived: any = null;
 
       // Verify 'on' method exists
       if (typeof client.on !== 'function') {
@@ -84,12 +84,12 @@ test.describe('WebRTC Connection', () => {
 
       // Attach error listener
       client.on('error', (err: any) => {
-        errorHandlerCalled = true;
-        errorReceived = err;
+        _errorHandlerCalled = true;
+        _errorReceived = err;
       });
 
       // Verify listener was attached by checking the emitter
-      const hasErrorListeners =
+      const _hasErrorListeners =
         client._events?.error ||
         client.listenerCount?.('error') > 0 ||
         typeof client.listeners === 'function';

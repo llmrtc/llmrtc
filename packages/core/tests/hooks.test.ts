@@ -27,11 +27,11 @@ class StubLLM implements LLMProvider {
   name = 'stub-llm';
   response = 'Hello from LLM';
 
-  async complete(req: LLMRequest): Promise<LLMResult> {
+  async complete(_req: LLMRequest): Promise<LLMResult> {
     return { fullText: this.response };
   }
 
-  async *stream(req: LLMRequest): AsyncIterable<LLMChunk> {
+  async *stream(_req: LLMRequest): AsyncIterable<LLMChunk> {
     const words = this.response.split(' ');
     for (const word of words) {
       yield { content: word + ' ', done: false };
@@ -475,7 +475,7 @@ describe('Hooks System', () => {
       for await (const _ of orchestrator.runTurnStream(Buffer.from('audio'))) {
         // Process all items
       }
-      const elapsed = Date.now() - startTime;
+      const _elapsed = Date.now() - startTime;
 
       // Hook should have completed (we await it properly now)
       expect(hookCompleted).toBe(true);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   PlaybookOrchestrator,
   Playbook,
@@ -23,7 +23,7 @@ function createMockLLMProvider(responses: LLMResult[]): LLMProvider {
   let callIndex = 0;
   return {
     name: 'mock-llm',
-    async complete(request: LLMRequest): Promise<LLMResult> {
+    async complete(_request: LLMRequest): Promise<LLMResult> {
       const response = responses[callIndex] ?? responses[responses.length - 1];
       callIndex++;
       return response;
@@ -461,7 +461,7 @@ describe('PlaybookOrchestrator - Streaming with Tools', () => {
 
   describe('Attachments Passthrough', () => {
     it('should pass attachments to streamTurn', async () => {
-      let receivedAttachments: any[] | undefined;
+      let _receivedAttachments: any[] | undefined;
 
       const capturingLLM: LLMProvider = {
         name: 'capturing-llm',
@@ -469,7 +469,7 @@ describe('PlaybookOrchestrator - Streaming with Tools', () => {
           // Check if attachments are in the user message
           const userMessage = request.messages.find((m) => m.role === 'user');
           if (userMessage && 'attachments' in userMessage) {
-            receivedAttachments = (userMessage as any).attachments;
+            _receivedAttachments = (userMessage as any).attachments;
           }
           return { fullText: 'Processed with attachments', stopReason: 'end_turn' };
         },

@@ -12,7 +12,6 @@ import type {
   TransitionCondition,
   TransitionContext,
   TransitionEvaluationResult,
-  TransitionAction,
   StageContext
 } from './playbook.js';
 import { PLAYBOOK_TRANSITION_TOOL } from './playbook.js';
@@ -172,7 +171,7 @@ export class PlaybookEngine {
       case 'tool_call':
         return context.lastToolCalls?.some(tc => tc.name === condition.toolName) ?? false;
 
-      case 'intent':
+      case 'intent': {
         // Intent detection would typically be done by the LLM or a classifier
         // For now, check if the intent is in the conversation context
         const detectedIntent = context.conversationContext.detectedIntent as string | undefined;
@@ -182,10 +181,12 @@ export class PlaybookEngine {
           return detectedIntent === condition.intent && (confidence ?? 0) >= condition.confidence;
         }
         return detectedIntent === condition.intent;
+      }
 
-      case 'keyword':
+      case 'keyword': {
         const message = context.lastAssistantMessage?.toLowerCase() ?? '';
         return condition.keywords.some(kw => message.includes(kw.toLowerCase()));
+      }
 
       case 'llm_decision':
         // LLM decision is handled via the playbook_transition tool
@@ -202,7 +203,7 @@ export class PlaybookEngine {
         return await condition.evaluate(context);
 
       default:
-        this.log('warn', `Unknown transition condition type: ${(condition as any).type}`);
+        this.log('warn', `Unknown transition condition type: ${(condition as { type?: string }).type}`);
         return false;
     }
   }

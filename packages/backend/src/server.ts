@@ -13,26 +13,21 @@ import {
   ConversationOrchestrator,
   VisionAttachment,
   ConversationProviders,
-  PROTOCOL_VERSION,
   createReadyMessage,
   createErrorMessage,
-  type ErrorCode,
   type OrchestratorHooks,
   type ServerHooks,
   type MetricsAdapter,
-  type ErrorContext,
   MetricNames,
   NoopMetrics,
   createTimingInfo,
   createErrorContext,
   callHookSafe,
   type Playbook,
-  ToolRegistry,
-  type PlaybookOrchestratorOptions
+  ToolRegistry
 } from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
-  TurnOrchestratorYield,
   ToolCallStartEvent,
   ToolCallEndEvent,
   StageChangeEvent
@@ -48,6 +43,7 @@ import {
   PCMFeederState
 } from './mp3-decoder.js';
 import { NativePeerServer, AudioData } from './native-peer-server.js';
+import type { WrtcAudioSource, WrtcModule } from './wrtc-types.js';
 import { SessionManager } from './session-manager.js';
 
 // =============================================================================
@@ -186,8 +182,8 @@ export class LLMRTCServer {
   private app: express.Express | null = null;
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
-  private wrtcLib: any = null;
-  private RTCAudioSource: any = null;
+  private wrtcLib: WrtcModule | null = null;
+  private RTCAudioSource: (new () => WrtcAudioSource) | null = null;
 
   /** Cached ICE servers (fetched once from Metered or using config) */
   private cachedIceServers: RTCIceServer[] | null = null;
@@ -374,9 +370,11 @@ export class LLMRTCServer {
 
   private async loadWebRTC(): Promise<void> {
     try {
-      const mod = await import('@roamhq/wrtc');
-      this.wrtcLib = (mod as any).default ?? mod;
-      this.RTCAudioSource = this.wrtcLib.nonstandard?.RTCAudioSource;
+      const mod = (await import('@roamhq/wrtc')) as unknown as WrtcModule & {
+        default?: WrtcModule;
+      };
+      this.wrtcLib = mod.default ?? mod;
+      this.RTCAudioSource = this.wrtcLib.nonstandard?.RTCAudioSource ?? null;
       console.log('[server] WebRTC loaded (@roamhq/wrtc)');
       console.log('[server] RTCAudioSource available:', !!this.RTCAudioSource);
     } catch {
@@ -584,7 +582,7 @@ export class LLMRTCServer {
               }
               break;
 
-            case 'audio':
+            case 'audio': {
               console.log('[server] Received audio message, size:', msg.data?.length, 'bytes');
               const audioBuf = Buffer.from(msg.data, 'base64');
               const attachments: VisionAttachment[] = msg.attachments ?? [];
@@ -597,6 +595,7 @@ export class LLMRTCServer {
                 peer?.ttsAudioSource
               );
               break;
+            }
           }
         } catch (err) {
           console.error('[server] Message error:', err);
@@ -782,7 +781,7 @@ export class LLMRTCServer {
     ws: WebSocket,
     peer: NativePeerServer | null,
     attachments: VisionAttachment[],
-    ttsAudioSource?: any,
+    ttsAudioSource?: WrtcAudioSource | null,
     options?: {
       signal?: AbortSignal;
       onTTSStart?: () => void;

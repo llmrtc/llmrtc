@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
 import type {
   ChatCompletionMessageParam,
-  ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions';
 import {

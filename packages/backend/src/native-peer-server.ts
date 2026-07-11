@@ -1,18 +1,13 @@
 import { EventEmitter } from 'events';
+import type { AudioData, WrtcAudioSink, WrtcAudioSource, WrtcModule } from './wrtc-types.js';
+
+export type { AudioData } from './wrtc-types.js';
 
 export interface NativePeerServerConfig {
   /** The @roamhq/wrtc module */
-  wrtcLib: any;
+  wrtcLib: WrtcModule;
   /** ICE servers configuration */
   iceServers?: RTCIceServer[];
-}
-
-export interface AudioData {
-  samples: Int16Array;
-  sampleRate: number;
-  bitsPerSample: number;
-  channelCount: number;
-  numberOfFrames: number;
 }
 
 /**
@@ -23,10 +18,10 @@ export interface AudioData {
 export class NativePeerServer extends EventEmitter {
   private pc: RTCPeerConnection;
   private dataChannel: RTCDataChannel | null = null;
-  private audioSink: any = null;
-  private audioSource: any = null;
+  private audioSink: WrtcAudioSink | null = null;
+  private audioSource: WrtcAudioSource | null = null;
   private ttsTrack: MediaStreamTrack | null = null;
-  private wrtc: any;
+  private wrtc: WrtcModule;
   private gatheringResolve: (() => void) | null = null;
   private gatheringTimeout: ReturnType<typeof setTimeout> | null = null;
   private _destroyed = false;
@@ -253,7 +248,7 @@ export class NativePeerServer extends EventEmitter {
   /**
    * Get the TTS audio source for feeding audio.
    */
-  get ttsAudioSource(): any {
+  get ttsAudioSource(): WrtcAudioSource | null {
     return this.audioSource;
   }
 
@@ -297,7 +292,7 @@ export class NativePeerServer extends EventEmitter {
       this.dataChannel.onmessage = null;
       try {
         this.dataChannel.close();
-      } catch (err) {
+      } catch {
         // Ignore close errors
       }
       this.dataChannel = null;
@@ -313,7 +308,7 @@ export class NativePeerServer extends EventEmitter {
 
     try {
       this.pc.close();
-    } catch (err) {
+    } catch {
       // Ignore close errors
     }
 
