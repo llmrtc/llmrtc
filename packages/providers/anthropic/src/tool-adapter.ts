@@ -32,8 +32,7 @@ export function mapToolChoiceToAnthropic(
       case 'auto':
         return { type: 'auto' };
       case 'none':
-        // Anthropic doesn't have 'none', so we return undefined (no tool_choice)
-        return undefined;
+        return { type: 'none' };
       case 'required':
         return { type: 'any' };
       default:
@@ -121,7 +120,7 @@ export function finalizeToolCalls(
     calls.push({
       callId: acc.id,
       name: acc.name,
-      arguments: safeParseJSON(acc.inputJson),
+      ...parseArguments(acc.inputJson),
     });
   }
 
@@ -129,14 +128,24 @@ export function finalizeToolCalls(
 }
 
 /**
- * Safely parse JSON, returning empty object on failure
+ * Parse the model's arguments JSON. Empty input means "no arguments";
+ * unparseable input is flagged so executors can fail the call instead of
+ * running the tool with silently-empty arguments.
  */
-function safeParseJSON(str: string): Record<string, unknown> {
-  if (!str) return {};
+function parseArguments(str: string): {
+  arguments: Record<string, unknown>;
+  parseError?: string;
+} {
+  if (!str || !str.trim()) {
+    return { arguments: {} };
+  }
   try {
-    return JSON.parse(str);
-  } catch {
-    return {};
+    return { arguments: JSON.parse(str) };
+  } catch (err) {
+    return {
+      arguments: {},
+      parseError: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 

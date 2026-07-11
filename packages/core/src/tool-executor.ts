@@ -110,6 +110,37 @@ export class ToolExecutor {
     const startTime = Date.now();
     const fullContext: ToolExecutionContext = { ...context, callId: call.callId };
 
+    // Don't start work that is already cancelled
+    if (context.abortSignal?.aborted) {
+      const result: ToolCallResult = {
+        toolName: call.name,
+        callId: call.callId,
+        result: null,
+        durationMs: 0,
+        success: false,
+        error: 'Tool execution aborted',
+      };
+      this.options.onToolError?.(call.name, call.callId, new Error(result.error));
+      this.options.onToolEnd?.(result);
+      return result;
+    }
+
+    // Refuse calls whose arguments could not be parsed - running a tool
+    // with silently-empty arguments is worse than reporting the failure
+    if (call.parseError) {
+      const result: ToolCallResult = {
+        toolName: call.name,
+        callId: call.callId,
+        result: null,
+        durationMs: 0,
+        success: false,
+        error: `Malformed tool arguments: ${call.parseError}`,
+      };
+      this.options.onToolError?.(call.name, call.callId, new Error(result.error));
+      this.options.onToolEnd?.(result);
+      return result;
+    }
+
     // Find the tool
     const tool = this.registry.get(call.name);
     if (!tool) {
@@ -194,36 +225,27 @@ export class ToolExecutor {
     calls: ToolCallRequest[],
     context: Omit<ToolExecutionContext, 'callId'>
   ): Promise<ToolCallResult[]> {
-    const results: ToolCallResult[] = [];
-    const executing: Promise<void>[] = [];
-    const queue = [...calls];
+    // Fixed-size worker pool. Results keep call order, and every in-flight
+    // execution settles before this returns, so the returned array never
+    // mutates after the caller receives it. On abort, remaining queued calls
+    // are not started.
+    const results: (ToolCallResult | undefined)[] = new Array(calls.length);
+    let nextIndex = 0;
 
-    while (queue.length > 0 || executing.length > 0) {
-      // Check for abort
-      if (context.abortSignal?.aborted) {
-        break;
+    const worker = async (): Promise<void> => {
+      while (nextIndex < calls.length) {
+        if (context.abortSignal?.aborted) {
+          return;
+        }
+        const index = nextIndex++;
+        results[index] = await this.executeSingle(calls[index], context);
       }
+    };
 
-      // Start new executions up to concurrency limit
-      while (executing.length < this.options.maxConcurrency && queue.length > 0) {
-        const call = queue.shift()!;
-        const promise = this.executeSingle(call, context).then(result => {
-          results.push(result);
-          const index = executing.indexOf(promise);
-          if (index > -1) {
-            executing.splice(index, 1);
-          }
-        });
-        executing.push(promise);
-      }
+    const workerCount = Math.min(this.options.maxConcurrency, calls.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
-      // Wait for at least one to complete
-      if (executing.length > 0) {
-        await Promise.race(executing);
-      }
-    }
-
-    return results;
+    return results.filter((r): r is ToolCallResult => r !== undefined);
   }
 
   /**
@@ -240,43 +262,35 @@ export class ToolExecutor {
     const timeoutController = new AbortController();
     const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
-    // Combine with external abort signal
+    // AbortSignal.any handles already-aborted inputs and removes its
+    // listeners when the combined signal is settled or collected, so a
+    // long-lived caller signal doesn't accumulate listeners per call.
     const combinedSignal = context.abortSignal
-      ? this.combineAbortSignals(context.abortSignal, timeoutController.signal)
+      ? AbortSignal.any([context.abortSignal, timeoutController.signal])
       : timeoutController.signal;
 
     try {
       const result = await Promise.race([
         tool.handler(args as TParams, { ...context, abortSignal: combinedSignal }),
         new Promise<never>((_, reject) => {
-          combinedSignal.addEventListener('abort', () => {
+          const onAbort = () => {
             if (timeoutController.signal.aborted) {
               reject(new Error(`Tool execution timed out after ${timeoutMs}ms`));
             } else {
               reject(new Error('Tool execution aborted'));
             }
-          });
+          };
+          if (combinedSignal.aborted) {
+            onAbort();
+          } else {
+            combinedSignal.addEventListener('abort', onAbort, { once: true });
+          }
         }),
       ]);
       return result;
     } finally {
       clearTimeout(timeoutId);
     }
-  }
-
-  /**
-   * Combine multiple abort signals into one
-   */
-  private combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
-    const controller = new AbortController();
-    for (const signal of signals) {
-      if (signal.aborted) {
-        controller.abort();
-        break;
-      }
-      signal.addEventListener('abort', () => controller.abort(), { once: true });
-    }
-    return controller.signal;
   }
 
   /**

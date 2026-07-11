@@ -161,8 +161,12 @@ export interface OrchestratorHooks {
   onLLMChunk?(ctx: TurnContext, chunk: LLMChunk, chunkIndex: number): void | Promise<void>;
 
   /**
-   * Called when LLM inference completes successfully
-   * Use this hook for content guardrails - throw an error to cancel the response
+   * Called when LLM inference completes successfully.
+   * Use this hook for content guardrails: throwing cancels the response -
+   * it is not committed to history, no further TTS is produced, and the
+   * turn fails with the thrown error. Note that with streaming TTS enabled,
+   * audio for sentences generated before the hook ran may already have been
+   * emitted.
    * @param ctx - Turn context
    * @param result - Complete LLM response
    * @param timing - LLM operation duration
@@ -333,9 +337,7 @@ export interface PlaybookContext {
  *
  * @example
  * ```typescript
- * const orchestrator = new PlaybookOrchestrator({
- *   llm,
- *   playbook,
+ * const orchestrator = new PlaybookOrchestrator(llm, playbook, registry, {
  *   hooks: {
  *     onStageEnter(ctx, stage) {
  *       console.log(`Entered stage: ${stage.name}`);
@@ -441,7 +443,9 @@ export function createErrorContext(
 
 /**
  * Safely call an async hook without blocking
- * Errors are caught and logged but don't propagate
+ * Errors are caught and logged but don't propagate.
+ * Note: orchestrators intentionally do NOT use this for onLLMEnd - that hook
+ * has guardrail semantics and a throw from it aborts the turn.
  * @param hook - The hook function to call
  * @param args - Arguments to pass to the hook
  */

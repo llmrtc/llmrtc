@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import type {
   ChatCompletionMessageParam,
+  ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions';
 import {
@@ -118,6 +119,26 @@ function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
         content: m.content,
         tool_call_id: m.toolCallId ?? '',
       } as ChatCompletionToolMessageParam;
+    }
+
+    // Assistant messages must carry their tool_calls when replayed;
+    // OpenAI-compatible APIs reject tool results with no matching call
+    if (m.role === 'assistant') {
+      const assistantMsg: ChatCompletionAssistantMessageParam = {
+        role: 'assistant',
+        content: m.content || null,
+      };
+      if (m.toolCalls?.length) {
+        assistantMsg.tool_calls = m.toolCalls.map(tc => ({
+          id: tc.callId,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments),
+          },
+        }));
+      }
+      return assistantMsg;
     }
     if (!m.attachments?.length) {
       return { role: m.role, content: m.content } as ChatCompletionMessageParam;

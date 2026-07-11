@@ -22,7 +22,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -31,7 +32,18 @@
   },
   "dependencies": {
     "@llmrtc/llmrtc-core": "^1.0.0",
-    "zod": "^3.23.8",
     "node-fetch": "^3.3.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
   }
 }

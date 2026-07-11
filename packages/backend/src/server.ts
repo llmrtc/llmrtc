@@ -13,26 +13,21 @@ import {
   ConversationOrchestrator,
   VisionAttachment,
   ConversationProviders,
-  PROTOCOL_VERSION,
   createReadyMessage,
   createErrorMessage,
-  type ErrorCode,
   type OrchestratorHooks,
   type ServerHooks,
   type MetricsAdapter,
-  type ErrorContext,
   MetricNames,
   NoopMetrics,
   createTimingInfo,
   createErrorContext,
   callHookSafe,
   type Playbook,
-  ToolRegistry,
-  type PlaybookOrchestratorOptions
+  ToolRegistry
 } from '@llmrtc/llmrtc-core';
 import type {
   TurnOrchestrator,
-  TurnOrchestratorYield,
   ToolCallStartEvent,
   ToolCallEndEvent,
   StageChangeEvent
@@ -48,6 +43,7 @@ import {
   PCMFeederState
 } from './mp3-decoder.js';
 import { NativePeerServer, AudioData } from './native-peer-server.js';
+import type { WrtcAudioSource, WrtcModule } from './wrtc-types.js';
 import { SessionManager } from './session-manager.js';
 
 // =============================================================================
@@ -186,11 +182,11 @@ export class LLMRTCServer {
   private app: express.Express | null = null;
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
-  private wrtcLib: any = null;
-  private RTCAudioSource: any = null;
+  private wrtcLib: WrtcModule | null = null;
+  private RTCAudioSource: (new () => WrtcAudioSource) | null = null;
 
-  /** Cached ICE servers (fetched once from Metered or using config) */
-  private cachedIceServers: RTCIceServer[] | null = null;
+  /** Cached ICE servers with expiry (Metered TURN credentials are time-limited) */
+  private cachedIceServers: { servers: RTCIceServer[]; expiresAt: number } | null = null;
 
   private eventHandlers: Partial<LLMRTCServerEvents> = {};
 
@@ -237,58 +233,62 @@ export class LLMRTCServer {
    * Fetch ICE servers from Metered TURN API
    * @returns Array of RTCIceServer objects from Metered
    */
-  private async fetchMeteredIceServers(): Promise<RTCIceServer[]> {
+  private async fetchMeteredIceServers(): Promise<RTCIceServer[] | null> {
     const { appName, apiKey, region } = this.config.metered!;
     const regionParam = region ? `&region=${region}` : '';
     const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}${regionParam}`;
 
     try {
-      const response = await fetch(url);
+      // A hung credentials fetch must not stall connection setup forever
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!response.ok) {
         throw new Error(`Metered API error: ${response.status} ${response.statusText}`);
       }
-      const iceServers = await response.json();
+      const iceServers = (await response.json()) as RTCIceServer[];
       console.log(`[server] Fetched ${iceServers.length} ICE servers from Metered`);
       return iceServers;
     } catch (error) {
       console.warn('[server] Failed to fetch Metered TURN credentials:', error);
       console.warn('[server] Falling back to STUN-only mode');
-      return DEFAULT_ICE_SERVERS;
+      return null;
     }
   }
+
+  /** How long fetched TURN credentials are served before refetching */
+  private static readonly ICE_CACHE_TTL_MS = 5 * 60 * 1000;
 
   /**
    * Resolve ICE servers based on configuration
    * Priority: custom iceServers > metered > default STUN
-   * Results are cached after first resolution
+   * Metered credentials are time-limited, so they are cached with a TTL and
+   * refetched; fetch failures are never cached.
    */
   private async resolveIceServers(): Promise<RTCIceServer[]> {
-    // Return cached result if available
-    if (this.cachedIceServers) {
-      return this.cachedIceServers;
-    }
-
-    let iceServers: RTCIceServer[];
-
     // Priority 1: Custom ICE servers from config
     if (this.config.iceServers?.length) {
-      console.log('[server] Using custom ICE servers from config');
-      iceServers = this.config.iceServers;
-    }
-    // Priority 2: Fetch from Metered TURN API
-    else if (this.config.metered) {
-      console.log('[server] Fetching ICE servers from Metered TURN API...');
-      iceServers = await this.fetchMeteredIceServers();
-    }
-    // Priority 3: Default STUN server
-    else {
-      console.log('[server] Using default Metered STUN server');
-      iceServers = DEFAULT_ICE_SERVERS;
+      return this.config.iceServers;
     }
 
-    // Cache for future connections
-    this.cachedIceServers = iceServers;
-    return iceServers;
+    // Priority 2: Fetch from Metered TURN API (TTL cache)
+    if (this.config.metered) {
+      if (this.cachedIceServers && Date.now() < this.cachedIceServers.expiresAt) {
+        return this.cachedIceServers.servers;
+      }
+      const fetched = await this.fetchMeteredIceServers();
+      if (fetched) {
+        this.cachedIceServers = {
+          servers: fetched,
+          expiresAt: Date.now() + LLMRTCServer.ICE_CACHE_TTL_MS
+        };
+        return fetched;
+      }
+      // Transient failure: serve stale credentials if we have them,
+      // otherwise fall back to STUN-only for this connection
+      return this.cachedIceServers?.servers ?? DEFAULT_ICE_SERVERS;
+    }
+
+    // Priority 3: Default STUN server
+    return DEFAULT_ICE_SERVERS;
   }
 
   /**
@@ -319,8 +319,15 @@ export class LLMRTCServer {
     this.setupWebSocketServer();
 
     // Start listening
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      const onError = (err: Error) => {
+        reject(err);
+      };
+      this.server!.once('error', onError);
       this.server!.listen(this.config.port, this.config.host, () => {
+        this.server!.off('error', onError);
+        // Surface later runtime errors through the event handler instead
+        this.server!.on('error', (err) => this.emit('error', err));
         console.log(
           `@llmrtc/LLMRTC server listening on ${this.config.host}:${this.config.port}`
         );
@@ -335,9 +342,12 @@ export class LLMRTCServer {
    * Stop the server
    */
   async stop(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    // Stop the session sweeper so the event loop can drain
+    this.sessionManager.destroy();
+
+    await new Promise<void>((resolve, reject) => {
       if (this.wss) {
-        this.wss.clients.forEach((client) => client.close());
+        this.wss.clients.forEach((client) => client.close(1001, 'server shutting down'));
         this.wss.close();
       }
       if (this.server) {
@@ -349,6 +359,10 @@ export class LLMRTCServer {
         resolve();
       }
     });
+
+    this.wss = null;
+    this.server = null;
+    this.app = null;
   }
 
   /**
@@ -374,9 +388,11 @@ export class LLMRTCServer {
 
   private async loadWebRTC(): Promise<void> {
     try {
-      const mod = await import('@roamhq/wrtc');
-      this.wrtcLib = (mod as any).default ?? mod;
-      this.RTCAudioSource = this.wrtcLib.nonstandard?.RTCAudioSource;
+      const mod = (await import('@roamhq/wrtc')) as unknown as WrtcModule & {
+        default?: WrtcModule;
+      };
+      this.wrtcLib = mod.default ?? mod;
+      this.RTCAudioSource = this.wrtcLib.nonstandard?.RTCAudioSource ?? null;
       console.log('[server] WebRTC loaded (@roamhq/wrtc)');
       console.log('[server] RTCAudioSource available:', !!this.RTCAudioSource);
     } catch {
@@ -436,6 +452,11 @@ export class LLMRTCServer {
   private setupWebSocketServer(): void {
     if (!this.wss) return;
 
+    // The ws server re-emits underlying http server errors; without a
+    // listener an EADDRINUSE would crash the process instead of surfacing
+    // through start()/the error handler
+    this.wss.on('error', (err) => this.emit('error', err));
+
     this.wss.on('connection', async (ws) => {
       const connId = uuidv4();
       const connectionStartTime = Date.now();
@@ -476,24 +497,62 @@ export class LLMRTCServer {
       let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
       let pendingAttachments: VisionAttachment[] = [];
 
-      // TTS playback state
+      // Turn state
       let currentAbortController: AbortController | null = null;
       let isTTSPlaying = false;
+      // Serializes turns for this connection: a new utterance queues behind
+      // the (aborted) previous one instead of running concurrently with it
+      let turnChain: Promise<void> = Promise.resolve();
 
-      const cancelCurrentTTS = () => {
+      const enqueueTurn = (run: () => Promise<void>): Promise<void> => {
+        turnChain = turnChain.then(run).catch((err) => {
+          console.error('[server] Turn error:', err);
+        });
+        return turnChain;
+      };
+
+      const cancelCurrentTurn = () => {
         if (currentAbortController) {
-          console.log('[server] Cancelling current TTS playback');
+          console.log('[server] Cancelling in-flight turn');
           currentAbortController.abort();
           currentAbortController = null;
         }
         isTTSPlaying = false;
       };
 
-      // Resolve ICE servers (cached after first call)
-      const iceServers = await this.resolveIceServers();
+      /** Start a serialized, abortable turn from an audio buffer. */
+      const startTurn = (audioBuf: Buffer, attachments: VisionAttachment[]): Promise<void> => {
+        cancelCurrentTurn();
+        const abortController = new AbortController();
+        currentAbortController = abortController;
 
-      // Send ready message with ICE servers for client
-      ws.send(JSON.stringify(createReadyMessage(connId, iceServers)));
+        return enqueueTurn(() =>
+          this.handleAudio(
+            session.orchestrator,
+            audioBuf,
+            ws,
+            peer,
+            attachments,
+            peer?.ttsAudioSource,
+            {
+              signal: abortController.signal,
+              onTTSStart: () => {
+                if (currentAbortController === abortController) {
+                  isTTSPlaying = true;
+                }
+              },
+              onTTSEnd: () => {
+                // A cancelled turn may finish late; only clear the state it
+                // still owns, never the next turn's controller
+                if (currentAbortController === abortController) {
+                  isTTSPlaying = false;
+                  currentAbortController = null;
+                }
+              }
+            }
+          )
+        );
+      };
 
       const resetHeartbeatTimeout = () => {
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
@@ -505,6 +564,8 @@ export class LLMRTCServer {
 
       resetHeartbeatTimeout();
 
+      // Register the message handler before any await so early client
+      // messages are not silently dropped while ICE servers resolve
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
@@ -519,6 +580,10 @@ export class LLMRTCServer {
             case 'reconnect': {
               const existingSession = this.sessionManager.getSession(msg.sessionId);
               if (existingSession) {
+                // Drop the fresh session auto-created for this connection
+                if (session.id !== existingSession.id) {
+                  this.sessionManager.removeSession(session.id);
+                }
                 session = existingSession;
                 console.log(`[server] Session recovered: ${msg.sessionId}`);
                 ws.send(
@@ -530,15 +595,13 @@ export class LLMRTCServer {
                   })
                 );
               } else {
-                const newSessionId = msg.sessionId || connId;
-                session = this.sessionManager.createSession(
-                  newSessionId,
-                  this.createOrchestrator(newSessionId, orchestratorHooks)
-                );
+                // Unknown or expired session: keep the current one rather
+                // than minting sessions keyed by client-supplied ids
+                console.log(`[server] Session not found for reconnect: ${msg.sessionId}`);
                 ws.send(
                   JSON.stringify({
                     type: 'reconnect-ack',
-                    success: true,
+                    success: false,
                     sessionId: session.id,
                     historyRecovered: false
                   })
@@ -552,27 +615,29 @@ export class LLMRTCServer {
               console.log('[server] Received', msg.type);
 
               if (!peer || peer.destroyed) {
-                peer = this.createPeer(ws, iceServers);
+                peer = this.createPeer(ws, await this.resolveIceServers());
                 if (peer) {
                   audioProcessor = new AudioProcessor();
                   this.setupPeerHandlers(
                     peer,
                     audioProcessor,
                     ws,
-                    session.orchestrator,
                     connId,
                     () => pendingAttachments,
                     (atts) => {
                       pendingAttachments = atts;
                     },
                     () => isTTSPlaying,
-                    (playing) => {
-                      isTTSPlaying = playing;
-                    },
-                    cancelCurrentTTS,
+                    cancelCurrentTurn,
                     () => currentAbortController,
-                    (ctrl) => {
-                      currentAbortController = ctrl;
+                    startTurn,
+                    () => {
+                      // Peer closed underneath us: reap it so a client
+                      // re-offer creates a fresh peer instead of silently
+                      // failing against a closed connection
+                      peer?.destroy();
+                      peer = null;
+                      audioProcessor = null;
                     }
                   );
                 }
@@ -584,34 +649,33 @@ export class LLMRTCServer {
               }
               break;
 
-            case 'audio':
+            case 'audio': {
               console.log('[server] Received audio message, size:', msg.data?.length, 'bytes');
               const audioBuf = Buffer.from(msg.data, 'base64');
               const attachments: VisionAttachment[] = msg.attachments ?? [];
-              await this.handleAudio(
-                session.orchestrator,
-                audioBuf,
-                ws,
-                peer,
-                attachments,
-                peer?.ttsAudioSource
-              );
+              await startTurn(audioBuf, attachments);
               break;
+            }
           }
         } catch (err) {
           console.error('[server] Message error:', err);
         }
       });
 
+      // Resolve ICE servers (TTL-cached) and tell the client we're ready
+      const iceServers = await this.resolveIceServers();
+      ws.send(JSON.stringify(createReadyMessage(connId, iceServers)));
+
       ws.on('close', async () => {
         console.log(`[server] Connection closed: ${connId}`);
         if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
-        cancelCurrentTTS();
+        cancelCurrentTurn();
         peer?.destroy();
         audioProcessor?.destroy();
 
-        // Update active connections gauge
-        this.metrics.gauge(MetricNames.CONNECTIONS, this.wss!.clients.size);
+        // Update active connections gauge (wss may already be torn down
+        // when close events drain during stop())
+        this.metrics.gauge(MetricNames.CONNECTIONS, this.wss?.clients.size ?? 0);
 
         // Call onDisconnect hook with session timing
         const sessionTiming = createTimingInfo(connectionStartTime, Date.now());
@@ -660,15 +724,14 @@ export class LLMRTCServer {
     peer: NativePeerServer,
     audioProcessor: AudioProcessor,
     ws: WebSocket,
-    orchestrator: TurnOrchestrator,
     sessionId: string,
     getPendingAttachments: () => VisionAttachment[],
     setPendingAttachments: (atts: VisionAttachment[]) => void,
     getIsTTSPlaying: () => boolean,
-    setIsTTSPlaying: (playing: boolean) => void,
-    cancelCurrentTTS: () => void,
+    cancelCurrentTurn: () => void,
     getAbortController: () => AbortController | null,
-    setAbortController: (ctrl: AbortController | null) => void
+    startTurn: (audio: Buffer, attachments: VisionAttachment[]) => Promise<void>,
+    onPeerClosed: () => void
   ): void {
     peer.on('connect', () => {
       console.log('[server] WebRTC peer connected');
@@ -677,6 +740,7 @@ export class LLMRTCServer {
     peer.on('close', () => {
       console.log('[server] WebRTC peer closed');
       audioProcessor.destroy();
+      onPeerClosed();
     });
 
     peer.on('error', (err) => {
@@ -684,10 +748,19 @@ export class LLMRTCServer {
       audioProcessor.destroy();
     });
 
+    // Renegotiation can deliver additional audio tracks; VAD handlers must
+    // only be attached once or every utterance would start N turns
+    let vadHandlersAttached = false;
+
     peer.on('track', async (track: MediaStreamTrack) => {
       console.log('[server] Received track:', track.kind);
 
       if (track.kind === 'audio') {
+        if (vadHandlersAttached) {
+          return;
+        }
+        vadHandlersAttached = true;
+
         try {
           await audioProcessor.initVAD();
         } catch (err) {
@@ -703,10 +776,16 @@ export class LLMRTCServer {
           // Call onSpeechStart hook
           await callHookSafe(this.hooks.onSpeechStart, sessionId, speechStartTime);
 
-          if (getIsTTSPlaying()) {
-            console.log('[server] User interrupted TTS - cancelling playback');
-            cancelCurrentTTS();
-            this.sendBoth({ type: 'tts-cancelled' }, ws, peer);
+          // Barge-in: abort the in-flight turn no matter which phase it is
+          // in. Waiting for TTS to start would let the assistant talk over
+          // the user when they interrupt during the LLM phase.
+          if (getAbortController()) {
+            const wasPlaying = getIsTTSPlaying();
+            console.log('[server] User interrupted - cancelling in-flight turn');
+            cancelCurrentTurn();
+            if (wasPlaying) {
+              this.sendBoth({ type: 'tts-cancelled' }, ws, peer);
+            }
           }
           this.sendBoth({ type: 'speech-start' }, ws, peer);
         });
@@ -722,32 +801,11 @@ export class LLMRTCServer {
           this.sendBoth({ type: 'speech-end' }, ws, peer);
 
           if (pcmBuffer.length > 0) {
-            cancelCurrentTTS();
-
-            const abortController = new AbortController();
-            setAbortController(abortController);
-            const signal = abortController.signal;
-
             const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
             console.log('[server] PCM to WAV conversion complete:', wavBuffer.length, 'bytes');
-
-            await this.handleAudio(
-              orchestrator,
-              wavBuffer,
-              ws,
-              peer,
-              getPendingAttachments(),
-              peer.ttsAudioSource,
-              {
-                signal,
-                onTTSStart: () => setIsTTSPlaying(true),
-                onTTSEnd: () => {
-                  setIsTTSPlaying(false);
-                  setAbortController(null);
-                }
-              }
-            );
+            const attachments = getPendingAttachments();
             setPendingAttachments([]);
+            await startTurn(wavBuffer, attachments);
           }
         });
       }
@@ -782,7 +840,7 @@ export class LLMRTCServer {
     ws: WebSocket,
     peer: NativePeerServer | null,
     attachments: VisionAttachment[],
-    ttsAudioSource?: any,
+    ttsAudioSource?: WrtcAudioSource | null,
     options?: {
       signal?: AbortSignal;
       onTTSStart?: () => void;

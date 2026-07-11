@@ -8,8 +8,13 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../core" },
-    { "path": "../providers/openai" },
+    { "path": "../providers/anthropic" },
+    { "path": "../providers/bedrock" },
     { "path": "../providers/elevenlabs" },
-    { "path": "../providers/local" }
+    { "path": "../providers/google" },
+    { "path": "../providers/lmstudio" },
+    { "path": "../providers/local" },
+    { "path": "../providers/openai" },
+    { "path": "../providers/openrouter" }
   ]
 }

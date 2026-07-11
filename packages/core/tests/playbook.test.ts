@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   Playbook,
-  Stage,
   Transition,
-  TransitionCondition,
   validatePlaybook,
   createPlaybookState,
   PLAYBOOK_TRANSITION_TOOL
@@ -18,7 +16,7 @@ function createMockLLMProvider(responses: LLMResult[]): LLMProvider {
   let callIndex = 0;
   return {
     name: 'mock-llm',
-    async complete(request: LLMRequest): Promise<LLMResult> {
+    async complete(_request: LLMRequest): Promise<LLMResult> {
       const response = responses[callIndex] ?? responses[responses.length - 1];
       callIndex++;
       return response;
@@ -313,8 +311,14 @@ describe('PlaybookEngine', () => {
       expect(events).toContain('stage_enter');
     });
 
-    it('should clear history when requested', async () => {
-      engine.updateContext({ test: 'value' });
+    it('should invoke onClearHistory and preserve context when clearHistory is requested', async () => {
+      let cleared = 0;
+      const clearingEngine = new PlaybookEngine(playbook, {
+        onClearHistory: () => {
+          cleared++;
+        }
+      });
+      clearingEngine.updateContext({ test: 'value' });
 
       const transitionWithClear: Transition = {
         id: 'test-clear',
@@ -323,8 +327,12 @@ describe('PlaybookEngine', () => {
         action: { targetStage: 'main', clearHistory: true }
       };
 
-      await engine.executeTransition(transitionWithClear);
-      expect(engine.getState().conversationContext).toEqual({});
+      await clearingEngine.executeTransition(transitionWithClear);
+      // Conversation history is owned by the orchestrator and cleared via
+      // the callback; conversationContext carries cross-stage state and
+      // must survive the transition.
+      expect(cleared).toBe(1);
+      expect(clearingEngine.getState().conversationContext).toEqual({ test: 'value' });
     });
 
     it('should pass transition data', async () => {
@@ -777,6 +785,7 @@ describe('LLM Retry', () => {
         throw new Error('Permanent failure');
       },
       async *stream(): AsyncIterable<LLMChunk> {
+        yield* []; // no chunks emitted by this mock
         throw new Error('Permanent failure');
       }
     };

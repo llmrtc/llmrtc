@@ -152,25 +152,38 @@ function extractSystemAndMessages(messages: Message[]): {
   systemPrompt: string | undefined;
   messages: MessageParam[];
 } {
-  let systemPrompt: string | undefined;
+  const systemParts: string[] = [];
   const converted: MessageParam[] = [];
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      systemPrompt = msg.content;
+      // Preserve every system message rather than keeping only the last
+      systemParts.push(msg.content);
       continue;
     }
 
     // Handle tool result messages
     if (msg.role === 'tool') {
-      converted.push({
-        role: 'user',
-        content: [{
-          type: 'tool_result',
-          tool_use_id: msg.toolCallId ?? '',
-          content: msg.content,
-        } as ToolResultBlockParam],
-      });
+      const resultBlock = {
+        type: 'tool_result',
+        tool_use_id: msg.toolCallId ?? '',
+        content: msg.content,
+      } as ToolResultBlockParam;
+
+      // Group consecutive tool results into one user message: all results
+      // for a parallel tool call must arrive in the single user turn that
+      // follows the assistant's tool_use message
+      const last = converted[converted.length - 1];
+      if (
+        last &&
+        last.role === 'user' &&
+        Array.isArray(last.content) &&
+        last.content.every(block => (block as { type?: string }).type === 'tool_result')
+      ) {
+        (last.content as ToolResultBlockParam[]).push(resultBlock);
+      } else {
+        converted.push({ role: 'user', content: [resultBlock] });
+      }
       continue;
     }
 
@@ -226,7 +239,10 @@ function extractSystemAndMessages(messages: Message[]): {
     }
   }
 
-  return { systemPrompt, messages: converted };
+  return {
+    systemPrompt: systemParts.length ? systemParts.join('\n\n') : undefined,
+    messages: converted
+  };
 }
 
 /**

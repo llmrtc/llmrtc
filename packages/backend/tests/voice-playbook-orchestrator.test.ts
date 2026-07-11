@@ -33,7 +33,7 @@ function createMockLLMProvider(responses: LLMResult[]): LLMProvider {
   return {
     name: 'mock-llm',
     init: vi.fn().mockResolvedValue(undefined),
-    async complete(request: LLMRequest): Promise<LLMResult> {
+    async complete(_request: LLMRequest): Promise<LLMResult> {
       const response = responses[callIndex] ?? responses[responses.length - 1];
       callIndex++;
       return response;
@@ -537,7 +537,7 @@ describe('VoicePlaybookOrchestrator', () => {
         for await (const _ of orchestrator.runTurnStream(Buffer.from('audio'))) {
           // consume events
         }
-      } catch (e) {
+      } catch (_e) {
         // expected
       }
 
@@ -675,7 +675,7 @@ describe('VoicePlaybookOrchestrator', () => {
         for await (const _ of orchestrator.runTurnStream(Buffer.from('audio'))) {
           // consume events
         }
-      } catch (e) {
+      } catch (_e) {
         // expected
       }
 
@@ -740,6 +740,7 @@ describe('VoicePlaybookOrchestrator', () => {
           return { audio: Buffer.from(`tts:${text}`), format: 'mp3' as const };
         },
         async *speakStream() {
+          yield* []; // no chunks emitted by this mock
           throw new Error('Stream failed');
         }
       };

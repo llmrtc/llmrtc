@@ -296,7 +296,6 @@ describe('OpenRouterLLMProvider', () => {
     it('should set stream to true', async () => {
       mockCreate.mockResolvedValue(createMockStream([]));
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }]
       })) {
@@ -311,7 +310,6 @@ describe('OpenRouterLLMProvider', () => {
     it('should pass model to streaming request', async () => {
       mockCreate.mockResolvedValue(createMockStream([]));
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }]
       })) {
@@ -326,7 +324,6 @@ describe('OpenRouterLLMProvider', () => {
     it('should pass config to streaming request', async () => {
       mockCreate.mockResolvedValue(createMockStream([]));
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }],
         config: { temperature: 0.7, topP: 0.95, maxTokens: 500 }

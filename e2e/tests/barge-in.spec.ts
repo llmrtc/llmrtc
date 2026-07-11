@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { waitForTTSCancelled, isTTSPlaying } from '../utils';
 
 /**
  * Barge-in E2E Tests
@@ -201,9 +200,9 @@ test.describe('Barge-in Event Verification', () => {
     const hasEvent = await page.evaluate(() => {
       const client = (window as any).llmrtcClient;
       // Check if we can register a handler
-      let received = false;
+      let _received = false;
       const handler = () => {
-        received = true;
+        _received = true;
       };
       client.on('ttsCancelled', handler);
       client.off('ttsCancelled', handler);
@@ -220,11 +219,11 @@ test.describe('Barge-in Event Verification', () => {
       const client = (window as any).llmrtcClient;
 
       return new Promise<boolean>((resolve) => {
-        let handlerCalled = false;
+        let _handlerCalled = false;
 
         // Register handler
         const handler = () => {
-          handlerCalled = true;
+          _handlerCalled = true;
         };
         client.on('ttsCancelled', handler);
 

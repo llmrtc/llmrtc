@@ -109,6 +109,12 @@ export interface ToolCallRequest {
   name: string;
   /** Parsed arguments from the LLM */
   arguments: Record<string, unknown>;
+  /**
+   * Set when the provider could not parse the model's arguments as JSON
+   * (e.g. a stream truncated mid-arguments). Executors fail such calls
+   * instead of running the tool with empty arguments.
+   */
+  parseError?: string;
 }
 
 /**
@@ -259,52 +265,130 @@ export function defineTool<TParams = Record<string, unknown>, TResult = unknown>
 }
 
 /**
- * Validate that arguments match a tool's parameter schema
- * Basic validation - providers typically do this, but useful for testing
+ * Validate that arguments match a tool's parameter schema.
+ * Covers the JSONSchemaProperty subset this package can express: type,
+ * required, enum, nested properties, array items, numeric ranges, string
+ * length, and pattern.
  */
 export function validateToolArguments(
   definition: ToolDefinition,
   args: Record<string, unknown>
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  const { properties, required = [] } = definition.parameters;
+  validateObjectValue(
+    args,
+    definition.parameters.properties,
+    definition.parameters.required ?? [],
+    definition.parameters.additionalProperties,
+    '',
+    errors
+  );
+  return { valid: errors.length === 0, errors };
+}
 
-  // Check required parameters
+function describePath(path: string, name: string): string {
+  return path ? `${path}.${name}` : name;
+}
+
+function validateObjectValue(
+  value: Record<string, unknown>,
+  properties: Record<string, JSONSchemaProperty>,
+  required: string[],
+  additionalProperties: boolean | undefined,
+  path: string,
+  errors: string[]
+): void {
   for (const name of required) {
-    if (!(name in args)) {
-      errors.push(`Missing required parameter: ${name}`);
+    if (!(name in value)) {
+      errors.push(`Missing required parameter: ${describePath(path, name)}`);
     }
   }
 
-  // Check property types
-  for (const [name, value] of Object.entries(args)) {
+  for (const [name, propValue] of Object.entries(value)) {
     const schema = properties[name];
     if (!schema) {
-      if (definition.parameters.additionalProperties === false) {
-        errors.push(`Unknown parameter: ${name}`);
+      if (additionalProperties === false) {
+        errors.push(`Unknown parameter: ${describePath(path, name)}`);
       }
       continue;
     }
+    validateValue(propValue, schema, describePath(path, name), errors);
+  }
+}
 
-    // Basic type checking
-    const valueType = Array.isArray(value) ? 'array' : typeof value;
-    if (value === null) {
-      if (schema.type !== 'null') {
-        errors.push(`Parameter '${name}' cannot be null`);
-      }
-    } else if (schema.type === 'integer') {
-      if (typeof value !== 'number' || !Number.isInteger(value)) {
-        errors.push(`Parameter '${name}' must be an integer`);
-      }
-    } else if (valueType !== schema.type) {
-      errors.push(`Parameter '${name}' must be of type ${schema.type}, got ${valueType}`);
+function validateValue(
+  value: unknown,
+  schema: JSONSchemaProperty,
+  path: string,
+  errors: string[]
+): void {
+  if (value === null) {
+    if (schema.type !== 'null') {
+      errors.push(`Parameter '${path}' cannot be null`);
     }
+    return;
+  }
 
-    // Enum validation
-    if (schema.enum && !schema.enum.includes(value as string | number | boolean | null)) {
-      errors.push(`Parameter '${name}' must be one of: ${schema.enum.join(', ')}`);
+  const valueType = Array.isArray(value) ? 'array' : typeof value;
+
+  if (schema.type === 'integer') {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      errors.push(`Parameter '${path}' must be an integer`);
+      return;
+    }
+  } else if (schema.type === 'null') {
+    errors.push(`Parameter '${path}' must be null`);
+    return;
+  } else if (valueType !== schema.type) {
+    errors.push(`Parameter '${path}' must be of type ${schema.type}, got ${valueType}`);
+    return;
+  }
+
+  if (schema.enum && !schema.enum.includes(value as string | number | boolean | null)) {
+    errors.push(`Parameter '${path}' must be one of: ${schema.enum.join(', ')}`);
+  }
+
+  if (typeof value === 'number') {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      errors.push(`Parameter '${path}' must be >= ${schema.minimum}`);
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      errors.push(`Parameter '${path}' must be <= ${schema.maximum}`);
     }
   }
 
-  return { valid: errors.length === 0, errors };
+  if (typeof value === 'string') {
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      errors.push(`Parameter '${path}' must have length >= ${schema.minLength}`);
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      errors.push(`Parameter '${path}' must have length <= ${schema.maxLength}`);
+    }
+    if (schema.pattern !== undefined) {
+      try {
+        if (!new RegExp(schema.pattern).test(value)) {
+          errors.push(`Parameter '${path}' must match pattern ${schema.pattern}`);
+        }
+      } catch {
+        // Invalid pattern in the schema itself - don't fail the arguments
+      }
+    }
+  }
+
+  if (Array.isArray(value) && schema.items) {
+    value.forEach((item, index) => {
+      validateValue(item, schema.items!, `${path}[${index}]`, errors);
+    });
+  }
+
+  if (valueType === 'object' && schema.properties) {
+    validateObjectValue(
+      value as Record<string, unknown>,
+      schema.properties,
+      schema.required ?? [],
+      undefined,
+      path,
+      errors
+    );
+  }
 }

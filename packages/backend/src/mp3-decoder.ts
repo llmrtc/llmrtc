@@ -1,5 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { Readable, PassThrough } from 'stream';
+import type { WrtcAudioSource } from './wrtc-types.js';
 
 /**
  * Decode audio (MP3, WAV, etc.) to raw PCM for RTCAudioSource
@@ -61,7 +62,7 @@ export interface FeedAudioOptions {
  */
 export async function feedAudioToSource(
   pcmBuffer: Buffer,
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   options?: FeedAudioOptions
 ): Promise<boolean> {
   const { signal, onComplete } = options ?? {};
@@ -76,7 +77,10 @@ export async function feedAudioToSource(
     pcmBuffer.length / BYTES_PER_SAMPLE
   );
 
-  // Feed in 10ms chunks
+  // Feed in 10ms chunks, pacing against a wall-clock deadline. A plain
+  // sleep(10) per frame accumulates setTimeout overshoot and feeds audio
+  // slower than real time.
+  let nextFrameAt = Date.now();
   for (let i = 0; i < int16Array.length; i += SAMPLES_PER_10MS) {
     // Check if cancelled before each chunk
     if (signal?.aborted) {
@@ -105,8 +109,11 @@ export async function feedAudioToSource(
       numberOfFrames: samples.length
     });
 
-    // Wait 10ms to maintain real-time playback rate
-    await sleep(10);
+    nextFrameAt += 10;
+    const wait = nextFrameAt - Date.now();
+    if (wait > 0) {
+      await sleep(wait);
+    }
   }
 
   onComplete?.();
@@ -149,6 +156,8 @@ export interface PCMFeederState {
   pendingByte: number | null;
   /** Whether the feeder has been aborted */
   aborted: boolean;
+  /** Wall-clock deadline for the next frame (pacing state across chunks) */
+  nextFrameAt: number | null;
 }
 
 /**
@@ -158,7 +167,8 @@ export function createPCMFeederState(): PCMFeederState {
   return {
     pendingSamples: new Int16Array(0),
     pendingByte: null,
-    aborted: false
+    aborted: false,
+    nextFrameAt: null
   };
 }
 
@@ -184,7 +194,7 @@ export interface FeedPCMChunkOptions {
  */
 export async function feedPCMChunkToSource(
   pcmChunk: Buffer,
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   state: PCMFeederState,
   options?: FeedPCMChunkOptions
 ): Promise<void> {
@@ -252,7 +262,8 @@ export async function feedPCMChunkToSource(
   totalSamples.set(state.pendingSamples);
   totalSamples.set(samples48k, state.pendingSamples.length);
 
-  // Feed complete 10ms frames
+  // Feed complete 10ms frames, pacing against a wall-clock deadline
+  // carried across chunks so playback stays at real time
   let offset = 0;
   while (offset + SAMPLES_PER_10MS <= totalSamples.length) {
     if (signal?.aborted) {
@@ -270,7 +281,11 @@ export async function feedPCMChunkToSource(
     });
 
     offset += SAMPLES_PER_10MS;
-    await sleep(10);
+    state.nextFrameAt = (state.nextFrameAt ?? Date.now()) + 10;
+    const wait = state.nextFrameAt - Date.now();
+    if (wait > 0) {
+      await sleep(wait);
+    }
   }
 
   // Save remaining samples for next chunk
@@ -285,7 +300,7 @@ export async function feedPCMChunkToSource(
  * @param state - Feeder state containing pending samples
  */
 export async function flushPCMFeeder(
-  audioSource: any,
+  audioSource: WrtcAudioSource,
   state: PCMFeederState
 ): Promise<void> {
   if (state.aborted || state.pendingSamples.length === 0) {

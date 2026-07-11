@@ -11,6 +11,7 @@ import {
   LLMResult,
   Message,
   STTProvider,
+  STTConfig,
   STTResult,
   TTSProvider,
   TTSConfig,
@@ -131,16 +132,43 @@ export class OpenAIWhisperProvider implements STTProvider {
     this.language = config.language;
   }
 
-  async transcribe(audio: Buffer): Promise<STTResult> {
+  async transcribe(audio: Buffer, config?: STTConfig): Promise<STTResult> {
+    // The transcription endpoint keys decoding off the filename extension,
+    // so sniff the actual container instead of assuming one
+    const { filename, mimeType } = sniffAudioContainer(audio);
     // Use OpenAI SDK's toFile helper for cross-platform compatibility
-    const file = await toFile(audio, 'audio.webm', { type: 'audio/webm' });
+    const file = await toFile(audio, filename, { type: mimeType });
     const res = await this.client.audio.transcriptions.create({
       file: file,
-      model: this.model,
-      language: this.language
+      model: config?.model ?? this.model,
+      language: config?.language ?? this.language
     });
     return { text: res.text ?? '', isFinal: true, raw: res };
   }
+}
+
+/**
+ * Detect the audio container from magic bytes so the upload filename
+ * matches the actual data. Defaults to webm (the common browser capture
+ * format) when unknown.
+ */
+function sniffAudioContainer(audio: Buffer): { filename: string; mimeType: string } {
+  if (audio.length >= 12 && audio.toString('ascii', 0, 4) === 'RIFF' && audio.toString('ascii', 8, 12) === 'WAVE') {
+    return { filename: 'audio.wav', mimeType: 'audio/wav' };
+  }
+  if (audio.length >= 4 && audio.readUInt32BE(0) === 0x1a45dfa3) {
+    return { filename: 'audio.webm', mimeType: 'audio/webm' };
+  }
+  if (audio.length >= 4 && audio.toString('ascii', 0, 4) === 'OggS') {
+    return { filename: 'audio.ogg', mimeType: 'audio/ogg' };
+  }
+  if (
+    audio.length >= 3 &&
+    (audio.toString('ascii', 0, 3) === 'ID3' || (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0))
+  ) {
+    return { filename: 'audio.mp3', mimeType: 'audio/mpeg' };
+  }
+  return { filename: 'audio.webm', mimeType: 'audio/webm' };
 }
 
 function mapMessages(messages: Message[]): ChatCompletionMessageParam[] {
@@ -222,6 +250,8 @@ export interface OpenAITTSConfig {
  */
 export class OpenAITTSProvider implements TTSProvider {
   readonly name = 'openai-tts';
+  /** OpenAI PCM output is 24kHz, 16-bit signed LE, mono */
+  readonly pcmSampleRate = 24000;
   private client: OpenAI;
   private model: 'tts-1' | 'tts-1-hd' | 'gpt-4o-mini-tts';
   private voice: OpenAITTSVoice;
@@ -239,7 +269,7 @@ export class OpenAITTSProvider implements TTSProvider {
     const format = mapFormat(overrideConfig?.format);
 
     const response = await this.client.audio.speech.create({
-      model: this.model,
+      model: (overrideConfig?.model as typeof this.model) ?? this.model,
       voice,
       input: text,
       response_format: format,
@@ -266,7 +296,7 @@ export class OpenAITTSProvider implements TTSProvider {
     const format = mapFormat(overrideConfig?.format);
 
     const response = await this.client.audio.speech.create({
-      model: this.model,
+      model: (overrideConfig?.model as typeof this.model) ?? this.model,
       voice,
       input: text,
       response_format: format,

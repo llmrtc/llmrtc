@@ -25,7 +25,7 @@ describe.skipIf(SKIP)('BedrockLLMProvider Integration', () => {
   // Or set BEDROCK_MODEL to an inference profile ARN for newer models
   const provider = new BedrockLLMProvider({
     region: process.env.AWS_REGION || 'us-east-1',
-    model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
+    model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
   });
 
   it('should complete a real request', async () => {

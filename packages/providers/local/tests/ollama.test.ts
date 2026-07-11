@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { Readable } from 'node:stream';
 import { OllamaLLMProvider } from '../src/index.js';
-import { createMockFetchResponse, createMockStream } from '../../test-utils.js';
 
 vi.mock('node-fetch', () => ({
   default: vi.fn()
@@ -170,7 +169,8 @@ describe('OllamaLLMProvider', () => {
     it('should throw on API error', async () => {
       (fetch as unknown as Mock).mockResolvedValue({
         ok: false,
-        status: 500
+        status: 500,
+        text: () => Promise.resolve('internal error')
       });
 
       await expect(
@@ -263,7 +263,6 @@ describe('OllamaLLMProvider', () => {
         body
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }]
       })) {
@@ -289,7 +288,6 @@ describe('OllamaLLMProvider', () => {
           body: streamBody
         });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.stream({
         messages: [{ role: 'user', content: 'Hi' }]
       })) {

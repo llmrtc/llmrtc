@@ -12,7 +12,6 @@ import type {
   TransitionCondition,
   TransitionContext,
   TransitionEvaluationResult,
-  TransitionAction,
   StageContext
 } from './playbook.js';
 import { PLAYBOOK_TRANSITION_TOOL } from './playbook.js';
@@ -30,6 +29,12 @@ export interface PlaybookEngineOptions {
     warn: (msg: string, ...args: unknown[]) => void;
     error: (msg: string, ...args: unknown[]) => void;
   };
+  /**
+   * Called when a transition with clearHistory is executed. The engine does
+   * not own the conversation history, so the owner (typically an
+   * orchestrator) supplies the actual clearing behavior.
+   */
+  onClearHistory?: () => void;
 }
 
 /**
@@ -172,7 +177,7 @@ export class PlaybookEngine {
       case 'tool_call':
         return context.lastToolCalls?.some(tc => tc.name === condition.toolName) ?? false;
 
-      case 'intent':
+      case 'intent': {
         // Intent detection would typically be done by the LLM or a classifier
         // For now, check if the intent is in the conversation context
         const detectedIntent = context.conversationContext.detectedIntent as string | undefined;
@@ -182,10 +187,12 @@ export class PlaybookEngine {
           return detectedIntent === condition.intent && (confidence ?? 0) >= condition.confidence;
         }
         return detectedIntent === condition.intent;
+      }
 
-      case 'keyword':
+      case 'keyword': {
         const message = context.lastAssistantMessage?.toLowerCase() ?? '';
         return condition.keywords.some(kw => message.includes(kw.toLowerCase()));
+      }
 
       case 'llm_decision':
         // LLM decision is handled via the playbook_transition tool
@@ -202,7 +209,7 @@ export class PlaybookEngine {
         return await condition.evaluate(context);
 
       default:
-        this.log('warn', `Unknown transition condition type: ${(condition as any).type}`);
+        this.log('warn', `Unknown transition condition type: ${(condition as { type?: string }).type}`);
         return false;
     }
   }
@@ -325,9 +332,11 @@ export class PlaybookEngine {
     // Emit exit event
     await this.emit({ type: 'stage_exit', stage: fromStage, nextStage: toStage });
 
-    // Clear history if requested
+    // Clear conversation history if requested. The accumulated
+    // conversationContext is intentionally preserved - it carries
+    // cross-stage state, not messages.
     if (transition.action.clearHistory) {
-      this.state.conversationContext = {};
+      this.options.onClearHistory?.();
     }
 
     // Record transition in history

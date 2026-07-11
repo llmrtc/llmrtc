@@ -328,7 +328,7 @@ describe('ElevenLabsTTSProvider', () => {
       await provider.speak('Test', { format: 'ogg' });
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('output_format=ogg_44100'),
+        expect.stringContaining('output_format=opus_48000_64'),
         expect.any(Object)
       );
     });
@@ -428,7 +428,6 @@ describe('ElevenLabsTTSProvider', () => {
         body: createMockStream([audioBuffer])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test')) {
         // consume stream
       }
@@ -446,7 +445,6 @@ describe('ElevenLabsTTSProvider', () => {
         body: createMockStream([audioBuffer])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test', { format: 'pcm' })) {
         // consume stream
       }
@@ -464,7 +462,6 @@ describe('ElevenLabsTTSProvider', () => {
         body: createMockStream([audioBuffer])
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of provider.speakStream('Test', { voice: 'other-voice' })) {
         // consume stream
       }

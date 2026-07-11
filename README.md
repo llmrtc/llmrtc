@@ -327,7 +327,7 @@ client.shareVideo(videoStream);
 ```typescript
 interface LLMProvider {
   name: string;
-  init?(): Promise<void>;
+  init?(): Promise<void> | void;
   complete(request: LLMRequest): Promise<LLMResult>;
   stream?(request: LLMRequest): AsyncIterable<LLMChunk>;
 }
@@ -367,6 +367,9 @@ interface ToolCallRequest {
   callId: string;
   name: string;
   arguments: Record<string, unknown>;
+  /** Set when the arguments JSON could not be parsed; such calls are
+      failed by the executor instead of running with empty arguments */
+  parseError?: string;
 }
 
 type ToolChoice = 'auto' | 'none' | 'required' | { name: string };
@@ -378,7 +381,7 @@ type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 ```typescript
 interface STTProvider {
   name: string;
-  init?(): Promise<void>;
+  init?(): Promise<void> | void;
   transcribe(audio: Buffer, config?: STTConfig): Promise<STTResult>;
   transcribeStream?(audio: AsyncIterable<Buffer>, config?: STTConfig): AsyncIterable<STTResult>;
 }
@@ -389,7 +392,9 @@ interface STTProvider {
 ```typescript
 interface TTSProvider {
   name: string;
-  init?(): Promise<void>;
+  init?(): Promise<void> | void;
+  /** Sample rate (Hz) of PCM output; consumers assume 24000 when omitted */
+  pcmSampleRate?: number;
   speak(text: string, config?: TTSConfig): Promise<TTSResult>;
   speakStream?(text: string, config?: TTSConfig): AsyncIterable<Buffer>;
 }
@@ -423,8 +428,13 @@ const orchestrator = new ConversationOrchestrator({
 // Non-streaming
 const result = await orchestrator.runTurn(audioBuffer, attachments);
 
-// Streaming (recommended)
-for await (const item of orchestrator.runTurnStream(audioBuffer, attachments)) {
+// Streaming (recommended). Pass an AbortSignal to support barge-in:
+// aborting stops LLM/TTS output and commits the partial response to
+// history.
+const controller = new AbortController();
+for await (const item of orchestrator.runTurnStream(audioBuffer, attachments, {
+  signal: controller.signal
+})) {
   // Handle STTResult, LLMChunk, LLMResult, TTSResult
 }
 ```
@@ -464,10 +474,11 @@ const screenCtrl = client.shareScreen(screenStream, 1200);
 videoCtrl.stop();
 
 // Events
-client.on('transcript', (text) => {});
+client.on('transcript', (text, isFinal) => {});
 client.on('llm', (fullText) => {});
 client.on('llmChunk', (chunk) => {});
 client.on('tts', (audio, format) => {});
+client.on('ttsChunk', (audio, format, sampleRate) => {}); // Non-WebRTC fallback
 client.on('ttsTrack', (mediaStream) => {});
 client.on('ttsStart', () => {});
 client.on('ttsComplete', () => {});
@@ -477,6 +488,9 @@ client.on('speechEnd', () => {});
 client.on('error', (error) => {});
 client.on('stateChange', (state) => {});
 client.on('reconnecting', (attempt, maxAttempts) => {});
+client.on('reconnected', (historyRecovered) => {});
+// Playbook mode: toolCallStart, toolCallEnd, stageChange - see the
+// web client events reference for the full list and payloads.
 ```
 
 ---
@@ -572,7 +586,8 @@ const llm = new BedrockLLMProvider({
     accessKeyId: '...',
     secretAccessKey: '...'
   },
-  model: 'anthropic.claude-sonnet-4-20250514-v1:0'
+  model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+  // Use inference-profile ids (us./eu. prefixed) for on-demand invocation.
   // Also supports: amazon.nova-*, meta.llama3-*, mistral.*
 });
 ```
@@ -777,7 +792,7 @@ AWS_REGION=us-east-1
 OPENAI_MODEL=gpt-5.2
 ANTHROPIC_MODEL=claude-sonnet-4-5
 GOOGLE_MODEL=gemini-2.5-flash
-BEDROCK_MODEL=anthropic.claude-sonnet-4-20250514-v1:0
+BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
 OPENAI_TTS_VOICE=nova
 
@@ -928,7 +943,10 @@ const server = new LLMRTCServer({
   hooks: {
     ...createLoggingHooks({ level: 'info' }),
 
-    // Custom guardrail - check LLM output
+    // Custom guardrail - throwing cancels the response: it is not
+    // committed to history and no further TTS is produced. (With
+    // streaming TTS, audio for earlier sentences may already have
+    // been emitted when this hook runs.)
     async onLLMEnd(ctx, result, timing) {
       if (result.fullText.includes('inappropriate')) {
         throw new Error('Content policy violation');
@@ -1294,6 +1312,7 @@ for await (const event of orchestrator.streamTurn('Can you run a diagnostic?')) 
 | `debug` | `boolean` | `false` | Enable debug logging |
 | `logger` | `Logger` | `console` | Custom logger implementation |
 | `abortSignal` | `AbortSignal` | `undefined` | Signal to abort ongoing operations |
+| `hooks` | `PlaybookHooks` | `undefined` | Stage/transition/turn observability hooks |
 
 ### Two-Phase Turn Execution
 

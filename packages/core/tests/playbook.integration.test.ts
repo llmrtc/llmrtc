@@ -422,7 +422,7 @@ describe.skipIf(SKIP_BEDROCK)('PlaybookOrchestrator + Bedrock Integration', () =
 
     llmProvider = new BedrockLLMProvider({
       region: process.env.AWS_REGION || 'us-east-1',
-      model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
+      model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
     });
 
     toolRegistry = createTestToolRegistry();
@@ -524,7 +524,7 @@ describe.skipIf(SKIP_ALL)('PlaybookOrchestrator Cross-Provider Tests', () => {
       const { BedrockLLMProvider } = await import('@llmrtc/llmrtc-provider-bedrock');
       llmProvider = new BedrockLLMProvider({
         region: process.env.AWS_REGION || 'us-east-1',
-        model: process.env.BEDROCK_MODEL || 'anthropic.claude-3-haiku-20240307-v1:0'
+        model: process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
       });
       providerName = 'Bedrock';
     }

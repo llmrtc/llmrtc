@@ -27,7 +27,7 @@ export function mapToolsToGemini(tools: ToolDefinition[]): GeminiTool[] {
  */
 export function mapToolChoiceToGemini(
   choice?: ToolChoice,
-  tools?: ToolDefinition[]
+  _tools?: ToolDefinition[]
 ): { mode?: string; allowedFunctionNames?: string[] } | undefined {
   if (!choice) return undefined;
 
@@ -129,6 +129,21 @@ export function mapStopReasonFromGemini(
     default:
       return undefined;
   }
+}
+
+/**
+ * Create a function call part for replaying assistant tool calls in history
+ */
+export function createFunctionCallPart(
+  name: string,
+  args: Record<string, unknown>
+): Part {
+  return {
+    functionCall: {
+      name,
+      args,
+    },
+  };
 }
 
 /**

@@ -14,7 +14,6 @@ import {
   // Tool types and registry
   ToolRegistry,
   defineTool,
-  ToolDefinition,
 
   // Playbook types
   Playbook,
@@ -26,8 +25,6 @@ import {
   // Hooks and metrics
   PlaybookHooks,
   OrchestratorHooks,
-  ConsoleMetrics,
-  MetricNames,
 } from '@llmrtc/llmrtc-core';
 
 import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
@@ -267,7 +264,7 @@ If you need to use a tool, explain what you're doing briefly.`,
 // 4. Set Up Hooks for Observability
 // =============================================================================
 
-const hooks: OrchestratorHooks & PlaybookHooks = {
+const _hooks: OrchestratorHooks & PlaybookHooks = {
   // Tool execution hooks
   onToolStart(ctx, request) {
     console.log(`\n[hook] Tool started: ${request.name}`);

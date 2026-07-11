@@ -12,9 +12,11 @@ import type { LLMProvider, LLMRequest, LLMResult, Message, VisionAttachment } fr
 import type { ToolDefinition, ToolCallRequest, ToolCallResult } from './tools.js';
 import { ToolRegistry } from './tools.js';
 import { ToolExecutor } from './tool-executor.js';
-import { PlaybookEngine, PlaybookEvent, PlaybookEventListener } from './playbook-engine.js';
+import { PlaybookEngine, PlaybookEvent } from './playbook-engine.js';
 import type { Playbook, Stage, Transition } from './playbook.js';
 import { PLAYBOOK_TRANSITION_TOOL } from './playbook.js';
+import type { PlaybookHooks, PlaybookContext } from './hooks.js';
+import { callHookSafe, createTimingInfo } from './hooks.js';
 
 /**
  * Options for the playbook orchestrator
@@ -39,6 +41,8 @@ export interface PlaybookOrchestratorOptions {
   };
   /** Abort signal for cancellation */
   abortSignal?: AbortSignal;
+  /** Hooks for stage/transition/turn observability */
+  hooks?: PlaybookHooks;
 }
 
 /**
@@ -90,10 +94,10 @@ export class PlaybookOrchestrator {
   private readonly options: PlaybookOrchestratorOptions;
   private readonly listeners: Set<OrchestratorEventListener> = new Set();
   private conversationHistory: Message[] = [];
+  private totalTurns = 0;
 
   // Concurrency protection: serialize turn execution to prevent history corruption
   private turnLock: Promise<void> = Promise.resolve();
-  private isExecutingTurn = false;
 
   constructor(
     llmProvider: LLMProvider,
@@ -104,7 +108,10 @@ export class PlaybookOrchestrator {
     this.llmProvider = llmProvider;
     this.engine = new PlaybookEngine(playbook, {
       debug: options.debug,
-      logger: options.logger
+      logger: options.logger,
+      onClearHistory: () => {
+        this.conversationHistory = [];
+      }
     });
     this.toolRegistry = toolRegistry;
     this.toolExecutor = new ToolExecutor(toolRegistry, {
@@ -119,8 +126,11 @@ export class PlaybookOrchestrator {
       ...options
     };
 
-    // Forward playbook engine events
-    this.engine.on(event => this.emit(event));
+    // Forward playbook engine events and dispatch playbook hooks
+    this.engine.on(async event => {
+      await this.emit(event);
+      await this.dispatchPlaybookHooks(event);
+    });
 
     // Register playbook_transition tool handler
     this.registerTransitionTool();
@@ -208,6 +218,48 @@ export class PlaybookOrchestrator {
   }
 
   /**
+   * Build the context object passed to playbook hooks
+   */
+  private buildPlaybookContext(): PlaybookContext {
+    const state = this.engine.getState();
+    return {
+      playbookId: this.engine.getPlaybook().id,
+      stageId: state.currentStage.id,
+      turnCount: state.turnCount,
+      timeInStage: Date.now() - state.stageEnteredAt
+    };
+  }
+
+  /**
+   * Translate engine events into the PlaybookHooks callbacks
+   */
+  private async dispatchPlaybookHooks(event: PlaybookEvent): Promise<void> {
+    const hooks = this.options.hooks;
+    if (!hooks) return;
+    const ctx = this.buildPlaybookContext();
+
+    switch (event.type) {
+      case 'stage_enter':
+        await callHookSafe(hooks.onStageEnter, ctx, event.stage, event.previousStage);
+        break;
+      case 'stage_exit': {
+        // Emitted before the engine swaps stages, so stageEnteredAt still
+        // refers to the stage being exited.
+        const state = this.engine.getState();
+        const timing = createTimingInfo(state.stageEnteredAt, Date.now());
+        await callHookSafe(hooks.onStageExit, ctx, event.stage, event.nextStage, timing);
+        break;
+      }
+      case 'transition':
+        await callHookSafe(hooks.onTransition, ctx, event.transition, event.from, event.to);
+        break;
+      case 'playbook_complete':
+        await callHookSafe(hooks.onPlaybookComplete, ctx, event.finalStage, this.totalTurns);
+        break;
+    }
+  }
+
+  /**
    * Add message to history with automatic cleanup when limit exceeded.
    * Uses smart trimming to preserve tool call/result pairs (required by OpenAI API).
    */
@@ -258,6 +310,14 @@ export class PlaybookOrchestrator {
    * Retryable: rate limits (429), server errors (5xx), timeouts.
    */
   private isRetryableError(error: Error): boolean {
+    // Prefer the structured status code SDK errors carry over message text.
+    const status = this.getErrorStatus(error);
+    if (status !== undefined) {
+      if (status === 408 || status === 429) return true;
+      if (status >= 500) return true;
+      if (status >= 400) return false;
+    }
+
     const message = error.message.toLowerCase();
 
     // Non-retryable: client errors (except rate limit)
@@ -265,6 +325,8 @@ export class PlaybookOrchestrator {
     if (message.includes('401') || message.includes('unauthorized')) return false;
     if (message.includes('403') || message.includes('forbidden')) return false;
     if (message.includes('404') || message.includes('not found')) return false;
+    if (message.includes('validationexception')) return false;
+    if (message.includes('invalid_request_error')) return false;
 
     // Retryable: rate limits, server errors, timeouts
     if (message.includes('429') || message.includes('rate limit')) return true;
@@ -273,6 +335,22 @@ export class PlaybookOrchestrator {
 
     // Default: retry unknown errors (could be transient network issues)
     return true;
+  }
+
+  /**
+   * Extract an HTTP status code from the shapes provider SDK errors use.
+   */
+  private getErrorStatus(error: unknown): number | undefined {
+    const e = error as {
+      status?: unknown;
+      statusCode?: unknown;
+      response?: { status?: unknown };
+      $metadata?: { httpStatusCode?: unknown };
+    };
+    for (const candidate of [e?.status, e?.statusCode, e?.response?.status, e?.$metadata?.httpStatusCode]) {
+      if (typeof candidate === 'number') return candidate;
+    }
+    return undefined;
   }
 
   /**
@@ -426,6 +504,29 @@ export class PlaybookOrchestrator {
               toolName: toolCall.name
             });
 
+            // The assistant message already recorded every call in this
+            // response, and providers reject histories where a tool call has
+            // no result. Synthesize skipped results for calls we won't run.
+            const remaining = result.toolCalls.slice(result.toolCalls.indexOf(toolCall) + 1);
+            for (const skippedCall of remaining) {
+              const skippedResult: ToolCallResult = {
+                callId: skippedCall.callId,
+                toolName: skippedCall.name,
+                success: false,
+                result: null,
+                error: 'Not executed: a stage transition was requested in the same response',
+                durationMs: 0
+              };
+              allToolCalls.push({ request: skippedCall, result: skippedResult });
+              await this.emit({ type: 'tool_call_complete', call: skippedCall, result: skippedResult });
+              this.pushHistory({
+                role: 'tool',
+                content: JSON.stringify({ skipped: true, reason: skippedResult.error }),
+                toolCallId: skippedCall.callId,
+                toolName: skippedCall.name
+              });
+            }
+
             // If transition is pending, we can proceed to phase 2
             // Don't continue the tool loop after transition request
             break;
@@ -496,8 +597,11 @@ export class PlaybookOrchestrator {
   private async executePhase2(): Promise<string> {
     await this.emit({ type: 'phase2_start' });
 
-    // Build request for final response (no tools)
+    // Build request for the final response. Tool definitions stay in the
+    // request (several providers reject tool_use/tool_result history without
+    // them) but toolChoice 'none' prevents further calls.
     const systemPrompt = this.engine.getEffectiveSystemPrompt();
+    const tools = this.engine.getAvailableTools();
     const llmConfig = this.engine.getEffectiveLLMConfig();
 
     const request: LLMRequest = {
@@ -505,6 +609,8 @@ export class PlaybookOrchestrator {
         { role: 'system', content: systemPrompt + '\n\nNow provide your final response to the user based on the conversation and any tool results.' },
         ...this.conversationHistory
       ],
+      tools: tools.length > 0 ? tools : undefined,
+      toolChoice: tools.length > 0 ? 'none' : undefined,
       config: {
         temperature: llmConfig.temperature,
         maxTokens: llmConfig.maxTokens,
@@ -530,20 +636,27 @@ export class PlaybookOrchestrator {
    * @param attachments - Optional vision attachments (images)
    */
   async executeTurn(userMessage: string, attachments?: VisionAttachment[]): Promise<TurnResult> {
-    // Wait for any pending turn to complete
-    await this.turnLock;
-
-    // Create new lock for this turn
-    let releaseLock!: () => void;
-    this.turnLock = new Promise(resolve => { releaseLock = resolve; });
-    this.isExecutingTurn = true;
-
+    const releaseLock = await this.acquireTurnLock();
     try {
       return await this._executeTurnInternal(userMessage, attachments);
     } finally {
-      this.isExecutingTurn = false;
       releaseLock();
     }
+  }
+
+  /**
+   * Acquire the turn lock. The lock is swapped synchronously before any await,
+   * so concurrent callers queue behind each other instead of all resuming when
+   * the previous turn finishes.
+   */
+  private acquireTurnLock(): Promise<() => void> {
+    let release!: () => void;
+    const next = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const previous = this.turnLock;
+    this.turnLock = previous.then(() => next);
+    return previous.then(() => release);
   }
 
   /**
@@ -607,14 +720,13 @@ export class PlaybookOrchestrator {
       response = await this.executePhase2();
     } else {
       response = phase1Result.finalResponse ?? '';
-      // Add to history if not already added
-      if (!this.conversationHistory.some(m => m.role === 'assistant' && m.content === response)) {
-        this.pushHistory({ role: 'assistant', content: response });
-      }
+      this.pushHistory({ role: 'assistant', content: response });
     }
 
     // Complete turn
+    this.totalTurns++;
     await this.engine.completeTurn();
+    await callHookSafe(this.options.hooks?.onPlaybookTurnEnd, this.buildPlaybookContext(), response, phase1Result.toolCalls.length);
 
     // Check for automatic transitions based on final response
     if (!transitioned) {
@@ -651,19 +763,11 @@ export class PlaybookOrchestrator {
     type: 'tool_call' | 'content' | 'done';
     data: ToolCallRequest | string | TurnResult;
   }> {
-    // Wait for any pending turn to complete
-    await this.turnLock;
-
-    // Create new lock for this turn
-    let releaseLock!: () => void;
-    this.turnLock = new Promise(resolve => { releaseLock = resolve; });
-    this.isExecutingTurn = true;
-
+    const releaseLock = await this.acquireTurnLock();
     try {
       // Yield from internal implementation
       yield* this._streamTurnInternal(userMessage, attachments);
     } finally {
-      this.isExecutingTurn = false;
       releaseLock();
     }
   }
@@ -692,8 +796,11 @@ export class PlaybookOrchestrator {
       yield { type: 'content', data: phase1Result.finalResponse };
       this.pushHistory({ role: 'assistant', content: phase1Result.finalResponse });
     } else {
-      // Stream phase 2
+      // Stream phase 2. Tool definitions stay in the request (several
+      // providers reject tool_use/tool_result history without them) but
+      // toolChoice 'none' prevents further calls.
       const systemPrompt = this.engine.getEffectiveSystemPrompt();
+      const tools = this.engine.getAvailableTools();
       const llmConfig = this.engine.getEffectiveLLMConfig();
 
       const request: LLMRequest = {
@@ -701,6 +808,8 @@ export class PlaybookOrchestrator {
           { role: 'system', content: systemPrompt + '\n\nNow provide your final response to the user.' },
           ...this.conversationHistory
         ],
+        tools: tools.length > 0 ? tools : undefined,
+        toolChoice: tools.length > 0 ? 'none' : undefined,
         config: {
           temperature: llmConfig.temperature,
           maxTokens: llmConfig.maxTokens,
@@ -770,7 +879,9 @@ export class PlaybookOrchestrator {
     }
 
     // Complete turn
+    this.totalTurns++;
     await this.engine.completeTurn();
+    await callHookSafe(this.options.hooks?.onPlaybookTurnEnd, this.buildPlaybookContext(), fullResponse, phase1Result.toolCalls.length);
 
     // 3. Check for automatic transitions based on final response (keyword, etc.)
     if (!transitioned) {

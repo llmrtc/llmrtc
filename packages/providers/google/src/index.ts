@@ -14,6 +14,7 @@ import {
   mapStopReasonFromGemini,
   processStreamingFunctionCall,
   finalizeToolCalls,
+  createFunctionCallPart,
   createFunctionResponsePart,
   StreamingFunctionCallAccumulator,
 } from './tool-adapter.js';
@@ -103,17 +104,20 @@ export class GeminiLLMProvider implements LLMProvider {
     // Accumulate function calls across streaming chunks
     const functionCallAccumulators = new Map<number, StreamingFunctionCallAccumulator>();
     let finishReason: string | undefined;
+    // Monotonic across the whole stream: Gemini function calls arrive whole
+    // (not as fragments), so each one gets its own slot. A per-chunk index
+    // would overwrite call 0 when calls arrive in separate chunks.
+    let functionCallCount = 0;
 
     for await (const chunk of stream) {
       const candidate = chunk.candidates?.[0];
       const parts = candidate?.content?.parts ?? [];
 
       // Process function calls
-      let callIndex = 0;
       for (const part of parts) {
         if (part.functionCall) {
-          processStreamingFunctionCall(functionCallAccumulators, callIndex, part.functionCall);
-          callIndex++;
+          processStreamingFunctionCall(functionCallAccumulators, functionCallCount, part.functionCall);
+          functionCallCount++;
         }
       }
 
@@ -145,12 +149,13 @@ function convertMessages(messages: Message[]): {
   systemInstruction: string | undefined;
   contents: Content[];
 } {
-  let systemInstruction: string | undefined;
+  const systemParts: string[] = [];
   const contents: Content[] = [];
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      systemInstruction = msg.content;
+      // Preserve every system message rather than keeping only the last
+      systemParts.push(msg.content);
       continue;
     }
 
@@ -164,10 +169,15 @@ function convertMessages(messages: Message[]): {
         response = { result: msg.content };
       }
 
-      contents.push({
-        role: 'user',
-        parts: [createFunctionResponsePart(msg.toolName ?? '', response)],
-      });
+      const responsePart = createFunctionResponsePart(msg.toolName ?? '', response);
+      // Group consecutive tool results into a single user content so every
+      // functionResponse directly follows the model's functionCall turn
+      const last = contents[contents.length - 1];
+      if (last && last.role === 'user' && last.parts?.every(p => p.functionResponse)) {
+        last.parts.push(responsePart);
+      } else {
+        contents.push({ role: 'user', parts: [responsePart] });
+      }
       continue;
     }
 
@@ -176,6 +186,14 @@ function convertMessages(messages: Message[]): {
     // Add text content
     if (msg.content) {
       parts.push({ text: msg.content });
+    }
+
+    // Replay assistant tool calls as functionCall parts - Gemini rejects
+    // functionResponse turns that have no preceding functionCall
+    if (msg.role === 'assistant' && msg.toolCalls?.length) {
+      for (const tc of msg.toolCalls) {
+        parts.push(createFunctionCallPart(tc.name, tc.arguments));
+      }
     }
 
     // Add vision attachments
@@ -191,13 +209,21 @@ function convertMessages(messages: Message[]): {
       }
     }
 
+    // Gemini rejects content entries with no parts
+    if (parts.length === 0) {
+      continue;
+    }
+
     contents.push({
       role: msg.role === 'user' ? 'user' : 'model',
       parts
     });
   }
 
-  return { systemInstruction, contents };
+  return {
+    systemInstruction: systemParts.length ? systemParts.join('\n\n') : undefined,
+    contents
+  };
 }
 
 /**

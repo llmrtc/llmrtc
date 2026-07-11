@@ -118,7 +118,7 @@ test.describe('Audio Conversation Flow', () => {
 
   test('complete conversation flow with event verification', async ({ page }) => {
     // Set up event tracking
-    const events: string[] = [];
+    const _events: string[] = [];
     await page.evaluate(() => {
       const client = (window as any).llmrtcClient;
       ['speechStart', 'speechEnd', 'transcript', 'llmChunk', 'llm', 'ttsStart', 'ttsComplete'].forEach(
