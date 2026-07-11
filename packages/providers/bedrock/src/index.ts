@@ -35,7 +35,7 @@ export interface BedrockConfig {
     secretAccessKey: string;
     sessionToken?: string;
   };
-  /** Model ID (default: 'anthropic.claude-3-5-sonnet-20241022-v2:0') */
+  /** Model ID (default: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0') */
   model?: string;
 }
 
@@ -52,7 +52,7 @@ export interface BedrockConfig {
  * ```typescript
  * const provider = new BedrockLLMProvider({
  *   region: 'us-east-1',
- *   model: 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+ *   model: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
  * });
  * ```
  */
@@ -62,7 +62,9 @@ export class BedrockLLMProvider implements LLMProvider {
   private model: string;
 
   constructor(private readonly config: BedrockConfig = {}) {
-    this.model = config.model ?? 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+    // The cross-region inference profile id: the bare model id cannot be
+    // invoked on-demand for this model generation.
+    this.model = config.model ?? 'us.anthropic.claude-3-5-sonnet-20241022-v2:0';
 
     this.client = new BedrockRuntimeClient({
       region: config.region ?? 'us-east-1',
@@ -188,18 +190,31 @@ function convertMessages(messages: Message[]): {
   system: SystemContentBlock[] | undefined;
   messages: BedrockMessage[];
 } {
-  let system: SystemContentBlock[] | undefined;
+  const systemParts: string[] = [];
   const converted: BedrockMessage[] = [];
+
+  // The Converse API enforces strict user/assistant alternation, so
+  // consecutive same-role messages (e.g. one user message per parallel tool
+  // result) must be merged into a single message.
+  const pushMerged = (message: BedrockMessage) => {
+    const last = converted[converted.length - 1];
+    if (last && last.role === message.role) {
+      last.content = [...(last.content ?? []), ...(message.content ?? [])];
+    } else {
+      converted.push(message);
+    }
+  };
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      system = [{ text: msg.content }];
+      // Preserve every system message rather than keeping only the last
+      systemParts.push(msg.content);
       continue;
     }
 
     // Handle tool result messages
     if (msg.role === 'tool') {
-      converted.push({
+      pushMerged({
         role: 'user',
         content: [{
           toolResult: createToolResultBlock(msg.toolCallId ?? '', msg.content),
@@ -224,7 +239,7 @@ function convertMessages(messages: Message[]): {
           },
         });
       }
-      converted.push({
+      pushMerged({
         role: 'assistant',
         content,
       });
@@ -253,13 +268,21 @@ function convertMessages(messages: Message[]): {
       }
     }
 
-    converted.push({
+    // Converse rejects messages with no content blocks
+    if (content.length === 0) {
+      continue;
+    }
+
+    pushMerged({
       role: msg.role as 'user' | 'assistant',
       content
     });
   }
 
-  return { system, messages: converted };
+  return {
+    system: systemParts.length ? [{ text: systemParts.join('\n\n') }] : undefined,
+    messages: converted
+  };
 }
 
 /**

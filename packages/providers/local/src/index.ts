@@ -70,7 +70,9 @@ export class OllamaLLMProvider implements LLMProvider {
           this.modelCapabilities = [];
         }
       } catch {
-        this.modelCapabilities = [];
+        // Transient network failure: leave the cache unset so the next call
+        // retries instead of permanently reporting "no vision support"
+        return false;
       }
     }
     return this.modelCapabilities.includes('vision');
@@ -85,6 +87,28 @@ export class OllamaLLMProvider implements LLMProvider {
     return match ? match[1] : data;
   }
 
+  /**
+   * Build the /api/chat request body, honoring the request's sampling config.
+   */
+  private buildBody(request: LLMRequest, stream: boolean, supportsVision: boolean): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      stream,
+      messages: this.mapMessages(request.messages, supportsVision),
+    };
+    if (request.tools?.length) {
+      body.tools = mapToolsToOllama(request.tools);
+    }
+    const options: Record<string, unknown> = {};
+    if (request.config?.temperature !== undefined) options.temperature = request.config.temperature;
+    if (request.config?.topP !== undefined) options.top_p = request.config.topP;
+    if (request.config?.maxTokens !== undefined) options.num_predict = request.config.maxTokens;
+    if (Object.keys(options).length > 0) {
+      body.options = options;
+    }
+    return body;
+  }
+
   async complete(request: LLMRequest): Promise<LLMResult> {
     const supportsVision = await this.checkVisionSupport();
     const res = await this.call(request, false, supportsVision);
@@ -96,42 +120,67 @@ export class OllamaLLMProvider implements LLMProvider {
 
   async *stream(request: LLMRequest): AsyncIterable<LLMChunk> {
     const supportsVision = await this.checkVisionSupport();
-    const body: Record<string, unknown> = {
-      model: this.model,
-      stream: true,
-      messages: this.mapMessages(request.messages, supportsVision),
-    };
-    if (request.tools?.length) {
-      body.tools = mapToolsToOllama(request.tools);
-    }
+    const body = this.buildBody(request, true, supportsVision);
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`ollama stream failed: ${res.status} ${text}`);
+    }
     if (!res.body) throw new Error('ollama stream missing body');
 
-    let lastMessage: OllamaChatResponse | null = null;
-    for await (const chunk of res.body as unknown as AsyncIterable<Buffer>) {
-      const text = chunk.toString();
-      for (const line of text.split('\n').filter(Boolean)) {
-        try {
-          const parsed = JSON.parse(line);
-          lastMessage = parsed;
-          const content = parsed?.message?.content ?? '';
-          if (content) yield { content, done: false, raw: parsed };
-        } catch (_) {
-          continue;
-        }
+    // Tool calls can appear on any intermediate chunk (the final done:true
+    // chunk usually carries an empty message), so collect them as they come.
+    const collectedToolCalls: NonNullable<OllamaChatMessage['tool_calls']> = [];
+    let doneReason: string | undefined;
+
+    // NDJSON lines can be split across network chunks; carry the incomplete
+    // tail over to the next chunk instead of dropping it. TextDecoder keeps
+    // multi-byte characters intact across chunk boundaries.
+    const decoder = new TextDecoder();
+    let pending = '';
+
+    const parseLine = function* (line: string): Generator<LLMChunk> {
+      let parsed: OllamaChatResponse;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (parsed.message?.tool_calls?.length) {
+        collectedToolCalls.push(...parsed.message.tool_calls);
+      }
+      if (parsed.done_reason) {
+        doneReason = parsed.done_reason;
+      }
+      const content = parsed.message?.content ?? '';
+      if (content) yield { content, done: false, raw: parsed };
+    };
+
+    for await (const chunk of res.body as unknown as AsyncIterable<Buffer | string>) {
+      pending += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) {
+        if (line.trim()) yield* parseLine(line);
       }
     }
+    pending += decoder.decode();
+    if (pending.trim()) yield* parseLine(pending);
 
-    // Final chunk with tool calls if present
-    const toolCalls = lastMessage?.message?.tool_calls
-      ? parseToolCallsFromOllama(lastMessage.message.tool_calls)
+    // Final chunk with all collected tool calls
+    const toolCalls = collectedToolCalls.length
+      ? parseToolCallsFromOllama(collectedToolCalls)
       : undefined;
-    const stopReason = mapStopReasonFromOllama(lastMessage?.message ?? {});
+    const stopReason = toolCalls?.length
+      ? ('tool_use' as const)
+      : doneReason === 'length'
+        ? ('max_tokens' as const)
+        : ('end_turn' as const);
     yield { content: '', done: true, toolCalls, stopReason };
   }
 
@@ -147,6 +196,14 @@ export class OllamaLLMProvider implements LLMProvider {
       }
 
       const mapped: OllamaChatMessage = { role: m.role, content: m.content };
+
+      // Replay assistant tool calls so multi-turn tool conversations keep
+      // their call/result pairing
+      if (m.role === 'assistant' && m.toolCalls?.length) {
+        mapped.tool_calls = m.toolCalls.map(tc => ({
+          function: { name: tc.name, arguments: tc.arguments as Record<string, unknown> }
+        }));
+      }
 
       // Handle vision attachments for multimodal models (Gemma 3, LLaVA, etc.)
       if (m.attachments?.length) {
@@ -168,21 +225,17 @@ export class OllamaLLMProvider implements LLMProvider {
     stream: boolean,
     supportsVision: boolean
   ): Promise<OllamaChatResponse> {
-    const body: Record<string, unknown> = {
-      model: this.model,
-      stream,
-      messages: this.mapMessages(request.messages, supportsVision),
-    };
-    if (request.tools?.length) {
-      body.tools = mapToolsToOllama(request.tools);
-    }
+    const body = this.buildBody(request, stream, supportsVision);
 
     const resp = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    if (!resp.ok) throw new Error(`ollama failed: ${resp.status}`);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`ollama failed: ${resp.status} ${text}`);
+    }
     return (await resp.json()) as OllamaChatResponse;
   }
 }
@@ -269,6 +322,12 @@ export class LlavaVisionProvider implements VisionProvider {
     this.model = config.model ?? 'llava';
   }
 
+  /** Ollama expects raw base64, not data URIs */
+  private normalizeImageData(data: string): string {
+    const match = data.match(/^data:[^;]+;base64,(.+)$/);
+    return match ? match[1] : data;
+  }
+
   async describe(request: VisionRequest): Promise<VisionResult> {
     const resp = await fetch(`${this.baseUrl}/api/generate`, {
       method: 'POST',
@@ -276,7 +335,10 @@ export class LlavaVisionProvider implements VisionProvider {
       body: JSON.stringify({
         model: this.model,
         prompt: request.prompt,
-        images: request.attachments.map((a) => a.data)
+        // stream defaults to true on /api/generate; a streaming NDJSON body
+        // would break the single json() parse below
+        stream: false,
+        images: request.attachments.map((a) => this.normalizeImageData(a.data))
       })
     });
     if (!resp.ok) {

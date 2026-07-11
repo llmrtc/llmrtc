@@ -132,6 +132,21 @@ export function mapStopReasonFromGemini(
 }
 
 /**
+ * Create a function call part for replaying assistant tool calls in history
+ */
+export function createFunctionCallPart(
+  name: string,
+  args: Record<string, unknown>
+): Part {
+  return {
+    functionCall: {
+      name,
+      args,
+    },
+  };
+}
+
+/**
  * Create a function response part for tool results
  */
 export function createFunctionResponsePart(

@@ -74,7 +74,7 @@ export function parseToolCallsFromOpenAI(
   return toolCalls.map(call => ({
     callId: call.id,
     name: call.function.name,
-    arguments: safeParseJSON(call.function.arguments),
+    ...parseArguments(call.function.arguments),
   }));
 }
 
@@ -136,11 +136,13 @@ export function finalizeToolCalls(
 ): ToolCallRequest[] {
   const calls: ToolCallRequest[] = [];
 
-  for (const [_, acc] of Array.from(accumulators.entries()).sort(([a], [b]) => a - b)) {
+  for (const [index, acc] of Array.from(accumulators.entries()).sort(([a], [b]) => a - b)) {
     calls.push({
-      callId: acc.id,
+      // Some OpenAI-compatible backends omit ids on streamed tool calls;
+      // generate one so tool results can still be correlated in history
+      callId: acc.id || `call_${index}_${Date.now()}`,
       name: acc.name,
-      arguments: safeParseJSON(acc.arguments),
+      ...parseArguments(acc.arguments),
     });
   }
 
@@ -148,13 +150,24 @@ export function finalizeToolCalls(
 }
 
 /**
- * Safely parse JSON, returning empty object on failure
+ * Parse the model's arguments JSON. Empty input means "no arguments";
+ * unparseable input is flagged so executors can fail the call instead of
+ * running the tool with silently-empty arguments.
  */
-function safeParseJSON(str: string): Record<string, unknown> {
+function parseArguments(str: string): {
+  arguments: Record<string, unknown>;
+  parseError?: string;
+} {
+  if (!str || !str.trim()) {
+    return { arguments: {} };
+  }
   try {
-    return JSON.parse(str);
-  } catch {
-    return {};
+    return { arguments: JSON.parse(str) };
+  } catch (err) {
+    return {
+      arguments: {},
+      parseError: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 

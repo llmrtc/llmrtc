@@ -125,6 +125,22 @@ export class ToolExecutor {
       return result;
     }
 
+    // Refuse calls whose arguments could not be parsed - running a tool
+    // with silently-empty arguments is worse than reporting the failure
+    if (call.parseError) {
+      const result: ToolCallResult = {
+        toolName: call.name,
+        callId: call.callId,
+        result: null,
+        durationMs: 0,
+        success: false,
+        error: `Malformed tool arguments: ${call.parseError}`,
+      };
+      this.options.onToolError?.(call.name, call.callId, new Error(result.error));
+      this.options.onToolEnd?.(result);
+      return result;
+    }
+
     // Find the tool
     const tool = this.registry.get(call.name);
     if (!tool) {

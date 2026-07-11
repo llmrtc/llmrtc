@@ -37,7 +37,7 @@ export function parseToolCallsFromOpenAI(
   return toolCalls.map(call => ({
     callId: call.id,
     name: call.function.name,
-    arguments: safeParseJSON(call.function.arguments),
+    ...parseArguments(call.function.arguments),
   }));
 }
 
@@ -64,11 +64,35 @@ export function processToolCallDelta(
 export function finalizeToolCalls(accumulators: Map<number, StreamingToolCallAccumulator>): ToolCallRequest[] {
   return Array.from(accumulators.entries())
     .sort(([a], [b]) => a - b)
-    .map(([_, acc]) => ({ callId: acc.id, name: acc.name, arguments: safeParseJSON(acc.arguments) }));
+    .map(([index, acc]) => ({
+      // LMStudio-hosted models sometimes omit ids on streamed tool calls;
+      // generate one so tool results can still be correlated in history
+      callId: acc.id || `call_${index}_${Date.now()}`,
+      name: acc.name,
+      ...parseArguments(acc.arguments),
+    }));
 }
 
-function safeParseJSON(str: string): Record<string, unknown> {
-  try { return JSON.parse(str); } catch { return {}; }
+/**
+ * Parse the model's arguments JSON. Empty input means "no arguments";
+ * unparseable input is flagged so executors can fail the call instead of
+ * running the tool with silently-empty arguments.
+ */
+function parseArguments(str: string): {
+  arguments: Record<string, unknown>;
+  parseError?: string;
+} {
+  if (!str || !str.trim()) {
+    return { arguments: {} };
+  }
+  try {
+    return { arguments: JSON.parse(str) };
+  } catch (err) {
+    return {
+      arguments: {},
+      parseError: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export function mapStopReasonFromOpenAI(
@@ -78,6 +102,7 @@ export function mapStopReasonFromOpenAI(
     case 'stop': return 'end_turn';
     case 'tool_calls': return 'tool_use';
     case 'length': return 'max_tokens';
+    case 'content_filter': return 'stop_sequence';
     default: return undefined;
   }
 }

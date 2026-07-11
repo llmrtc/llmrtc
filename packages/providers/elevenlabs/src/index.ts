@@ -30,6 +30,8 @@ export interface ElevenLabsConfig {
  */
 export class ElevenLabsTTSProvider implements TTSProvider {
   readonly name = 'elevenlabs-tts';
+  /** PCM output is pinned to 24kHz (matches OpenAI TTS for consistent handling) */
+  readonly pcmSampleRate = 24000;
   private readonly voiceId: string;
   private readonly modelId: string;
   private readonly format: TTSConfig['format'];
@@ -69,7 +71,12 @@ export class ElevenLabsTTSProvider implements TTSProvider {
       throw new Error(`ElevenLabs TTS failed: ${resp.status} ${errorText}`);
     }
 
-    const buffer = Buffer.from(await resp.arrayBuffer());
+    let buffer: Buffer = Buffer.from(await resp.arrayBuffer());
+    if (format === 'wav') {
+      // ElevenLabs has no WAV output; it returns headerless 24kHz PCM.
+      // Wrap it in a RIFF header so the result is actually a WAV file.
+      buffer = pcmToWav(buffer, this.pcmSampleRate, 1, 16);
+    }
     return { audio: buffer, format };
   }
 
@@ -129,12 +136,36 @@ function mapFormat(format: TTSConfig['format']): string {
     case 'mp3':
       return 'mp3_44100_128';
     case 'ogg':
-      return 'ogg_44100';
+      // ElevenLabs has no plain-ogg output; Ogg-Opus is the closest match
+      return 'opus_48000_64';
     case 'wav':
-      return 'pcm_24000'; // Raw PCM, 24kHz to match OpenAI
+      return 'pcm_24000'; // Raw PCM; speak() wraps it in a WAV header
     case 'pcm':
       return 'pcm_24000'; // 24kHz to match OpenAI TTS
     default:
       return 'mp3_44100_128';
   }
+}
+
+/**
+ * Wrap raw PCM samples in a minimal RIFF/WAVE header.
+ */
+function pcmToWav(pcm: Buffer, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
+  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
 }

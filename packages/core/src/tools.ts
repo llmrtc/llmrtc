@@ -109,6 +109,12 @@ export interface ToolCallRequest {
   name: string;
   /** Parsed arguments from the LLM */
   arguments: Record<string, unknown>;
+  /**
+   * Set when the provider could not parse the model's arguments as JSON
+   * (e.g. a stream truncated mid-arguments). Executors fail such calls
+   * instead of running the tool with empty arguments.
+   */
+  parseError?: string;
 }
 
 /**

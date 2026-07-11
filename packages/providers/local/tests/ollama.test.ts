@@ -169,7 +169,8 @@ describe('OllamaLLMProvider', () => {
     it('should throw on API error', async () => {
       (fetch as unknown as Mock).mockResolvedValue({
         ok: false,
-        status: 500
+        status: 500,
+        text: () => Promise.resolve('internal error')
       });
 
       await expect(

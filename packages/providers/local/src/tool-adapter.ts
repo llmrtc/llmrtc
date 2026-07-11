@@ -39,14 +39,32 @@ export function parseToolCallsFromOllama(
   return toolCalls.map((call, index) => ({
     callId: `ollama-call-${Date.now()}-${index}`,
     name: call.function.name,
-    arguments: typeof call.function.arguments === 'string'
-      ? safeParseJSON(call.function.arguments)
-      : (call.function.arguments as Record<string, unknown>) ?? {},
+    ...(typeof call.function.arguments === 'string'
+      ? parseArguments(call.function.arguments)
+      : { arguments: (call.function.arguments as Record<string, unknown>) ?? {} }),
   }));
 }
 
-function safeParseJSON(str: string): Record<string, unknown> {
-  try { return JSON.parse(str); } catch { return {}; }
+/**
+ * Parse the model's arguments JSON. Empty input means "no arguments";
+ * unparseable input is flagged so executors can fail the call instead of
+ * running the tool with silently-empty arguments.
+ */
+function parseArguments(str: string): {
+  arguments: Record<string, unknown>;
+  parseError?: string;
+} {
+  if (!str || !str.trim()) {
+    return { arguments: {} };
+  }
+  try {
+    return { arguments: JSON.parse(str) };
+  } catch (err) {
+    return {
+      arguments: {},
+      parseError: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**

@@ -328,7 +328,7 @@ describe('ElevenLabsTTSProvider', () => {
       await provider.speak('Test', { format: 'ogg' });
 
       expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('output_format=ogg_44100'),
+        expect.stringContaining('output_format=opus_48000_64'),
         expect.any(Object)
       );
     });
