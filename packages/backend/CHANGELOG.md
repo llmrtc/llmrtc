@@ -1,5 +1,15 @@
 # @llmrtc/llmrtc-backend
 
+## 1.1.1
+
+### Patch Changes
+
+- 6380c16: The CLI now refuses to start on Node versions below 20 with a clear
+  message (override with LLMRTC_SKIP_NODE_CHECK=1). Unsupported runtimes
+  previously failed in confusing ways at runtime instead of at startup.
+- Updated dependencies [b35b4e1]
+  - @llmrtc/llmrtc-provider-openai@1.1.1
+
 ## 1.1.0
 
 ### Minor Changes
