@@ -92,6 +92,9 @@ Environment variables:
   ELEVENLABS_API_KEY ElevenLabs API key for TTS
   SYSTEM_PROMPT      System prompt for AI assistant
   STREAMING_TTS      Enable streaming TTS (default: true)
+  STREAMING_STT      Stream mic audio to STT live for interim transcripts
+                     (default: false; needs a streaming STT provider, e.g.
+                     STT_PROVIDER=elevenlabs-scribe or openai-realtime)
   HISTORY_LIMIT      Max messages kept in conversation history (default: 8)
 `);
       process.exit(0);
@@ -107,6 +110,7 @@ const cliArgs = parseArgs();
 const port = cliArgs.port ?? (process.env.PORT ? Number(process.env.PORT) : 8787);
 const host = cliArgs.host ?? process.env.HOST ?? '127.0.0.1';
 const streamingTTS = process.env.STREAMING_TTS !== 'false';
+const streamingSTT = process.env.STREAMING_STT === 'true';
 const historyLimit = process.env.HISTORY_LIMIT ? Number(process.env.HISTORY_LIMIT) : undefined;
 const systemPrompt = process.env.SYSTEM_PROMPT ?? 'You are a helpful realtime voice assistant.';
 
@@ -141,6 +145,7 @@ const server = new LLMRTCServer({
   port,
   host,
   streamingTTS,
+  streamingSTT,
   systemPrompt,
   ...(historyLimit !== undefined && Number.isFinite(historyLimit) ? { historyLimit } : {}),
   metered,

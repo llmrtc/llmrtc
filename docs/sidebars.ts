@@ -52,6 +52,7 @@ const sidebars: SidebarsConfig = {
         'backend/library',
         'backend/configuration',
         'backend/environment-variables',
+        'backend/streaming-stt',
         'backend/networking-and-turn',
         'backend/voice-playbook',
         'backend/deployment',

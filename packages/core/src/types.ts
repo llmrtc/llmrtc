@@ -100,6 +100,12 @@ export interface STTProvider {
   transcribe(audio: Buffer, config?: STTConfig): Promise<STTResult>;
   /** Streaming partials/finals */
   transcribeStream?(audio: AsyncIterable<Buffer>, config?: STTConfig): AsyncIterable<STTResult>;
+  /**
+   * Sample rate (Hz) this provider expects for transcribeStream input
+   * frames (16-bit signed LE mono PCM). Consumers assume 16000 when not
+   * declared.
+   */
+  streamingInputSampleRate?: number;
 }
 
 export interface TTSConfig {

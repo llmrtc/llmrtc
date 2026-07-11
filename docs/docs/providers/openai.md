@@ -26,6 +26,7 @@ any transcription model:
 | `whisper-1` | Default. Battle-tested, widest language coverage |
 | `gpt-4o-transcribe` | Higher accuracy, better with noisy audio and accents |
 | `gpt-4o-mini-transcribe` | Near-`gpt-4o-transcribe` accuracy at lower cost - a good default for voice agents |
+| `gpt-realtime-whisper` | Native streaming over the Realtime API - use `OpenAIRealtimeSTTProvider` (below) |
 
 ```ts
 const stt = new OpenAIWhisperProvider({
@@ -34,6 +35,27 @@ const stt = new OpenAIWhisperProvider({
   language: 'en' // optional hint
 });
 ```
+
+### Streaming transcription (Realtime API)
+
+`OpenAIRealtimeSTTProvider` streams audio to a transcription-type
+Realtime session and yields interim transcripts while the user is still
+speaking. Billing follows the transcription model's audio-duration
+pricing, not realtime LLM tokens.
+
+```ts
+import { OpenAIRealtimeSTTProvider } from '@llmrtc/llmrtc-provider-openai';
+
+const stt = new OpenAIRealtimeSTTProvider({
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-realtime-whisper',  // default
+  delay: 'low'                    // optional latency/accuracy trade-off
+});
+```
+
+Enable `streamingSTT: true` on the server (or `STREAMING_STT=true` +
+`STT_PROVIDER=openai-realtime` in CLI mode) for live interim
+transcripts - see [Streaming Speech-to-Text](../backend/streaming-stt).
 
 ## Text-to-speech
 

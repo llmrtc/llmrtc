@@ -97,9 +97,10 @@ await server.stop();
 - Provider selection env vars:
   - `LLM_PROVIDER`: openai (default), anthropic, google, bedrock, openrouter, zai (alias: glm), lmstudio, ollama
   - `TTS_PROVIDER`: elevenlabs (default), openai, piper
-  - `STT_PROVIDER`: openai (default), faster-whisper
+  - `STT_PROVIDER`: openai (default), faster-whisper, elevenlabs-scribe, openai-realtime
 - Provider API keys:
   - `OPENAI_API_KEY`, `OPENAI_BASE_URL?`, `OPENAI_MODEL?`, `OPENAI_STT_MODEL?`, `OPENAI_TTS_MODEL?`, `OPENAI_TTS_VOICE?`, `OPENAI_TTS_INSTRUCTIONS?`
+  - `ELEVENLABS_API_KEY`, `ELEVENLABS_STT_MODEL?`; server flag `STREAMING_STT` (default false)
   - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL?`
   - `GOOGLE_API_KEY`, `GOOGLE_MODEL?`
   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION?`, `BEDROCK_MODEL?`

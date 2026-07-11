@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@llmrtc/llmrtc-core": "^1.1.0",
-    "openai": "^4.89.0"
+    "openai": "^4.89.0",
+    "ws": "^8.16.0"
   },
   "exports": {
     ".": {
@@ -46,5 +47,8 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10"
   }
 }

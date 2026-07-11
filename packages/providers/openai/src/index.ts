@@ -1,10 +1,12 @@
 import OpenAI, { toFile } from 'openai';
+import WebSocket from 'ws';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionAssistantMessageParam,
   ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions';
 import {
+  AsyncEventQueue,
   LLMChunk,
   LLMProvider,
   LLMRequest,
@@ -391,4 +393,324 @@ function mapFormat(format?: TTSConfig['format']): OpenAITTSFormat {
     default:
       return 'mp3';
   }
+}
+
+// =============================================================================
+// OpenAI Realtime STT Provider (streaming transcription)
+// =============================================================================
+
+export interface OpenAIRealtimeSTTConfig {
+  /** OpenAI API key */
+  apiKey: string;
+  /**
+   * Transcription model (default: 'gpt-realtime-whisper' - native
+   * streaming). 'gpt-4o-transcribe' / 'gpt-4o-mini-transcribe' also work
+   * over the Realtime API.
+   */
+  model?: string;
+  /** ISO language code hint */
+  language?: string;
+  /**
+   * Latency/accuracy trade-off for gpt-realtime-whisper
+   * (default: server-side default).
+   */
+  delay?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  /**
+   * Realtime WebSocket URL
+   * (default: 'wss://api.openai.com/v1/realtime?intent=transcription')
+   */
+  url?: string;
+  /**
+   * Socket watchdog timeouts in ms. Defaults: connect 10000, inactivity
+   * 30000, final-after-commit 15000. Mostly useful in tests.
+   */
+  timeoutsMs?: { connect?: number; inactivity?: number; final?: number };
+}
+
+interface RealtimeServerEvent {
+  type?: string;
+  delta?: string;
+  transcript?: string;
+  error?: { message?: string; type?: string; code?: string };
+}
+
+const REALTIME_STT_TIMEOUTS = { connect: 10000, inactivity: 30000, final: 15000 };
+
+/**
+ * OpenAI Realtime Speech-to-Text Provider.
+ *
+ * Streams audio to a transcription-type Realtime API session and yields
+ * interim transcripts as the user speaks. Partial results carry the
+ * accumulated transcript-so-far; the final result carries the complete
+ * transcript. Billing follows the transcription model's audio pricing,
+ * not realtime LLM tokens.
+ *
+ * Input frames must be 24kHz mono 16-bit signed LE PCM
+ * (streamingInputSampleRate). transcribe() accepts a 16-bit mono PCM WAV
+ * buffer for compatibility with the buffered pipeline; for general batch
+ * transcription use OpenAIWhisperProvider instead.
+ *
+ * @example
+ * ```typescript
+ * const stt = new OpenAIRealtimeSTTProvider({
+ *   apiKey: process.env.OPENAI_API_KEY!,
+ *   model: 'gpt-realtime-whisper'
+ * });
+ * ```
+ */
+export class OpenAIRealtimeSTTProvider implements STTProvider {
+  readonly name = 'openai-realtime-stt';
+  /** The Realtime API consumes 24kHz mono 16-bit PCM */
+  readonly streamingInputSampleRate = 24000;
+  private readonly apiKey: string;
+  private readonly model: string;
+  private readonly language?: string;
+  private readonly delay?: OpenAIRealtimeSTTConfig['delay'];
+  private readonly url: string;
+  private readonly timeoutsMs: { connect: number; inactivity: number; final: number };
+
+  constructor(config: OpenAIRealtimeSTTConfig) {
+    this.apiKey = config.apiKey;
+    this.model = config.model ?? 'gpt-realtime-whisper';
+    this.language = config.language;
+    this.delay = config.delay;
+    // intent=transcription opens a transcription-type session directly,
+    // without naming an (unused) realtime LLM session model
+    this.url = config.url ?? 'wss://api.openai.com/v1/realtime?intent=transcription';
+    this.timeoutsMs = {
+      connect: config.timeoutsMs?.connect ?? REALTIME_STT_TIMEOUTS.connect,
+      inactivity: config.timeoutsMs?.inactivity ?? REALTIME_STT_TIMEOUTS.inactivity,
+      final: config.timeoutsMs?.final ?? REALTIME_STT_TIMEOUTS.final
+    };
+  }
+
+  async *transcribeStream(audio: AsyncIterable<Buffer>, config?: STTConfig): AsyncIterable<STTResult> {
+    const model = config?.model ?? this.model;
+    const ws = new WebSocket(this.url, {
+      headers: { Authorization: `Bearer ${this.apiKey}` }
+    });
+
+    const queue = new AsyncEventQueue<STTResult>();
+    let runningText = '';
+    let completed = false;
+    let commitSent = false;
+
+    // Watchdog: a silently-stalled socket must not hang the voice turn
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const armWatchdog = (ms: number, waitingFor: string) => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        queue.fail(new Error(`OpenAI Realtime STT timed out waiting for ${waitingFor}`));
+        ws.terminate();
+      }, ms);
+      watchdog.unref?.();
+    };
+    const disarmWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = null;
+    };
+    armWatchdog(this.timeoutsMs.connect, 'connection');
+
+    ws.on('message', (data: WebSocket.RawData) => {
+      armWatchdog(
+        commitSent ? this.timeoutsMs.final : this.timeoutsMs.inactivity,
+        commitSent ? 'the final transcript' : 'server messages'
+      );
+      let event: RealtimeServerEvent;
+      try {
+        event = JSON.parse(data.toString()) as RealtimeServerEvent;
+      } catch {
+        return;
+      }
+      switch (event.type) {
+        case 'conversation.item.input_audio_transcription.delta':
+          runningText += event.delta ?? '';
+          queue.push({ text: runningText, isFinal: false, raw: event });
+          break;
+        case 'conversation.item.input_audio_transcription.completed':
+          completed = true;
+          queue.push({ text: event.transcript ?? runningText, isFinal: true, raw: event });
+          queue.end();
+          ws.close();
+          break;
+        case 'conversation.item.input_audio_transcription.failed':
+          queue.fail(
+            new Error(
+              `OpenAI Realtime STT transcription failed: ${event.error?.message ?? JSON.stringify(event.error)}`
+            )
+          );
+          ws.close();
+          break;
+        case 'error':
+          queue.fail(
+            new Error(
+              `OpenAI Realtime STT error: ${event.error?.message ?? JSON.stringify(event.error)}`
+            )
+          );
+          ws.close();
+          break;
+        default:
+          break;
+      }
+    });
+
+    ws.on('error', (err: Error) => {
+      queue.fail(new Error(`OpenAI Realtime STT socket error: ${err.message}`));
+    });
+
+    ws.on('close', () => {
+      disarmWatchdog();
+      // A close before the final transcript means the utterance was lost;
+      // surface it instead of silently producing an empty transcript
+      // (no-op when the queue already ended or failed)
+      if (!completed) {
+        queue.fail(new Error('OpenAI Realtime STT connection closed before the final transcript'));
+      }
+    });
+
+    const opened = new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', (err: Error) => reject(err));
+      ws.once('close', () => reject(new Error('socket closed before opening')));
+    });
+
+    const language = config?.language ?? this.language;
+
+    const sendLoop = (async () => {
+      await opened;
+      armWatchdog(this.timeoutsMs.inactivity, 'server messages');
+      // Transcription-type session; our own VAD segments the audio, so
+      // server turn detection stays off and we commit manually
+      ws.send(
+        JSON.stringify({
+          type: 'session.update',
+          session: {
+            type: 'transcription',
+            audio: {
+              input: {
+                format: { type: 'audio/pcm', rate: this.streamingInputSampleRate },
+                transcription: {
+                  model,
+                  ...(language && { language }),
+                  ...(this.delay && { delay: this.delay })
+                },
+                turn_detection: null
+              }
+            }
+          }
+        })
+      );
+      let sentAny = false;
+      for await (const frame of audio) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (frame.length === 0) continue;
+        sentAny = true;
+        ws.send(
+          JSON.stringify({ type: 'input_audio_buffer.append', audio: frame.toString('base64') })
+        );
+      }
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (sentAny) {
+        commitSent = true;
+        armWatchdog(this.timeoutsMs.final, 'the final transcript');
+        ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+      } else {
+        // Nothing to transcribe; committing an empty buffer errors
+        completed = true;
+        queue.end();
+        ws.close();
+      }
+    })().catch((err: Error) => {
+      queue.fail(err);
+      ws.close();
+    });
+
+    try {
+      yield* queue;
+    } finally {
+      disarmWatchdog();
+      // Close first: an abandoned sendLoop exits at its next frame once
+      // the socket is no longer OPEN, instead of feeding a dead session
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+      // sendLoop never rejects (errors route into the queue); the bounded
+      // wait guards against a caller-owned frame iterable that never ends
+      await Promise.race([
+        sendLoop,
+        new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, 5000);
+          t.unref?.();
+        })
+      ]);
+    }
+  }
+
+  /**
+   * One-shot transcription of a 16-bit mono PCM WAV buffer (the format
+   * produced by the LLMRTC voice pipeline), streamed through a realtime
+   * session. For arbitrary containers use OpenAIWhisperProvider.
+   */
+  async transcribe(audio: Buffer, config?: STTConfig): Promise<STTResult> {
+    const pcm = wavToRealtimePCM(audio, this.streamingInputSampleRate);
+    const frames = (async function* () {
+      // 100ms chunks
+      const chunkBytes = 4800;
+      for (let off = 0; off < pcm.length; off += chunkBytes) {
+        yield pcm.subarray(off, Math.min(off + chunkBytes, pcm.length));
+      }
+    })();
+
+    let last: STTResult = { text: '', isFinal: true };
+    for await (const result of this.transcribeStream(frames, config)) {
+      if (result.isFinal) {
+        last = result;
+      }
+    }
+    return last;
+  }
+}
+
+/**
+ * Extract PCM from a 16-bit mono WAV buffer and linearly resample it to
+ * the target rate. Throws on non-WAV input.
+ */
+function wavToRealtimePCM(audio: Buffer, targetRate: number): Buffer {
+  if (audio.length < 44 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error(
+      'OpenAIRealtimeSTTProvider.transcribe expects a 16-bit mono PCM WAV buffer; use OpenAIWhisperProvider for other formats'
+    );
+  }
+  if (audio.toString('ascii', 36, 40) !== 'data') {
+    // Non-canonical header (extended fmt chunk, LIST metadata, ...) would
+    // silently misread the fields below - refuse instead
+    throw new Error(
+      'OpenAIRealtimeSTTProvider.transcribe expects a canonical 44-byte WAV header; use OpenAIWhisperProvider for other formats'
+    );
+  }
+  const sourceRate = audio.readUInt32LE(24);
+  const channels = audio.readUInt16LE(22);
+  const bits = audio.readUInt16LE(34);
+  if (channels !== 1 || bits !== 16) {
+    throw new Error(
+      `OpenAIRealtimeSTTProvider.transcribe expects 16-bit mono WAV (got ${bits}-bit, ${channels}ch)`
+    );
+  }
+  const pcm = audio.subarray(44);
+  if (sourceRate === targetRate) {
+    return pcm;
+  }
+  const sourceSamples = Math.floor(pcm.length / 2);
+  const targetSamples = Math.floor((sourceSamples * targetRate) / sourceRate);
+  const out = Buffer.alloc(targetSamples * 2);
+  for (let i = 0; i < targetSamples; i++) {
+    const pos = (i * sourceRate) / targetRate;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(i0 + 1, sourceSamples - 1);
+    const frac = pos - i0;
+    const s0 = pcm.readInt16LE(i0 * 2);
+    const s1 = pcm.readInt16LE(i1 * 2);
+    out.writeInt16LE(Math.round(s0 + (s1 - s0) * frac), i * 2);
+  }
+  return out;
 }

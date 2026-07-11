@@ -161,6 +161,103 @@ export class ConversationOrchestrator {
     }
   }
 
+  /**
+   * Streaming-STT version of runTurnStream: consumes live audio frames
+   * (16kHz mono 16-bit PCM Buffers) through the STT provider's
+   * transcribeStream, yielding every interim STTResult as it arrives.
+   * Final results are concatenated into the transcript that drives the
+   * same LLM/TTS pipeline as runTurnStream. Requires a provider with
+   * transcribeStream support.
+   */
+  async *runTurnStreamFromAudioStream(
+    frames: AsyncIterable<Buffer>,
+    attachments: VisionAttachment[] = [],
+    options?: { signal?: AbortSignal }
+  ): AsyncGenerator<OrchestratorYield, void, unknown> {
+    const signal = options?.signal;
+
+    const turnStartTime = Date.now();
+    const ctx: TurnContext = {
+      turnId: globalThis.crypto.randomUUID(),
+      sessionId: this.sessionId,
+      startTime: turnStartTime
+    };
+
+    let errored = false;
+    let turnEnded = false;
+    const endTurn = async () => {
+      if (turnEnded) return;
+      turnEnded = true;
+      const turnTiming = createTimingInfo(turnStartTime, Date.now());
+      this.metrics.timing(MetricNames.TURN_DURATION, turnTiming.durationMs);
+      await callHookSafe(this.hooks.onTurnEnd, ctx, turnTiming);
+    };
+
+    try {
+      yield* this.runTurnStreamFromAudioStreamInternal(ctx, frames, attachments, signal, () => {
+        errored = true;
+      });
+    } finally {
+      if (!errored) {
+        await endTurn();
+      }
+    }
+  }
+
+  private async *runTurnStreamFromAudioStreamInternal(
+    ctx: TurnContext,
+    frames: AsyncIterable<Buffer>,
+    attachments: VisionAttachment[],
+    signal: AbortSignal | undefined,
+    markErrored: () => void
+  ): AsyncGenerator<OrchestratorYield, void, unknown> {
+    // Audio arrives as a stream, so turn/STT hooks receive an empty buffer
+    const emptyAudio = Buffer.alloc(0);
+    await callHookSafe(this.hooks.onTurnStart, ctx, emptyAudio);
+
+    const sttStartTime = Date.now();
+    await callHookSafe(this.hooks.onSTTStart, ctx, emptyAudio);
+
+    let transcript: STTResult;
+    try {
+      if (!this.providers.stt.transcribeStream) {
+        throw new Error(
+          `STT provider "${this.providers.stt.name}" does not support transcribeStream`
+        );
+      }
+
+      // Yield every interim result; providers may emit several finals
+      // (one per segment), so finals are accumulated into the transcript
+      const finalParts: string[] = [];
+      let lastResult: STTResult | undefined;
+      for await (const result of this.providers.stt.transcribeStream(frames)) {
+        yield result;
+        lastResult = result;
+        if (result.isFinal && result.text.trim()) {
+          finalParts.push(result.text.trim());
+        }
+        if (signal?.aborted) {
+          return;
+        }
+      }
+
+      transcript = { text: finalParts.join(' '), isFinal: true, raw: lastResult?.raw };
+      const sttTiming = createTimingInfo(sttStartTime, Date.now());
+      this.metrics.timing(MetricNames.STT_DURATION, sttTiming.durationMs, {
+        provider: this.providers.stt.name
+      });
+      await callHookSafe(this.hooks.onSTTEnd, ctx, transcript, sttTiming);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      await callHookSafe(this.hooks.onSTTError, ctx, err);
+      this.metrics.increment(MetricNames.ERRORS, 1, { component: 'stt' });
+      markErrored();
+      throw error;
+    }
+
+    yield* this.completeTurnFromTranscript(ctx, transcript, attachments, signal, markErrored);
+  }
+
   private async *runTurnStreamInternal(
     ctx: TurnContext,
     audio: Buffer,
@@ -195,6 +292,20 @@ export class ConversationOrchestrator {
 
     yield transcript;
 
+    yield* this.completeTurnFromTranscript(ctx, transcript, attachments, signal, markErrored);
+  }
+
+  /**
+   * Everything after the transcript is known: history, LLM, TTS.
+   * Shared by the buffered and streaming STT entry points.
+   */
+  private async *completeTurnFromTranscript(
+    ctx: TurnContext,
+    transcript: STTResult,
+    attachments: VisionAttachment[],
+    signal: AbortSignal | undefined,
+    markErrored: () => void
+  ): AsyncGenerator<OrchestratorYield, void, unknown> {
     // Empty transcript guard: VAD misfires and silent audio produce empty
     // text - don't burn an LLM/TTS round trip or pollute history with it.
     if (!transcript.text.trim()) {

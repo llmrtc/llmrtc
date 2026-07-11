@@ -33,7 +33,7 @@ import type {
   StageChangeEvent
 } from './turn-orchestrator.js';
 import { VoicePlaybookOrchestrator } from './voice-playbook-orchestrator.js';
-import { AudioProcessor } from './audio-processor.js';
+import { AudioProcessor, AudioFrameQueue } from './audio-processor.js';
 import {
   decodeToPCM,
   feedAudioToSource,
@@ -80,6 +80,15 @@ export interface LLMRTCServerConfig {
 
   /** Enable streaming TTS for lower latency (default: true) */
   streamingTTS?: boolean;
+
+  /**
+   * Stream microphone audio to the STT provider live during speech, so
+   * interim transcripts reach the client while the user is still
+   * talking. Requires an STT provider with transcribeStream support
+   * (e.g. ElevenLabsScribeProvider, OpenAIRealtimeSTTProvider); falls
+   * back to buffered STT otherwise. Default: false.
+   */
+  streamingSTT?: boolean;
 
   /** Heartbeat timeout in ms (default: 45000) */
   heartbeatTimeout?: number;
@@ -197,6 +206,7 @@ export class LLMRTCServer {
       systemPrompt: 'You are a helpful realtime voice assistant.',
       historyLimit: 8,
       streamingTTS: true,
+      streamingSTT: false,
       heartbeatTimeout: 45000,
       ...config
     };
@@ -520,8 +530,11 @@ export class LLMRTCServer {
         isTTSPlaying = false;
       };
 
-      /** Start a serialized, abortable turn from an audio buffer. */
-      const startTurn = (audioBuf: Buffer, attachments: VisionAttachment[]): Promise<void> => {
+      /** Start a serialized, abortable turn from an audio source. */
+      const startTurnFromSource = (
+        source: Buffer | AsyncIterable<Buffer>,
+        attachments: VisionAttachment[]
+      ): Promise<void> => {
         cancelCurrentTurn();
         const abortController = new AbortController();
         currentAbortController = abortController;
@@ -529,7 +542,7 @@ export class LLMRTCServer {
         return enqueueTurn(() =>
           this.handleAudio(
             session.orchestrator,
-            audioBuf,
+            source,
             ws,
             peer,
             attachments,
@@ -552,6 +565,25 @@ export class LLMRTCServer {
             }
           )
         );
+      };
+
+      /** Start a serialized, abortable turn from an audio buffer. */
+      const startTurn = (audioBuf: Buffer, attachments: VisionAttachment[]): Promise<void> =>
+        startTurnFromSource(audioBuf, attachments);
+
+      /**
+       * Streaming STT is active when enabled in config AND the provider
+       * can stream AND the session's orchestrator has the streaming entry
+       * point. Evaluated when the peer is created; the returned starter
+       * reads the live session at call time.
+       */
+      const streamingTurnStarter = ():
+        | ((frames: AsyncIterable<Buffer>, attachments: VisionAttachment[]) => Promise<void>)
+        | undefined => {
+        if (!this.config.streamingSTT) return undefined;
+        if (typeof this.providers.stt.transcribeStream !== 'function') return undefined;
+        if (typeof session.orchestrator.runTurnStreamFromAudioStream !== 'function') return undefined;
+        return (frames, attachments) => startTurnFromSource(frames, attachments);
       };
 
       const resetHeartbeatTimeout = () => {
@@ -617,7 +649,16 @@ export class LLMRTCServer {
               if (!peer || peer.destroyed) {
                 peer = this.createPeer(ws, await this.resolveIceServers());
                 if (peer) {
-                  audioProcessor = new AudioProcessor();
+                  const startStreamingTurn = streamingTurnStarter();
+                  audioProcessor = new AudioProcessor(
+                    startStreamingTurn
+                      ? {
+                          emitSpeechFrames: true,
+                          speechFrameSampleRate:
+                            this.providers.stt.streamingInputSampleRate ?? 16000
+                        }
+                      : undefined
+                  );
                   this.setupPeerHandlers(
                     peer,
                     audioProcessor,
@@ -638,7 +679,8 @@ export class LLMRTCServer {
                       peer?.destroy();
                       peer = null;
                       audioProcessor = null;
-                    }
+                    },
+                    startStreamingTurn
                   );
                 }
               }
@@ -731,7 +773,8 @@ export class LLMRTCServer {
     cancelCurrentTurn: () => void,
     getAbortController: () => AbortController | null,
     startTurn: (audio: Buffer, attachments: VisionAttachment[]) => Promise<void>,
-    onPeerClosed: () => void
+    onPeerClosed: () => void,
+    startTurnFromStream?: (frames: AsyncIterable<Buffer>, attachments: VisionAttachment[]) => Promise<void>
   ): void {
     peer.on('connect', () => {
       console.log('[server] WebRTC peer connected');
@@ -768,17 +811,44 @@ export class LLMRTCServer {
         }
 
         let speechStartTime = 0;
+        // Streaming STT: the live utterance queue for the current speech
+        // segment. Frames are pushed as they arrive; ended at speechEnd.
+        let activeSpeechQueue: AudioFrameQueue | null = null;
+
+        audioProcessor.on('speechFrame', (frame: Buffer) => {
+          activeSpeechQueue?.push(frame);
+        });
+
+        audioProcessor.on('vadMisfire', () => {
+          // Too short to be speech: end the live stream; the (near-)empty
+          // transcript is discarded by the orchestrator's guard
+          if (activeSpeechQueue) {
+            console.log('[server] VAD misfire - closing streaming STT segment');
+            activeSpeechQueue.end();
+            activeSpeechQueue = null;
+          }
+        });
+
+        audioProcessor.on('destroyed', () => {
+          // Connection/peer teardown mid-speech: end the live stream so
+          // the in-flight STT turn can finalize instead of waiting on
+          // frames that will never arrive
+          if (activeSpeechQueue) {
+            console.log('[server] Audio processor destroyed - closing streaming STT segment');
+            activeSpeechQueue.end();
+            activeSpeechQueue = null;
+          }
+        });
 
         audioProcessor.on('speechStart', async () => {
           console.log('[server] VAD detected speech start');
           speechStartTime = Date.now();
 
-          // Call onSpeechStart hook
-          await callHookSafe(this.hooks.onSpeechStart, sessionId, speechStartTime);
-
           // Barge-in: abort the in-flight turn no matter which phase it is
           // in. Waiting for TTS to start would let the assistant talk over
           // the user when they interrupt during the LLM phase.
+          // (Synchronous, before any await: with streaming STT the new
+          // turn must be listening before pre-speech frames are flushed.)
           if (getAbortController()) {
             const wasPlaying = getIsTTSPlaying();
             console.log('[server] User interrupted - cancelling in-flight turn');
@@ -787,7 +857,21 @@ export class LLMRTCServer {
               this.sendBoth({ type: 'tts-cancelled' }, ws, peer);
             }
           }
+
+          // Streaming STT: open the live frame stream and start the turn
+          // now, at speech start, instead of waiting for speech end
+          if (startTurnFromStream) {
+            activeSpeechQueue?.end();
+            activeSpeechQueue = new AudioFrameQueue();
+            const attachments = getPendingAttachments();
+            setPendingAttachments([]);
+            void startTurnFromStream(activeSpeechQueue, attachments);
+          }
+
           this.sendBoth({ type: 'speech-start' }, ws, peer);
+
+          // Call onSpeechStart hook
+          await callHookSafe(this.hooks.onSpeechStart, sessionId, speechStartTime);
         });
 
         audioProcessor.on('speechEnd', async (pcmBuffer: Buffer) => {
@@ -799,6 +883,14 @@ export class LLMRTCServer {
           await callHookSafe(this.hooks.onSpeechEnd, sessionId, speechEndTime, audioDurationMs);
 
           this.sendBoth({ type: 'speech-end' }, ws, peer);
+
+          // Streaming STT: the turn is already running on live frames -
+          // ending the queue lets the STT provider finalize the transcript
+          if (activeSpeechQueue) {
+            activeSpeechQueue.end();
+            activeSpeechQueue = null;
+            return;
+          }
 
           if (pcmBuffer.length > 0) {
             const wavBuffer = audioProcessor.pcmToWav(pcmBuffer);
@@ -836,7 +928,7 @@ export class LLMRTCServer {
 
   private async handleAudio(
     orchestrator: TurnOrchestrator,
-    audio: Buffer,
+    audio: Buffer | AsyncIterable<Buffer>,
     ws: WebSocket,
     peer: NativePeerServer | null,
     attachments: VisionAttachment[],
@@ -849,13 +941,25 @@ export class LLMRTCServer {
   ): Promise<void> {
     const { signal, onTTSStart, onTTSEnd } = options ?? {};
 
-    console.log('[server] handleAudio - processing', audio.length, 'bytes');
+    const buffered = Buffer.isBuffer(audio);
+    console.log(
+      buffered
+        ? `[server] handleAudio - processing ${(audio as Buffer).length} bytes`
+        : '[server] handleAudio - processing live audio stream'
+    );
 
     let pcmFeederState: PCMFeederState | null = null;
     let ttsStarted = false;
 
+    if (!buffered && typeof orchestrator.runTurnStreamFromAudioStream !== 'function') {
+      throw new Error('Orchestrator does not support streaming STT turns');
+    }
+    const turn = buffered
+      ? orchestrator.runTurnStream(audio as Buffer, attachments, { signal })
+      : orchestrator.runTurnStreamFromAudioStream!(audio as AsyncIterable<Buffer>, attachments, { signal });
+
     try {
-      for await (const item of orchestrator.runTurnStream(audio, attachments, { signal })) {
+      for await (const item of turn) {
         if (signal?.aborted) {
           console.log('[server] Response generation cancelled by user interruption');
           if (pcmFeederState) {

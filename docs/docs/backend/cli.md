@@ -34,13 +34,14 @@ The server starts on `http://127.0.0.1:8787` by default.
 | `SYSTEM_PROMPT` | (built-in) | System prompt for the assistant |
 | `HISTORY_LIMIT` | `8` | Max messages in conversation history |
 | `STREAMING_TTS` | `true` | Enable streaming TTS |
+| `STREAMING_STT` | `false` | Stream mic audio to STT live for interim transcripts (needs a streaming STT provider, e.g. `STT_PROVIDER=elevenlabs-scribe`) |
 
 ### Provider Selection
 
 | Variable | Description |
 |----------|-------------|
 | `LLM_PROVIDER` | Force LLM provider: `openai`, `anthropic`, `gemini`, `bedrock`, `openrouter`, `zai` (alias: `glm`), `ollama`, `lmstudio` |
-| `STT_PROVIDER` | Force STT provider: `openai`, `whisper`, `faster-whisper` |
+| `STT_PROVIDER` | Force STT provider: `openai`, `whisper`, `faster-whisper`, `elevenlabs-scribe` (aliases: `elevenlabs`, `scribe`), `openai-realtime` (alias: `realtime`) |
 | `TTS_PROVIDER` | Force TTS provider: `openai`, `elevenlabs`, `piper` |
 
 If not specified, providers are auto-detected based on available API keys.
@@ -65,7 +66,8 @@ If not specified, providers are auto-detected based on available API keys.
 | `ZAI_API_KEY` | Z.ai API key (for `LLM_PROVIDER=zai`) |
 | `ZAI_MODEL` | Z.ai GLM model (default: `glm-5.2`) |
 | `OLLAMA_VISION_MODEL` | Local vision model for the vision provider (default: `llava` for compatibility; set `qwen3-vl` for the current generation) |
-| `OPENAI_STT_MODEL` | OpenAI transcription model (default: `whisper-1`; try `gpt-4o-mini-transcribe`) |
+| `OPENAI_STT_MODEL` | OpenAI transcription model (default: `whisper-1`; try `gpt-4o-mini-transcribe`; `gpt-realtime-whisper` with `STT_PROVIDER=openai-realtime`) |
+| `ELEVENLABS_STT_MODEL` | ElevenLabs Scribe batch model (default: `scribe_v2`) |
 | `OPENAI_TTS_MODEL` | OpenAI TTS model (default: `tts-1`; `gpt-4o-mini-tts` supports instructions) |
 | `OPENAI_TTS_VOICE` | OpenAI TTS voice (default: `nova`) |
 | `OPENAI_TTS_INSTRUCTIONS` | Delivery instructions for instructable TTS models (tone, pacing, persona) |
@@ -83,7 +85,7 @@ If not specified, providers are auto-detected based on available API keys.
 | `OPENAI_API_KEY` | OpenAI (LLM, STT, TTS) |
 | `ANTHROPIC_API_KEY` | Anthropic (LLM) |
 | `GOOGLE_API_KEY` | Google Gemini (LLM) |
-| `ELEVENLABS_API_KEY` | ElevenLabs (TTS) |
+| `ELEVENLABS_API_KEY` | ElevenLabs (TTS, Scribe STT) |
 | `OPENROUTER_API_KEY` | OpenRouter (LLM) |
 
 ### TURN Configuration

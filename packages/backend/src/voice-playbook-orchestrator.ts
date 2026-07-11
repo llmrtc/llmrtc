@@ -189,6 +189,88 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
     // Yield transcript to client
     yield transcript;
 
+    yield* this.completeTurnFromTranscript(ctx, turnStartTime, transcript, attachments, signal);
+  }
+
+  /**
+   * Streaming-STT version of runTurnStream: consumes live audio frames
+   * (16-bit mono PCM at the provider's streamingInputSampleRate) through
+   * transcribeStream, yielding interim transcripts as they arrive before
+   * running the same playbook turn on the final transcript.
+   */
+  async *runTurnStreamFromAudioStream(
+    frames: AsyncIterable<Buffer>,
+    attachments: VisionAttachment[] = [],
+    options?: TurnOptions
+  ): AsyncGenerator<VoicePlaybookYield, void, unknown> {
+    const signal = options?.signal;
+    const turnStartTime = Date.now();
+    const ctx: TurnContext = {
+      turnId: globalThis.crypto.randomUUID(),
+      sessionId: this.sessionId,
+      startTime: turnStartTime
+    };
+
+    // Audio arrives as a stream, so turn/STT hooks receive an empty buffer
+    const emptyAudio = Buffer.alloc(0);
+    await callHookSafe(this.hooks.onTurnStart, ctx, emptyAudio);
+
+    if (signal?.aborted) {
+      return;
+    }
+
+    // =========================================================================
+    // STT Phase (streaming)
+    // =========================================================================
+    const sttStartTime = Date.now();
+    await callHookSafe(this.hooks.onSTTStart, ctx, emptyAudio);
+
+    let transcript: { text: string; isFinal: boolean };
+    try {
+      if (!this.providers.stt.transcribeStream) {
+        throw new Error(
+          `STT provider "${this.providers.stt.name}" does not support transcribeStream`
+        );
+      }
+      // Yield every interim result; finals are accumulated into the
+      // transcript that drives the playbook turn
+      const finalParts: string[] = [];
+      for await (const result of this.providers.stt.transcribeStream(frames)) {
+        yield result;
+        if (result.isFinal && result.text.trim()) {
+          finalParts.push(result.text.trim());
+        }
+        if (signal?.aborted) {
+          return;
+        }
+      }
+      transcript = { text: finalParts.join(' '), isFinal: true };
+      const sttTiming = createTimingInfo(sttStartTime, Date.now());
+      this.metrics.timing(MetricNames.STT_DURATION, sttTiming.durationMs, {
+        provider: this.providers.stt.name
+      });
+      await callHookSafe(this.hooks.onSTTEnd, ctx, transcript, sttTiming);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      await callHookSafe(this.hooks.onSTTError, ctx, err);
+      this.metrics.increment(MetricNames.ERRORS, 1, { component: 'stt' });
+      throw error;
+    }
+
+    yield* this.completeTurnFromTranscript(ctx, turnStartTime, transcript, attachments, signal);
+  }
+
+  /**
+   * Playbook phases shared by the buffered and streaming STT entry
+   * points: tool loop, final response, TTS.
+   */
+  private async *completeTurnFromTranscript(
+    ctx: TurnContext,
+    turnStartTime: number,
+    transcript: { text: string; isFinal: boolean },
+    attachments: VisionAttachment[],
+    signal: AbortSignal | undefined
+  ): AsyncGenerator<VoicePlaybookYield, void, unknown> {
     // Guard against empty transcripts
     if (!transcript.text.trim()) {
       console.warn('[voice-playbook-orchestrator] Empty STT transcript received, skipping LLM call');

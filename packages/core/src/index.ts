@@ -1,4 +1,5 @@
 export * from './types.js';
+export * from './async-event-queue.js';
 export * from './tools.js';
 export * from './tool-executor.js';
 export * from './playbook.js';

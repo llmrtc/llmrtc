@@ -52,6 +52,7 @@ export type {
 export {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
+  OpenAIRealtimeSTTProvider,
   OpenAITTSProvider
 } from '@llmrtc/llmrtc-provider-openai';
 
@@ -73,8 +74,11 @@ export { ZaiLLMProvider } from '@llmrtc/llmrtc-provider-zai';
 // LM Studio provider
 export { LMStudioLLMProvider } from '@llmrtc/llmrtc-provider-lmstudio';
 
-// ElevenLabs provider
-export { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
+// ElevenLabs providers
+export {
+  ElevenLabsTTSProvider,
+  ElevenLabsScribeProvider
+} from '@llmrtc/llmrtc-provider-elevenlabs';
 
 // Local providers (Ollama, Faster-Whisper, Piper, local vision models)
 export {

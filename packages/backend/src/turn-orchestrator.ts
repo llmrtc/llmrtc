@@ -76,6 +76,21 @@ export interface TurnOrchestrator {
   ): AsyncIterable<TurnOrchestratorYield>;
 
   /**
+   * Streaming-STT variant: run a voice turn from live audio frames
+   * (16-bit mono PCM at the STT provider's streamingInputSampleRate),
+   * yielding interim transcripts while the user is still speaking.
+   * Requires an STT provider with transcribeStream support.
+   * @param frames - Live PCM audio frames for one utterance
+   * @param attachments - Optional vision attachments
+   * @param options - Optional turn options including abort signal
+   */
+  runTurnStreamFromAudioStream?(
+    frames: AsyncIterable<Buffer>,
+    attachments?: VisionAttachment[],
+    options?: TurnOptions
+  ): AsyncIterable<TurnOrchestratorYield>;
+
+  /**
    * Initialize providers (optional)
    */
   init?(): Promise<void>;

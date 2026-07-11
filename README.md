@@ -25,6 +25,7 @@
 - **Playbooks** - Multi-stage conversation flows with automatic transitions, per-stage tools, and two-phase turn execution
 - **Vision/Multimodal** - Camera and screen capture with automatic frame extraction
 - **Streaming Responses** - Stream LLM and TTS responses for minimal latency
+- **Streaming STT** - Optional live transcription with interim transcripts while the user is still speaking (ElevenLabs Scribe v2 Realtime, OpenAI Realtime API)
 - **Barge-in Support** - Interrupt AI responses mid-speech
 - **Automatic Reconnection** - Built-in connection state management with exponential backoff
 - **Session Persistence** - Maintain conversation history across reconnections
@@ -70,6 +71,14 @@
 | `@llmrtc/llmrtc-provider-zai` | Z.ai | GLM 5.2 (1M context, open weights) |
 | `@llmrtc/llmrtc-provider-lmstudio` | LMStudio | Local model inference |
 | `@llmrtc/llmrtc-provider-local` | Local | Ollama (incl. Qwen3-VL vision), Faster Whisper, Piper TTS |
+
+### STT Providers
+
+| Package | Provider | Features |
+|---------|----------|----------|
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | whisper-1, gpt-4o(-mini)-transcribe; gpt-realtime-whisper streaming |
+| `@llmrtc/llmrtc-provider-elevenlabs` | ElevenLabs | Scribe v2 batch + Scribe v2 Realtime streaming |
+| `@llmrtc/llmrtc-provider-local` | Faster Whisper | Offline STT |
 
 ### TTS Providers
 
@@ -655,6 +664,12 @@ const tts = new ElevenLabsTTSProvider({
 for await (const chunk of tts.speakStream('Hello world')) {
   // chunks arrive as audio is generated
 }
+
+// Scribe STT: batch + realtime streaming transcription
+import { ElevenLabsScribeProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
+
+const stt = new ElevenLabsScribeProvider({ apiKey: 'xi-...' });
+// Pair with streamingSTT: true on the server for live interim transcripts
 ```
 
 ### Local Providers (Ollama, Faster Whisper, Piper)
@@ -798,7 +813,7 @@ await server.start();
 # Provider selection (optional - auto-detects based on available API keys)
 LLM_PROVIDER=openai        # openai, anthropic, google, bedrock, openrouter, lmstudio, ollama
 TTS_PROVIDER=elevenlabs    # elevenlabs, openai, piper
-STT_PROVIDER=openai        # openai, faster-whisper
+STT_PROVIDER=openai        # openai, faster-whisper, elevenlabs-scribe, openai-realtime
 
 # API Keys (set the ones for your chosen providers)
 OPENAI_API_KEY=sk-...
@@ -828,6 +843,7 @@ PORT=8787
 HOST=127.0.0.1
 SYSTEM_PROMPT=You are a helpful assistant.
 STREAMING_TTS=true
+STREAMING_STT=false        # true: live interim transcripts (needs a streaming STT provider)
 
 # Local providers
 LOCAL_ONLY=true                           # Use local providers only

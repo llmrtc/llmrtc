@@ -14,9 +14,10 @@ import type {
 import {
   OpenAILLMProvider,
   OpenAIWhisperProvider,
+  OpenAIRealtimeSTTProvider,
   OpenAITTSProvider
 } from '@llmrtc/llmrtc-provider-openai';
-import { ElevenLabsTTSProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
+import { ElevenLabsTTSProvider, ElevenLabsScribeProvider } from '@llmrtc/llmrtc-provider-elevenlabs';
 import {
   OllamaVisionProvider,
   OllamaLLMProvider,
@@ -165,11 +166,27 @@ function createLLMProvider(): LLMProvider {
  * 3. Default to OpenAI Whisper
  */
 function createSTTProvider(): STTProvider {
-  const explicit = process.env.STT_PROVIDER?.toLowerCase();
+  const explicit = process.env.STT_PROVIDER?.trim().toLowerCase();
 
   if (explicit === 'faster-whisper' || explicit === 'fasterwhisper') {
     return new FasterWhisperProvider({
       baseUrl: process.env.FASTER_WHISPER_URL
+    });
+  }
+
+  // ElevenLabs Scribe: batch + realtime streaming STT
+  if (explicit === 'elevenlabs' || explicit === 'scribe' || explicit === 'elevenlabs-scribe') {
+    return new ElevenLabsScribeProvider({
+      apiKey: process.env.ELEVENLABS_API_KEY ?? '',
+      modelId: process.env.ELEVENLABS_STT_MODEL || undefined
+    });
+  }
+
+  // OpenAI Realtime API: streaming transcription
+  if (explicit === 'openai-realtime' || explicit === 'realtime') {
+    return new OpenAIRealtimeSTTProvider({
+      apiKey: process.env.OPENAI_API_KEY ?? '',
+      model: process.env.OPENAI_STT_MODEL || undefined
     });
   }
 
