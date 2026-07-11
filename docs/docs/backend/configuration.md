@@ -11,7 +11,7 @@ Complete reference for `LLMRTCServer` configuration options.
 | `providers` | `ConversationProviders` | **required** | LLM, STT, TTS provider instances |
 | `port` | `number` | `8787` | TCP port to listen on |
 | `host` | `string` | `'127.0.0.1'` | Bind address |
-| `systemPrompt` | `string` | `'You are a helpful assistant.'` | Base system prompt |
+| `systemPrompt` | `string` | `'You are a helpful realtime voice assistant.'` | Base system prompt |
 | `historyLimit` | `number` | `8` | Messages retained in context |
 | `streamingTTS` | `boolean` | `true` | Enable streaming TTS (requires FFmpeg) |
 | `heartbeatTimeout` | `number` | `45000` | Milliseconds before disconnect on no heartbeat |

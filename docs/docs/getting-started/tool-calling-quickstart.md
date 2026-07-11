@@ -457,14 +457,14 @@ const executor = new ToolExecutor(registry, {
   validateArguments: true,
 
   // Callbacks for monitoring
-  onToolStart: (name, args) => {
-    console.log(`Starting ${name}`, args);
+  onToolStart: (toolName, callId, args) => {
+    console.log(`Starting ${toolName} (${callId})`, args);
   },
-  onToolEnd: (name, result, durationMs) => {
-    console.log(`${name} completed in ${durationMs}ms`);
+  onToolEnd: (result) => {
+    console.log(`${result.toolName} completed in ${result.durationMs}ms`);
   },
-  onToolError: (name, error) => {
-    console.error(`${name} failed:`, error);
+  onToolError: (toolName, callId, error) => {
+    console.error(`${toolName} (${callId}) failed:`, error);
   }
 });
 ```

@@ -79,7 +79,7 @@ export type OrchestratorYield = STTResult | LLMChunk | LLMResult | TTSResult | T
 
 ```typescript
 // Define a typed tool
-export function defineTool<TParams, TResult>(definition: ToolDefinition, handler: ToolHandler<TParams, TResult>): RegisteredTool;
+export function defineTool<TParams, TResult>(definition: ToolDefinition, handler: ToolHandler<TParams, TResult>): Tool<TParams, TResult>;
 
 // Validate tool arguments against schema
 export function validateToolArguments(definition: ToolDefinition, args: unknown): ValidationResult;
@@ -162,7 +162,7 @@ export function createErrorOnlyHooks(): OrchestratorHooks;
 export function createVerboseHooks(): OrchestratorHooks;
 
 // Create logging hooks with custom logger
-export function createLoggingHooks(logger?: Logger): OrchestratorHooks;
+export function createLoggingHooks(config?: LoggingHooksConfig): OrchestratorHooks & ServerHooks;
 ```
 
 ### Metrics

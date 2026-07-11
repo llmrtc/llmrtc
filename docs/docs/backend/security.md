@@ -178,8 +178,8 @@ const server = new LLMRTCServer({
   cors: {
     origin: ['https://app.example.com', 'https://admin.example.com'],
     credentials: true,
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization']
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
   }
 });
 ```

@@ -230,7 +230,7 @@ interface Message {
 }
 
 export function VoiceAssistant() {
-  const [status, setStatus] = useState<ConnectionState>('disconnected');
+  const [status, setStatus] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isActive, setIsActive] = useState(false);
 

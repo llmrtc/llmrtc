@@ -17,8 +17,8 @@ flowchart LR
 
         subgraph "Local Services"
             OLLAMA[Ollama<br/>:11434]
-            WHISPER[Faster-Whisper<br/>:8000]
-            PIPER[Piper<br/>:5000]
+            WHISPER[Faster-Whisper<br/>:9000]
+            PIPER[Piper<br/>:5002]
         end
 
         SERVER --> OLLAMA

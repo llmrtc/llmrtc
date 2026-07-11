@@ -126,7 +126,7 @@ flowchart TB
 |----------|-----|-----|-----|--------|
 | OpenAI | GPT-5.2, GPT-5.1 | Whisper | TTS-1, TTS-1-HD | GPT-5.2 |
 | Anthropic | Claude 4.5 (Sonnet/Haiku/Opus) | - | - | Claude 4.5 |
-| Google Gemini | Gemini 1.5, Gemini Pro | - | - | Gemini Vision |
+| Google Gemini | Gemini 2.5 Flash, Gemini 2.5 Pro | - | - | Gemini Vision |
 | AWS Bedrock | Claude, Llama, etc. | - | - | varies |
 | OpenRouter | 100+ models | - | - | varies |
 | ElevenLabs | - | - | Multilingual v2 | - |

@@ -20,6 +20,7 @@ import { Playbook } from '@llmrtc/llmrtc-core';
 
 export const supportPlaybook: Playbook = {
   id: 'support',
+  name: 'Support',
   initialStage: 'greeting',
   globalSystemPrompt: 'You are a concise support agent.',
 

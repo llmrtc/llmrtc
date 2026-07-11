@@ -45,6 +45,31 @@ The server starts on `http://127.0.0.1:8787` by default.
 
 If not specified, providers are auto-detected based on available API keys.
 
+### AWS Bedrock
+
+| Variable | Description |
+|----------|-------------|
+| `AWS_ACCESS_KEY_ID` | AWS access key (or use the default credential chain) |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `AWS_REGION` | AWS region (default: `us-east-1`) |
+
+### Model Overrides
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_MODEL` | OpenAI LLM model |
+| `ANTHROPIC_MODEL` | Anthropic model |
+| `GOOGLE_MODEL` | Gemini model |
+| `BEDROCK_MODEL` | Bedrock model id (use `us.`/`eu.` inference-profile ids) |
+| `OPENROUTER_MODEL` | OpenRouter model (`provider/model` format) |
+| `OPENAI_TTS_VOICE` | OpenAI TTS voice |
+
+### Runtime
+
+| Variable | Description |
+|----------|-------------|
+| `LLMRTC_SKIP_NODE_CHECK` | Set to `1` to bypass the Node 20+ startup check (unsupported) |
+
 ### API Keys
 
 | Variable | Provider |
@@ -69,9 +94,9 @@ If not specified, providers are auto-detected based on available API keys.
 |----------|---------|-------------|
 | `LOCAL_ONLY` | `false` | Use only local providers |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `llama3` | Ollama model name |
+| `OLLAMA_MODEL` | `llama3.1` | Ollama model name |
 | `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio server URL |
-| `LMSTUDIO_MODEL` | (auto) | LM Studio model name |
+| `LMSTUDIO_MODEL` | `local-model` | LM Studio model name |
 | `FASTER_WHISPER_URL` | `http://localhost:9000` | Faster-Whisper server URL |
 | `PIPER_URL` | `http://localhost:5002` | Piper TTS server URL |
 

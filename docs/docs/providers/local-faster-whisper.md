@@ -21,7 +21,7 @@ Local speech-to-text via [Faster-Whisper](https://github.com/SYSTRAN/faster-whis
 ```bash
 docker run -d \
   --name faster-whisper \
-  -p 8000:8000 \
+  -p 9000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   fedirz/faster-whisper-server:latest-cpu
 ```
@@ -31,7 +31,7 @@ docker run -d \
 docker run -d \
   --gpus all \
   --name faster-whisper \
-  -p 8000:8000 \
+  -p 9000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   fedirz/faster-whisper-server:latest-cuda
 ```
@@ -51,13 +51,13 @@ docker compose up --detach faster-whisper-server-cpu
 
 ```bash
 pip install faster-whisper-server
-faster-whisper-server --host 0.0.0.0 --port 8000
+faster-whisper-server --host 0.0.0.0 --port 9000
 ```
 
 ### Verify
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:9000/health
 # Should return: {"status":"ok"}
 ```
 
@@ -69,7 +69,7 @@ curl http://localhost:8000/health
 import { FasterWhisperProvider } from '@llmrtc/llmrtc-provider-local';
 
 const stt = new FasterWhisperProvider({
-  baseUrl: process.env.FASTER_WHISPER_URL || 'http://localhost:8000'
+  baseUrl: process.env.FASTER_WHISPER_URL || 'http://localhost:9000'
 });
 ```
 
@@ -77,7 +77,7 @@ const stt = new FasterWhisperProvider({
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FASTER_WHISPER_URL` | `http://localhost:8000` | Faster-Whisper server URL |
+| `FASTER_WHISPER_URL` | `http://localhost:9000` | Faster-Whisper server URL |
 
 ### Provider Options
 

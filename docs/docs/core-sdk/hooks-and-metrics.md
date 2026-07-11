@@ -154,7 +154,7 @@ import {
 } from '@llmrtc/llmrtc-core';
 
 // Basic logging with custom logger
-const hooks = createLoggingHooks(myLogger);
+const hooks = createLoggingHooks({ logger: myLogger });
 
 // Only log errors
 const errorHooks = createErrorOnlyHooks();

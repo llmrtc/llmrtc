@@ -388,11 +388,9 @@ const register = new Registry();
 collectDefaultMetrics({ register });
 
 // Expose metrics endpoint
-app.get('/metrics', async (c) => {
-  const metrics = await register.metrics();
-  return c.text(metrics, 200, {
-    'Content-Type': register.contentType
-  });
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.send(await register.metrics());
 });
 ```
 

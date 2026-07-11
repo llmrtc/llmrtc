@@ -68,6 +68,7 @@ tools.register(defineTool({
 // Define playbook
 const playbook: Playbook = {
   id: 'support-bot',
+  name: 'Support Bot',
   initialStage: 'greeting',
   stages: [
     {
@@ -79,7 +80,7 @@ const playbook: Playbook = {
       id: 'billing',
       name: 'Billing Support',
       systemPrompt: 'Help with billing inquiries. Use check_balance for account info.',
-      tools: [tools.getTool('check_balance').definition]
+      tools: [tools.get('check_balance')!.definition]
     },
     {
       id: 'technical',
@@ -238,11 +239,11 @@ Use hooks to force transitions:
 const server = new LLMRTCServer({
   playbook,
   hooks: {
-    onStageEnter: (ctx, stageName) => {
-      console.log(`Entered stage: ${stageName}`);
+    onStageEnter: (ctx, stage, previousStage) => {
+      console.log(`Entered stage: ${stage.name}`);
     },
-    onStageExit: (ctx, stageName) => {
-      console.log(`Exited stage: ${stageName}`);
+    onStageExit: (ctx, stage, nextStage, timing) => {
+      console.log(`Exited ${stage.name} after ${timing.durationMs}ms`);
     }
   }
 });

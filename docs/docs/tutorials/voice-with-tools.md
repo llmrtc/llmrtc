@@ -122,7 +122,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: 'claude-sonnet-4-20250514'
+      model: 'claude-sonnet-4-5'
     }),
     stt: new OpenAIWhisperProvider({
       apiKey: process.env.OPENAI_API_KEY
@@ -318,7 +318,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: 'claude-sonnet-4-20250514'
+      model: 'claude-sonnet-4-5'
     }),
     stt: new OpenAIWhisperProvider({
       apiKey: process.env.OPENAI_API_KEY
@@ -477,7 +477,7 @@ const server = new LLMRTCServer({
   providers: {
     llm: new AnthropicLLMProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: 'claude-sonnet-4-20250514'
+      model: 'claude-sonnet-4-5'
     }),
     stt: new OpenAIWhisperProvider({
       apiKey: process.env.OPENAI_API_KEY

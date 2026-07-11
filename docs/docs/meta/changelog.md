@@ -5,6 +5,20 @@ title: Changelog
 This page tracks released versions of the SDK. Per-package changelogs live
 alongside each package (`packages/*/CHANGELOG.md`) and on npm.
 
+## 1.1.1 (2026-07-11)
+
+Patch release for `@llmrtc/llmrtc-provider-openai` and
+`@llmrtc/llmrtc-backend`:
+
+- **openai provider**: fix streaming TTS failing with
+  `response.body?.getReader is not a function` when the OpenAI SDK returns
+  a Node `Readable` body (Node < 18 or apps loading the SDK's Node shims).
+  The error was previously swallowed and every turn silently fell back to
+  non-streaming TTS, adding seconds of latency.
+- **backend**: the CLI now exits at startup with a clear message on
+  Node < 20 (override with `LLMRTC_SKIP_NODE_CHECK=1`) instead of failing
+  in confusing ways at runtime.
+
 ## 1.1.0 (2026-07-11)
 
 Correctness release: makes the advertised behavior work end to end.

@@ -94,7 +94,7 @@ import { LLMRTCServer } from '@llmrtc/llmrtc-backend';
 
 const server = new LLMRTCServer({
   providers: { llm, stt, tts },
-  systemPrompt: 'You are a helpful assistant.',
+  systemPrompt: 'You are a helpful realtime voice assistant.',
   port: 8787
 });
 

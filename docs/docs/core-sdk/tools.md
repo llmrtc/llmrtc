@@ -71,7 +71,7 @@ registry.register(
 );
 
 // Get a registered tool
-const tool = registry.getTool('lookupWeather');
+const tool = registry.get('lookupWeather');
 
 // Get definitions for LLM
 const definitions = registry.getDefinitions();

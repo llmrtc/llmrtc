@@ -7,7 +7,7 @@ Handles turn-by-turn coordination between providers.
 Example (streaming):
 ```ts
 const orchestrator = new ConversationOrchestrator({
-  systemPrompt: 'You are a helpful assistant.',
+  systemPrompt: 'You are a helpful realtime voice assistant.',
   historyLimit: 8,
   providers: { llm, stt, tts, vision }
 });

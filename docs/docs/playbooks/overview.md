@@ -30,7 +30,7 @@ interface Stage {
   tools?: ToolDefinition[];      // Tools available in this stage
   llmConfig?: StageLLMConfig;    // Temperature, maxTokens, etc.
   twoPhaseExecution?: boolean;   // Enable/disable two-phase (default: true)
-  toolChoice?: ToolChoice;       // 'auto' | 'none' | 'required' | { type: 'tool', toolName: string }
+  toolChoice?: ToolChoice;       // 'auto' | 'none' | 'required' | { name: string }
   maxTurns?: number;             // Max turns before forcing transition
   timeoutMs?: number;            // Stage timeout in milliseconds
 }

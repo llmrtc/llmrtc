@@ -178,7 +178,7 @@ The client emits events for UI integration:
 ## Constructor Options
 
 ```typescript
-interface LLMRTCWebClientConfig {
+interface WebClientConfig {
   // Required
   signallingUrl: string;           // WebSocket server URL
 
