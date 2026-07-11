@@ -292,7 +292,9 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
       });
 
       const llmResult: LLMResult = { fullText: phase1Response };
-      await callHookSafe(this.hooks.onLLMEnd, ctx, llmResult, llmTiming);
+      // Guardrail: a throw from onLLMEnd cancels the response - no TTS is
+      // produced and the turn fails with the thrown error
+      await this.hooks.onLLMEnd?.(ctx, llmResult, llmTiming);
       yield llmResult;
 
       // =========================================================================
@@ -343,6 +345,8 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
         const trimmed = sentence.trim();
         if (!trimmed) continue;
 
+        const sampleRate = this.providers.tts.pcmSampleRate ?? 24000;
+        let emittedChunksForSentence = false;
         try {
           for await (const audioChunk of this.providers.tts.speakStream!(trimmed, { format: 'pcm' })) {
             // Check for abort during streaming
@@ -354,30 +358,34 @@ export class VoicePlaybookOrchestrator implements TurnOrchestrator {
               type: 'tts-chunk',
               audio: audioChunk,
               format: 'pcm',
-              sampleRate: 24000,
+              sampleRate,
               sentence: trimmed
             };
             await callHookSafe(this.hooks.onTTSChunk, ctx, ttsChunk, chunkIndex);
             chunkIndex++;
+            emittedChunksForSentence = true;
             yield ttsChunk;
           }
         } catch (err) {
           console.error('[voice-playbook-orchestrator] TTS stream error:', err);
-          // Fallback to non-streaming TTS for this sentence
-          try {
-            const tts = await this.providers.tts.speak(trimmed, { format: 'pcm' });
-            const ttsChunk: TTSChunk = {
-              type: 'tts-chunk',
-              audio: tts.audio,
-              format: 'pcm',
-              sampleRate: 24000,
-              sentence: trimmed
-            };
-            await callHookSafe(this.hooks.onTTSChunk, ctx, ttsChunk, chunkIndex);
-            chunkIndex++;
-            yield ttsChunk;
-          } catch (fallbackErr) {
-            console.error('[voice-playbook-orchestrator] TTS fallback failed:', fallbackErr);
+          // Fallback to non-streaming TTS for this sentence - but only if
+          // nothing was emitted yet, otherwise the audio would repeat
+          if (!emittedChunksForSentence) {
+            try {
+              const tts = await this.providers.tts.speak(trimmed, { format: 'pcm' });
+              const ttsChunk: TTSChunk = {
+                type: 'tts-chunk',
+                audio: tts.audio,
+                format: 'pcm',
+                sampleRate,
+                sentence: trimmed
+              };
+              await callHookSafe(this.hooks.onTTSChunk, ctx, ttsChunk, chunkIndex);
+              chunkIndex++;
+              yield ttsChunk;
+            } catch (fallbackErr) {
+              console.error('[voice-playbook-orchestrator] TTS fallback failed:', fallbackErr);
+            }
           }
         }
       }

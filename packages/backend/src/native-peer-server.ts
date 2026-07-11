@@ -284,6 +284,17 @@ export class NativePeerServer extends EventEmitter {
       this.audioSink = null;
     }
 
+    // Release the outgoing TTS track and its native source
+    if (this.ttsTrack) {
+      try {
+        this.ttsTrack.stop();
+      } catch {
+        // Ignore stop errors
+      }
+      this.ttsTrack = null;
+    }
+    this.audioSource = null;
+
     // Clean up data channel
     if (this.dataChannel) {
       this.dataChannel.onopen = null;
