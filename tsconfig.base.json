@@ -23,9 +23,14 @@
     "paths": {
       "@llmrtc/llmrtc-core": ["packages/core/src/index.ts"],
       "@llmrtc/llmrtc-web-client": ["packages/web-client/src/index.ts"],
-      "@llmrtc/llmrtc-provider-openai": ["packages/providers/openai/src/index.ts"],
+      "@llmrtc/llmrtc-provider-anthropic": ["packages/providers/anthropic/src/index.ts"],
+      "@llmrtc/llmrtc-provider-bedrock": ["packages/providers/bedrock/src/index.ts"],
       "@llmrtc/llmrtc-provider-elevenlabs": ["packages/providers/elevenlabs/src/index.ts"],
-      "@llmrtc/llmrtc-provider-local": ["packages/providers/local/src/index.ts"]
+      "@llmrtc/llmrtc-provider-google": ["packages/providers/google/src/index.ts"],
+      "@llmrtc/llmrtc-provider-lmstudio": ["packages/providers/lmstudio/src/index.ts"],
+      "@llmrtc/llmrtc-provider-local": ["packages/providers/local/src/index.ts"],
+      "@llmrtc/llmrtc-provider-openai": ["packages/providers/openai/src/index.ts"],
+      "@llmrtc/llmrtc-provider-openrouter": ["packages/providers/openrouter/src/index.ts"]
     }
   }
 }
