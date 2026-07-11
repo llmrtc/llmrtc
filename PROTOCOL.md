@@ -98,7 +98,11 @@ Audio data for transcription (legacy/fallback when WebRTC audio track unavailabl
 ```
 
 #### `attachments`
-Vision attachments sent via data channel, queued for next speech segment.
+Vision attachments sent via data channel, queued for the next turn. Send
+them while the utterance is still in progress (the reference client sends
+them on `speech-start`): the server snapshots pending attachments when its
+VAD ends the turn, so attachments sent after `speech-end` arrive too late
+for that turn.
 
 ```typescript
 {
@@ -162,6 +166,10 @@ Session reconnection acknowledgment.
   historyRecovered: boolean;  // Whether conversation history was recovered
 }
 ```
+
+When the requested session is unknown or expired, the server replies with
+`success: false` and `sessionId` set to the connection's current session;
+the client continues with that fresh session.
 
 #### `transcript`
 Speech-to-text transcription result.
@@ -405,6 +413,10 @@ Client                                    Server
 
 ### Barge-in (User Interruption)
 
+When the user starts speaking, the server aborts the in-flight turn in any
+phase (STT, LLM, or TTS). If TTS audio was already playing, `tts-cancelled`
+is sent before `speech-start`.
+
 ```
 Client                                    Server
    │                                         │
@@ -414,9 +426,9 @@ Client                                    Server
    │                                         │
    │  ──── (User starts speaking) ──────────► │
    │                                         │
-   │  ◄──────── speech-start ───────────────┤
-   │                                         │
    │  ◄──────── tts-cancelled ──────────────┤
+   │                                         │
+   │  ◄──────── speech-start ───────────────┤
    │                                         │
    │  ◄──────── speech-end ─────────────────┤
    │                                         │

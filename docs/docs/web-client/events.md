@@ -12,10 +12,11 @@ Complete reference for all events emitted by `LLMRTCWebClient`.
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `transcript` | `(text: string)` | Speech transcription (final or interim) |
+| `transcript` | `(text: string, isFinal?: boolean)` | Speech transcription (final or interim) |
 | `llm` | `(text: string)` | Complete LLM response (non-streaming) |
 | `llmChunk` | `(text: string)` | Streaming LLM response chunk |
 | `tts` | `(audio: ArrayBuffer, format: string)` | Complete TTS audio (non-streaming) |
+| `ttsChunk` | `(audio: ArrayBuffer, format: string, sampleRate?: number)` | Streaming TTS audio when no WebRTC track is available |
 | `ttsTrack` | `(stream: MediaStream)` | WebRTC audio track for TTS playback |
 | `ttsStart` | `()` | TTS synthesis starting |
 | `ttsComplete` | `()` | TTS playback finished |
@@ -34,6 +35,7 @@ Complete reference for all events emitted by `LLMRTCWebClient`.
 |-------|---------|-------------|
 | `stateChange` | `(state: ConnectionState)` | Connection state changed |
 | `reconnecting` | `(attempt: number, maxAttempts: number)` | Reconnection in progress |
+| `reconnected` | `(historyRecovered: boolean)` | Reconnect completed; whether the previous session's history was recovered |
 | `error` | `(error: ClientError)` | Error occurred |
 
 ### Playbook Events

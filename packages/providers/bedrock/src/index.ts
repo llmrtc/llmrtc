@@ -35,7 +35,7 @@ export interface BedrockConfig {
     secretAccessKey: string;
     sessionToken?: string;
   };
-  /** Model ID (default: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0') */
+  /** Model ID (default: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0') */
   model?: string;
 }
 
@@ -52,7 +52,7 @@ export interface BedrockConfig {
  * ```typescript
  * const provider = new BedrockLLMProvider({
  *   region: 'us-east-1',
- *   model: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
+ *   model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
  * });
  * ```
  */
@@ -62,9 +62,9 @@ export class BedrockLLMProvider implements LLMProvider {
   private model: string;
 
   constructor(private readonly config: BedrockConfig = {}) {
-    // The cross-region inference profile id: the bare model id cannot be
-    // invoked on-demand for this model generation.
-    this.model = config.model ?? 'us.anthropic.claude-3-5-sonnet-20241022-v2:0';
+    // The cross-region inference profile id: bare model ids cannot be
+    // invoked on-demand for current Claude generations.
+    this.model = config.model ?? 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
 
     this.client = new BedrockRuntimeClient({
       region: config.region ?? 'us-east-1',
