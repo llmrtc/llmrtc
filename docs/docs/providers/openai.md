@@ -3,7 +3,7 @@ title: OpenAI
 ---
 
 Supported
-- LLM: `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano` (streaming + vision)
+- LLM: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4-mini` (streaming + vision)
 - STT: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`
 - TTS: `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` (instructable), streaming
 
@@ -11,7 +11,7 @@ Setup
 ```ts
 import { OpenAILLMProvider, OpenAIWhisperProvider, OpenAITTSProvider } from '@llmrtc/llmrtc-provider-openai';
 
-const llm = new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'gpt-5.2' });
+const llm = new OpenAILLMProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'gpt-5.6-terra' });
 const stt = new OpenAIWhisperProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o-mini-transcribe' });
 const tts = new OpenAITTSProvider({ apiKey: process.env.OPENAI_API_KEY, model: 'tts-1', voice: 'nova' });
 ```
@@ -98,5 +98,5 @@ Env vars
 
 Notes
 - Vision is supported via message attachments.
-- Use `gpt-5-mini` for latency-sensitive or cost-sensitive flows.
+- Use `gpt-5.6-luna` for latency-sensitive or cost-sensitive flows; `gpt-5.6-sol` is the flagship tier.
 - For the lowest TTS latency, use `format: 'pcm'` with `speakStream` (24kHz, 16-bit signed LE, mono).

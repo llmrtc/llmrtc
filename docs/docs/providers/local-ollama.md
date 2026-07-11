@@ -102,10 +102,11 @@ const llm = new OllamaLLMProvider({
 
 | Model | Size | Use Case |
 |-------|------|----------|
-| `llama3.2` | 3B | Fast, good for voice |
+| `gemma4` | small-to-mid variants | Current-generation small model, great default |
+| `qwen3.5` / `qwen3.6` | various | Current Qwen generation, strong multilingual |
+| `llama4:scout` | 109B MoE | Current Llama flagship (needs serious hardware) |
+| `llama3.2` | 3B | Lightweight, still fine for voice on modest machines |
 | `llama3.2:1b` | 1B | Very fast, basic tasks |
-| `llama3.1:8b` | 8B | Higher quality |
-| `phi3` | 3.8B | Good balance |
 | `mistral` | 7B | Strong reasoning |
 
 ---

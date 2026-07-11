@@ -63,7 +63,7 @@
 
 | Package | Provider | Features |
 |---------|----------|----------|
-| `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-5.2 / GPT-5.1, Whisper STT, TTS |
+| `@llmrtc/llmrtc-provider-openai` | OpenAI | GPT-5.6 family, transcribe STT, steerable TTS |
 | `@llmrtc/llmrtc-provider-anthropic` | Anthropic | Claude Sonnet 5, Opus 4.8, Haiku 4.5, vision |
 | `@llmrtc/llmrtc-provider-google` | Google | Gemini 2.5 Flash/Pro, multimodal |
 | `@llmrtc/llmrtc-provider-bedrock` | AWS Bedrock | Claude, Nova, Llama via AWS |
@@ -521,7 +521,7 @@ import {
 // LLM
 const llm = new OpenAILLMProvider({
   apiKey: 'sk-...',
-  model: 'gpt-5.2', // or 'gpt-5.1', 'gpt-5-mini' (lower cost)
+  model: 'gpt-5.6-terra', // or 'gpt-5.6-sol' (flagship), 'gpt-5.6-luna' (fast, low cost)
   baseURL: 'https://api.openai.com/v1' // optional
 });
 
@@ -586,7 +586,7 @@ import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 
 const llm = new GeminiLLMProvider({
   apiKey: 'AIza...',
-  model: 'gemini-2.5-flash' // or 'gemini-2.5-pro'
+  model: 'gemini-3.5-flash' // or 'gemini-2.5-pro'; provider default is gemini-2.5-flash
 });
 
 // Streaming
@@ -607,7 +607,7 @@ const llm = new BedrockLLMProvider({
     accessKeyId: '...',
     secretAccessKey: '...'
   },
-  model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+  model: 'us.anthropic.claude-sonnet-5'
   // Use inference-profile ids (us./eu. prefixed) for on-demand invocation.
   // Also supports: amazon.nova-*, meta.llama3-*, mistral.*
 });
@@ -620,7 +620,7 @@ import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 const llm = new OpenRouterLLMProvider({
   apiKey: 'sk-or-...',
-  model: 'anthropic/claude-sonnet-4.5', // provider/model format
+  model: 'anthropic/claude-sonnet-5', // provider/model format
   siteUrl: 'https://myapp.com', // optional, for rankings
   siteName: 'My App'
 });
@@ -827,12 +827,12 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
 
 # Model overrides (optional)
-OPENAI_MODEL=gpt-5.2
+OPENAI_MODEL=gpt-5.6-terra
 ANTHROPIC_MODEL=claude-sonnet-5
 ANTHROPIC_PROMPT_CACHING=true             # optional; big input-cost saving on long chats
-GOOGLE_MODEL=gemini-2.5-flash
-BEDROCK_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+GOOGLE_MODEL=gemini-3.5-flash
+BEDROCK_MODEL=us.anthropic.claude-sonnet-5
+OPENROUTER_MODEL=anthropic/claude-sonnet-5
 ZAI_API_KEY=...
 ZAI_MODEL=glm-5.2
 OPENAI_STT_MODEL=gpt-4o-mini-transcribe   # optional; default whisper-1
@@ -1649,6 +1649,19 @@ npm run release
 - **wrtc module errors**: The native WebRTC module requires compatible binaries. Falls back to WebSocket-only if unavailable.
 - **Missing audio**: Check TTS provider configuration and API keys
 - **VAD not triggering**: Adjust microphone input level, check audio track is active
+
+---
+
+## Roadmap
+
+Substantial upcoming work is designed in the open as RFCs under
+[`rfcs/`](rfcs/). Currently drafted:
+
+- [RFC 0001 - Realtime Speech-to-Speech Orchestrator Mode](rfcs/0001-realtime-speech-to-speech.md):
+  an opt-in relay mode connecting sessions to native speech-to-speech
+  models (OpenAI `gpt-realtime-2.1`, Gemini Live) for ~300-500ms
+  responses, with LLMRTC tools, playbooks, and the existing client
+  protocol intact.
 
 ---
 

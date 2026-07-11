@@ -24,7 +24,7 @@ import {
 export interface OpenRouterConfig {
   /** OpenRouter API key */
   apiKey: string;
-  /** Model in format 'provider/model-name' e.g. 'anthropic/claude-sonnet-4.5' */
+  /** Model in format 'provider/model-name' e.g. 'anthropic/claude-sonnet-5' */
   model: string;
   /** Base URL (default: 'https://openrouter.ai/api/v1') */
   baseURL?: string;
@@ -44,7 +44,7 @@ export interface OpenRouterConfig {
  * ```typescript
  * const provider = new OpenRouterLLMProvider({
  *   apiKey: 'sk-or-...',
- *   model: 'anthropic/claude-sonnet-4.5'
+ *   model: 'anthropic/claude-sonnet-5'
  * });
  * ```
  */

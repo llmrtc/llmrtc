@@ -3,7 +3,7 @@ title: Google Gemini
 ---
 
 Supported
-- LLM: Gemini 2.5 Flash (fast) and Pro (quality); multimodal
+- LLM: Gemini 3.5 Flash (current recommended), 3.1 Flash Lite, 2.5 Flash/Pro; multimodal
 - Streaming supported
 
 Setup
@@ -12,7 +12,7 @@ import { GeminiLLMProvider } from '@llmrtc/llmrtc-provider-google';
 
 const llm = new GeminiLLMProvider({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: 'gemini-2.5-flash'
+  model: 'gemini-3.5-flash' // current recommended; provider default is gemini-2.5-flash
 });
 ```
 

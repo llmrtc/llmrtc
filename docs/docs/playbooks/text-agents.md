@@ -17,7 +17,7 @@ import { OpenAILLMProvider } from '@llmrtc/llmrtc-provider-openai';
 
 const llm = new OpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,
-  model: 'gpt-5-mini'
+  model: 'gpt-5.6-luna'
 });
 
 const tools = new ToolRegistry();

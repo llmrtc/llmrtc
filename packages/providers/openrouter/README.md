@@ -15,7 +15,7 @@ import { OpenRouterLLMProvider } from '@llmrtc/llmrtc-provider-openrouter';
 
 const llm = new OpenRouterLLMProvider({
   apiKey: process.env.OPENROUTER_API_KEY!,
-  model: 'anthropic/claude-sonnet-4.5'
+  model: 'anthropic/claude-sonnet-5'
 });
 ```
 

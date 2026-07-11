@@ -836,7 +836,7 @@ You should see output like:
 
 **Solutions:**
 1. Ensure `streamingTTS: true` is set in server.ts
-2. Use faster models (Claude Haiku 4.5 or Sonnet 4.5, `gpt-5-mini` or `gpt-5.2`)
+2. Use faster models (Claude Haiku 4.5, `gpt-5.6-luna`, or `gpt-5.6-terra`)
 3. Keep system prompt concise
 4. Check your internet connection
 

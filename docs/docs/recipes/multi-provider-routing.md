@@ -6,7 +6,7 @@ Based on [`examples/multi-provider`](https://github.com/llmrtc/llmrtc/tree/main/
 
 Idea
 - Route requests to different LLMs based on task (cost/latency/quality).
-- Example: use `gpt-5-mini` for chit-chat, `claude-sonnet-5` for tool use, `gemini` for vision.
+- Example: use `gpt-5.6-luna` for chit-chat, `claude-sonnet-5` for tool use, `gemini-3.5-flash` for vision.
 
 Approach
 - Instantiate multiple providers and select per turn using your own logic.

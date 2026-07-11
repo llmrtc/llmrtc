@@ -124,19 +124,19 @@ flowchart TB
 
 | Provider | LLM | STT | TTS | Vision |
 |----------|-----|-----|-----|--------|
-| OpenAI | GPT-5.2, GPT-5.1 | Whisper | TTS-1, TTS-1-HD | GPT-5.2 |
+| OpenAI | GPT-5.6 family, GPT-5.5 | Whisper, GPT-4o Transcribe, Realtime (streaming) | TTS-1/HD, GPT-4o Mini TTS (steerable) | GPT-5.6 |
 | Anthropic | Claude Sonnet 5, Opus 4.8, Haiku 4.5 | - | - | Claude vision |
 | Z.ai | GLM 5.2 (1M context, open weights) | - | - | - |
-| Google Gemini | Gemini 2.5 Flash, Gemini 2.5 Pro | - | - | Gemini Vision |
+| Google Gemini | Gemini 3.5 Flash, 2.5 Flash/Pro | - | - | Gemini Vision |
 | AWS Bedrock | Claude, Llama, etc. | - | - | varies |
 | OpenRouter | 100+ models | - | - | varies |
-| ElevenLabs | - | - | Multilingual v2 | - |
+| ElevenLabs | - | Scribe v2 (+ realtime streaming) | Multilingual v2, v3, Flash | - |
 
 ### Local Providers
 
 | Provider | LLM | STT | TTS | Vision |
 |----------|-----|-----|-----|--------|
-| Ollama | Llama, Mistral, etc. | - | - | LLaVA |
+| Ollama | Llama 4, Gemma 4, Qwen, etc. | - | - | Qwen3-VL, LLaVA |
 | LM Studio | Any GGUF model | - | - | - |
 | Faster-Whisper | - | Whisper (fast) | - | - |
 | Piper | - | - | Many voices | - |
