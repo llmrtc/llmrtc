@@ -122,20 +122,19 @@ flowchart TB
 
 ### Cloud Providers
 
-| Provider | LLM | STT | TTS | Vision |
-|----------|-----|-----|-----|--------|
-| OpenAI | GPT-5.6 family, GPT-5.5 | Whisper, GPT-4o Transcribe, Realtime (streaming) | TTS-1/HD, GPT-4o Mini TTS (steerable) | GPT-5.6 |
-| Anthropic | Claude Sonnet 5, Opus 4.8, Haiku 4.5 | - | - | Claude vision |
-| Z.ai | GLM 5.2 (1M context, open weights) | - | - | - |
-| Google Gemini | Gemini 3.5 Flash, 2.5 Flash/Pro | - | - | Gemini Vision |
-| AWS Bedrock | Claude, Llama, etc. | - | - | varies |
-| OpenRouter | 100+ models | - | - | varies |
-| ElevenLabs | - | Scribe v2 (+ realtime streaming) | Multilingual v2, v3, Flash | - |
+| Provider | LLM | STT | TTS | Speech-to-Speech | Vision |
+|----------|-----|-----|-----|------------------|--------|
+| OpenAI | GPT-5.6 family, GPT-5.5 | Whisper, GPT-4o Transcribe, Realtime (streaming) | TTS-1/HD, GPT-4o Mini TTS (steerable) | GPT Realtime 2.1 | GPT-5.6 |
+| Anthropic | Claude Sonnet 5, Opus 4.8, Haiku 4.5 | - | - | - | Claude vision |
+| Z.ai | GLM 5.2 (1M context, open weights) | - | - | - | - |
+| Google Gemini | Gemini 3.5 Flash, 2.5 Flash/Pro | - | - | Gemini Live (preview) | Gemini Vision |
+| AWS Bedrock | Claude, Llama, etc. | - | - | - | varies |
+| OpenRouter | 100+ models | - | - | - | varies |
+| ElevenLabs | - | Scribe v2 (+ realtime streaming) | Multilingual v2, v3, Flash | - | - |
 
-OpenAI (`gpt-realtime-2.1`) and Google (Gemini Live) native
-speech-to-speech models are additionally supported through the
-experimental [realtime relay mode](backend/realtime-speech) —
-voice-to-voice in ~300–500ms with tools and playbooks intact.
+Speech-to-speech models run through the experimental
+[realtime relay mode](backend/realtime-speech) — voice-to-voice in
+~300–500ms with tools, playbooks, and budgets intact.
 
 ### Local Providers
 
