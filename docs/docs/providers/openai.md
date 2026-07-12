@@ -6,6 +6,7 @@ Supported
 - LLM: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4-mini` (streaming + vision)
 - STT: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`
 - TTS: `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` (instructable), streaming
+- Realtime speech-to-speech: `gpt-realtime-2.1`, `gpt-realtime-2.1-mini` (experimental relay mode)
 
 Setup
 ```ts
@@ -56,6 +57,25 @@ const stt = new OpenAIRealtimeSTTProvider({
 Enable `streamingSTT: true` on the server (or `STREAMING_STT=true` +
 `STT_PROVIDER=openai-realtime` in CLI mode) for live interim
 transcripts - see [Streaming Speech-to-Text](../backend/streaming-stt).
+
+## Realtime speech-to-speech (experimental)
+
+`OpenAIRealtimeSpeechProvider` connects sessions directly to the
+`gpt-realtime-2.1` family for ~300–500ms voice-to-voice responses with
+native interruption handling — used with the server's
+[realtime relay mode](../backend/realtime-speech):
+
+```ts
+import { OpenAIRealtimeSpeechProvider } from '@llmrtc/llmrtc-provider-openai';
+
+const provider = new OpenAIRealtimeSpeechProvider({
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-realtime-2.1' // or 'gpt-realtime-2.1-mini' (~1/3 cost)
+});
+```
+
+Realtime audio is priced per audio token (~10x an equivalent pipeline);
+see the relay-mode docs for budgets and cost math.
 
 ## Text-to-speech
 

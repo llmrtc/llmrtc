@@ -132,6 +132,11 @@ flowchart TB
 | OpenRouter | 100+ models | - | - | varies |
 | ElevenLabs | - | Scribe v2 (+ realtime streaming) | Multilingual v2, v3, Flash | - |
 
+OpenAI (`gpt-realtime-2.1`) and Google (Gemini Live) native
+speech-to-speech models are additionally supported through the
+experimental [realtime relay mode](backend/realtime-speech) —
+voice-to-voice in ~300–500ms with tools and playbooks intact.
+
 ### Local Providers
 
 | Provider | LLM | STT | TTS | Vision |

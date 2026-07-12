@@ -674,6 +674,31 @@ const stt = new ElevenLabsScribeProvider({ apiKey: 'xi-...' });
 // Pair with streamingSTT: true on the server for live interim transcripts
 ```
 
+### Realtime Speech-to-Speech (Experimental)
+
+Skip the pipeline entirely: connect sessions to a native voice model
+for ~300-500ms responses with natural interruptions. Tools, playbooks,
+and budgets keep working; existing clients need no changes.
+
+```typescript
+import { LLMRTCServer, OpenAIRealtimeSpeechProvider } from '@llmrtc/llmrtc-backend';
+
+const server = new LLMRTCServer({
+  realtimeSpeech: {
+    provider: new OpenAIRealtimeSpeechProvider({ apiKey: process.env.OPENAI_API_KEY! }),
+    voice: 'marin',
+    budget: { maxSessionMs: 30 * 60 * 1000 }
+  },
+  systemPrompt: 'You are a concise voice assistant.',
+  toolRegistry // tools work natively in relay mode
+});
+```
+
+Also available: `GeminiLiveSpeechProvider` (Gemini Live API). Realtime
+audio is priced per audio token (~10x an equivalent pipeline) - see the
+[docs](https://www.llmrtc.org/backend/realtime-speech) for cost math,
+budgets, and fallback behavior.
+
 ### Local Providers (Ollama, Faster Whisper, Piper)
 
 ```typescript
@@ -1655,14 +1680,15 @@ npm run release
 
 ## Roadmap
 
-Substantial upcoming work is designed in the open as RFCs under
-[`rfcs/`](rfcs/). Currently drafted:
+Substantial work is designed in the open as RFCs under
+[`rfcs/`](rfcs/):
 
-- [RFC 0001 - Realtime Speech-to-Speech Orchestrator Mode](rfcs/0001-realtime-speech-to-speech.md):
-  an opt-in relay mode connecting sessions to native speech-to-speech
-  models (OpenAI `gpt-realtime-2.1`, Gemini Live) for ~300-500ms
-  responses, with LLMRTC tools, playbooks, and the existing client
-  protocol intact.
+- [RFC 0001 - Realtime Speech-to-Speech Orchestrator Mode](rfcs/0001-realtime-speech-to-speech.md)
+  — **implemented (experimental)**: the opt-in relay mode connecting
+  sessions to native speech-to-speech models (OpenAI `gpt-realtime-2.1`,
+  Gemini Live) for ~300-500ms responses, with LLMRTC tools, playbooks,
+  budgets, and the existing client protocol intact. See the
+  [docs](https://www.llmrtc.org/backend/realtime-speech).
 
 ---
 
